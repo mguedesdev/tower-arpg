@@ -1,0 +1,44 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/wolf_enemy.gd" id="1_wolf"]
+
+[sub_resource type="BoxShape3D" id="WolfCollision"]
+size = Vector3(0.62, 0.85, 1.15)
+
+[sub_resource type="StandardMaterial3D" id="PlaceholderMat"]
+albedo_color = Color(0.30, 0.32, 0.38, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="PlaceholderMesh"]
+size = Vector3(0.56, 0.65, 1.10)
+
+[sub_resource type="StandardMaterial3D" id="PlaceholderEyeMat"]
+albedo_color = Color(0.9, 0.13, 0.16, 1)
+emission_enabled = true
+emission = Color(0.9, 0.13, 0.16, 1)
+emission_energy_multiplier = 0.8
+
+[sub_resource type="BoxMesh" id="PlaceholderEyeMesh"]
+size = Vector3(0.30, 0.06, 0.04)
+
+[node name="WolfEnemy" type="CharacterBody3D" groups=["enemies"]]
+script = ExtResource("1_wolf")
+movement_speed = 2.65
+maximum_health = 24
+touch_damage = 7
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.44, 0)
+shape = SubResource("WolfCollision")
+
+[node name="Visual" type="Node3D" parent="."]
+
+[node name="Body" type="MeshInstance3D" parent="Visual"]
+position = Vector3(0, 0.40, 0)
+mesh = SubResource("PlaceholderMesh")
+surface_material_override/0 = SubResource("PlaceholderMat")
+
+[node name="Eyes" type="MeshInstance3D" parent="Visual/Body"]
+position = Vector3(0, 0.10, -0.56)
+mesh = SubResource("PlaceholderEyeMesh")
+surface_material_override/0 = SubResource("PlaceholderEyeMat")

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EnemyDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/combat/enemy_definition.gd" id="1_enemy_def"]
+
+[resource]
+script = ExtResource("1_enemy_def")
+enemy_id = "wolf"
+display_name = "Lobo das Sombras"
+model_path = "res://assets/models/wolf.glb"
+base_max_health = 24
+base_movement_speed = 2.65
+base_touch_damage = 7
+health_bar_height = 1.25
+health_bar_width_scale = 0.92
+visual_scale = 1.0
+visual_yaw_degrees = 0.0
+visual_offset_y = 0.0
+walk_stride_meters = 1.35
+xp_reward_multiplier = 1
+is_mini_boss = false

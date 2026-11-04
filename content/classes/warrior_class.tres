@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CharacterDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://core/stats/character_definition.gd" id="1_char_def"]
+[ext_resource type="Resource" path="res://content/abilities/warrior_strike.tres" id="2_ability"]
+
+[resource]
+script = ExtResource("1_char_def")
+class_id = "warrior"
+display_name = "Guerreiro"
+description = "Combatente corpo a corpo versátil, mestre em golpes de espada e posturas de impacto."
+base_max_health = 100
+base_damage = 14
+base_attack_speed = 1.0
+base_move_speed = 6.2
+base_crit_chance = 0.05
+base_crit_damage = 1.5
+base_cooldown_reduction = 0.0
+base_armor = 0.0
+base_area_scale = 1.0
+starting_ability = ExtResource("2_ability")

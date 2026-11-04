@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="ProgressionUpgradeDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/progression/progression_upgrade_definition.gd" id="1_upg"]
+
+[resource]
+script = ExtResource("1_upg")
+id = "stat_dano"
+title = "Força Brutal"
+description = "Aumenta o dano de todos os golpes em +22% por acúmulo."
+preview_comparison = "+22% Dano de Ataque"
+category = 0
+icon_key = "stab"
+target_class_id = "warrior"
+target_ability_id = ""
+max_rank = 5
+weight = 14.0
+min_run_level = 1
+required_upgrade_ids = PackedStringArray()
+required_tags = PackedStringArray()
+excluded_upgrade_ids = PackedStringArray()
+exclusivity_group = ""
+requires_meta_unlock_id = ""
+granted_tags = PackedStringArray()
+stat_modifiers_data = [{
+"op": 1,
+"stat": "damage",
+"value": 0.22
+}]
+ability_behavior_override = -1
+ability_display_name_override = ""
+ability_transformation_params = {}
+ability_upgrade_deltas = {}
+special_effect_id = ""
+special_effect_params = {}

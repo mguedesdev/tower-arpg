@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="ProgressionUpgradeDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/progression/progression_upgrade_definition.gd" id="1_upg"]
+
+[resource]
+script = ExtResource("1_upg")
+id = "trans_meia_lua"
+title = "Transformação: Meia-lua"
+description = "Substitui a Estocada por um corte em arco amplo de 180° à frente, atingindo múltiplos inimigos com +15% de dano."
+preview_comparison = "Estocada (Cone 32°) -> Meia-lua (Arco 180°, até 6 alvos)"
+category = 2
+icon_key = "arc"
+target_class_id = "warrior"
+target_ability_id = "warrior_strike"
+max_rank = 1
+weight = 18.0
+min_run_level = 1
+required_upgrade_ids = PackedStringArray()
+required_tags = PackedStringArray()
+excluded_upgrade_ids = PackedStringArray("trans_perfuracao")
+exclusivity_group = "warrior_strike_primary_form"
+requires_meta_unlock_id = ""
+granted_tags = PackedStringArray("transformed", "arc_form", "cleave")
+stat_modifiers_data = []
+ability_behavior_override = 1
+ability_display_name_override = "Meia-lua"
+ability_transformation_params = {
+"cooldown": 0.95,
+"damage_multiplier": 1.15,
+"half_angle": 1.5708,
+"max_targets": 6,
+"radius": 2.45
+}
+ability_upgrade_deltas = {}
+special_effect_id = ""
+special_effect_params = {}

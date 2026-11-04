@@ -1,0 +1,20 @@
+# Godot 4+ cache local (regenerado automaticamente)
+.godot/
+
+# Backups temporários do Blender
+*.blend1
+*.blend2
+*.blend3
+
+# Cache Python / Sistema Operacional
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Builds exportados (se houver no futuro)
+build/
+exports/
+*.exe
+*.pck

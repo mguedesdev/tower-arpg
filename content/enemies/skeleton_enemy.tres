@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EnemyDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/combat/enemy_definition.gd" id="1_enemy_def"]
+
+[resource]
+script = ExtResource("1_enemy_def")
+enemy_id = "skeleton"
+display_name = "Esqueleto Profanado"
+model_path = "res://assets/models/skeleton_enemy.glb"
+base_max_health = 32
+base_movement_speed = 2.3
+base_touch_damage = 8
+health_bar_height = 1.96
+health_bar_width_scale = 1.0
+visual_scale = 1.0
+visual_yaw_degrees = 0.0
+visual_offset_y = 0.0
+walk_stride_meters = 1.50
+xp_reward_multiplier = 1
+is_mini_boss = false

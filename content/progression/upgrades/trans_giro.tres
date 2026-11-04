@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="ProgressionUpgradeDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/progression/progression_upgrade_definition.gd" id="1_upg"]
+
+[resource]
+script = ExtResource("1_upg")
+id = "trans_giro"
+title = "Transformação: Giro 360"
+description = "Evolui o corte em Meia-lua para um turbilhão circular de 360° que atinge todos os inimigos ao redor sem exigir alinhamento frontal."
+preview_comparison = "Meia-lua (180°) -> Giro Circular (360°, até 10 alvos)"
+category = 2
+icon_key = "spin"
+target_class_id = "warrior"
+target_ability_id = "warrior_strike"
+max_rank = 1
+weight = 16.0
+min_run_level = 2
+required_upgrade_ids = PackedStringArray("trans_meia_lua")
+required_tags = PackedStringArray("arc_form")
+excluded_upgrade_ids = PackedStringArray("trans_perfuracao")
+exclusivity_group = "warrior_strike_secondary_form"
+requires_meta_unlock_id = "unlock_spin"
+granted_tags = PackedStringArray("transformed", "spin_form", "aoe")
+stat_modifiers_data = []
+ability_behavior_override = 2
+ability_display_name_override = "Giro 360"
+ability_transformation_params = {
+"cooldown": 1.15,
+"damage_multiplier": 1.25,
+"half_angle": 3.1416,
+"max_targets": 10,
+"radius": 2.25
+}
+ability_upgrade_deltas = {}
+special_effect_id = ""
+special_effect_params = {}

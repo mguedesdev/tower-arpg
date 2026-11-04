@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="ProgressionUpgradeDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/progression/progression_upgrade_definition.gd" id="1_upg"]
+
+[resource]
+script = ExtResource("1_upg")
+id = "trans_perfuracao"
+title = "Transformação: Perfuração"
+description = "Transforma a Estocada em uma investida linear de longo alcance que atravessa múltiplos inimigos em linha com +25% de dano."
+preview_comparison = "Alcance 2.7m (2 alvos) -> Linha Perfurante 4.4m (até 8 alvos)"
+category = 2
+icon_key = "stab"
+target_class_id = "warrior"
+target_ability_id = "warrior_strike"
+max_rank = 1
+weight = 18.0
+min_run_level = 1
+required_upgrade_ids = PackedStringArray()
+required_tags = PackedStringArray()
+excluded_upgrade_ids = PackedStringArray("trans_meia_lua")
+exclusivity_group = "warrior_strike_primary_form"
+requires_meta_unlock_id = ""
+granted_tags = PackedStringArray("transformed", "pierce_form", "piercing")
+stat_modifiers_data = []
+ability_behavior_override = 3
+ability_display_name_override = "Perfuração"
+ability_transformation_params = {
+"cooldown": 0.78,
+"corridor_width": 1.05,
+"damage_multiplier": 1.25,
+"half_angle": 0.22,
+"max_targets": 8,
+"radius": 4.4
+}
+ability_upgrade_deltas = {}
+special_effect_id = ""
+special_effect_params = {}

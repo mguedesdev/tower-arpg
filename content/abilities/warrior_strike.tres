@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="AbilityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/abilities/ability_definition.gd" id="1_ability_def"]
+
+[resource]
+script = ExtResource("1_ability_def")
+id = "warrior_strike"
+display_name = "Estocada"
+description = "Golpe frontal rápido e preciso que atinge inimigos à frente."
+class_id = "warrior"
+base_behavior = 0
+base_damage_multiplier = 1.0
+base_cooldown = 0.8
+base_radius = 2.7
+base_half_angle = 0.28
+base_corridor_width = 0.95
+base_max_targets = 2
+base_tags = PackedStringArray("melee", "physical", "strike", "stab")

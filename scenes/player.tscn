@@ -1,0 +1,28 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/attack_controller.gd" id="2_attack"]
+[ext_resource type="PackedScene" path="res://scenes/placeholder_knight.tscn" id="3_placeholder"]
+
+[sub_resource type="CapsuleShape3D" id="PlayerCapsule"]
+radius = 0.32
+height = 1.7
+
+[node name="Player" type="CharacterBody3D"]
+script = ExtResource("1_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.85, 0)
+shape = SubResource("PlayerCapsule")
+
+[node name="Visual" type="Node3D" parent="."]
+
+[node name="PlaceholderKnight" parent="Visual" instance=ExtResource("3_placeholder")]
+
+[node name="AttackVisual" type="MeshInstance3D" parent="Visual"]
+visible = false
+position = Vector3(0, 0.045, 0)
+cast_shadow = 0
+
+[node name="AttackController" type="Node" parent="."]
+script = ExtResource("2_attack")

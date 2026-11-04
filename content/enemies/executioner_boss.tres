@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EnemyDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/combat/enemy_definition.gd" id="1_enemy_def"]
+
+[resource]
+script = ExtResource("1_enemy_def")
+enemy_id = "executioner_boss"
+display_name = "O Carrasco Profanado"
+model_path = "res://assets/models/skeleton_boss.glb"
+base_max_health = 92
+base_movement_speed = 2.05
+base_touch_damage = 14
+health_bar_height = 2.52
+health_bar_width_scale = 1.48
+visual_scale = 1.28
+visual_yaw_degrees = 0.0
+visual_offset_y = 0.0
+walk_stride_meters = 1.85
+xp_reward_multiplier = 3
+is_mini_boss = true

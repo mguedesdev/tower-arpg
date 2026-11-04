@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ProgressionBalance" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/progression/progression_balance.gd" id="1_balance"]
+
+[resource]
+script = ExtResource("1_balance")
+enemy_xp = 5
+first_level_xp = 12
+xp_linear_growth = 4
+xp_quadratic_growth = 1
