@@ -447,8 +447,10 @@ func _show_toast(message: String, seconds: float, priority: int = 1) -> void:
 func _update_wave_kills() -> void:
     if _arena == null:
         return
-    var wave: int = int(_arena.get("current_wave"))
-    var kills: int = int(_arena.get("kills"))
+    var raw_wave = _arena.get("current_wave")
+    var wave: int = int(raw_wave) if raw_wave != null else 1
+    var raw_kills = _arena.get("kills")
+    var kills: int = int(raw_kills) if raw_kills != null else 0
     if wave != _last_wave:
         _last_wave = wave
         _wave_value.text = "%02d" % maxi(wave, 0)
