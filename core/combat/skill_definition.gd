@@ -69,7 +69,7 @@ static func build_warrior_skills() -> Dictionary:
 	stab.max_targets = 2
 	stab.damage_multiplier = 1.0
 	stab.base_cooldown = 0.58
-	stab.cast_lock = 0.30
+	stab.cast_lock = 0.08
 	stab.animation_form = 0
 	stab.vfx_kind = "stab"
 	stab.accent_color = Color(1.0, 0.62, 0.26)
@@ -86,7 +86,7 @@ static func build_warrior_skills() -> Dictionary:
 	arc.max_targets = 8
 	arc.damage_multiplier = 1.25
 	arc.base_cooldown = 1.10
-	arc.cast_lock = 0.40
+	arc.cast_lock = 0.10
 	arc.animation_form = 1
 	arc.vfx_kind = "arc"
 	arc.accent_color = Color(0.48, 0.76, 1.0)
@@ -102,7 +102,7 @@ static func build_warrior_skills() -> Dictionary:
 	spin.max_targets = 12
 	spin.damage_multiplier = 1.10
 	spin.base_cooldown = 2.40
-	spin.cast_lock = 0.48
+	spin.cast_lock = 0.12
 	spin.animation_form = 2
 	spin.vfx_kind = "spin"
 	spin.accent_color = Color(0.96, 0.78, 0.34)
@@ -119,7 +119,7 @@ static func build_warrior_skills() -> Dictionary:
 	pierce.max_targets = 8
 	pierce.damage_multiplier = 1.45
 	pierce.base_cooldown = 1.80
-	pierce.cast_lock = 0.42
+	pierce.cast_lock = 0.10
 	pierce.animation_form = 3
 	pierce.vfx_kind = "pierce"
 	pierce.accent_color = Color(0.56, 0.90, 0.98)
@@ -136,7 +136,7 @@ static func build_warrior_skills() -> Dictionary:
 	ember.max_targets = 4
 	ember.damage_multiplier = 1.30
 	ember.base_cooldown = 3.20
-	ember.cast_lock = 0.36
+	ember.cast_lock = 0.10
 	ember.burn_dps = 9.0
 	ember.burn_duration = 3.5
 	ember.animation_form = 0

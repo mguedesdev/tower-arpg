@@ -148,7 +148,9 @@ static func _merge_skeleton_meshes(skeleton: Skeleton3D) -> void:
 				roughness_sum += std_mat.roughness
 				roughness_count += 1
 			else:
-				var key: Variant = mat if mat != null else "default"
+				var key: Variant = mat
+				if key == null:
+					key = "default"
 				if not special_buckets.has(key):
 					special_buckets[key] = {
 						"material": mat,

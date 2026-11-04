@@ -25,7 +25,7 @@ const SLOT_4: int = 5
 const SLOT_COUNT: int = 6
 const SLOT_LABELS: Array[String] = ["LMB", "RMB", "1", "2", "3", "4"]
 const MAX_ACTIVE_SKILLS: int = 4
-const PICK_RADIUS_PX: float = 58.0
+const PICK_RADIUS_PX: float = 34.0
 
 @export var enabled: bool = false
 
@@ -195,10 +195,12 @@ func _input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			_held[SLOT_LMB] = false
-			if _pending_slot == SLOT_LMB and _pending_target == null:
+			if _pending_slot == SLOT_LMB:
 				_cancel_pending()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			_held[SLOT_RMB] = false
+			if _pending_slot == SLOT_RMB:
+				_cancel_pending()
 
 
 func _begin_action(slot_idx: int) -> void:
@@ -273,9 +275,12 @@ func _physics_process(delta: float) -> void:
 			# Anda até o mob clicado.
 			character.chase_direction = to_target.normalized()
 			return
-		character.chase_direction = Vector3.ZERO
+		# Já está em alcance: se estiver em recarga ou no meio do golpe, não ataca ainda mas não trava
 		if character.cast_lock_remaining > 0.0 or get_cooldown_remaining(def.skill_id) > 0.0:
+			if not _held[_pending_slot]:
+				_cancel_pending()
 			return
+		character.chase_direction = Vector3.ZERO
 		_cast(def, to_target)
 		_after_cast()
 		return

@@ -1,5 +1,6 @@
 extends CharacterBody3D
 class_name TowerEnemy
+const FloatingDamageNumberScript = preload("res://core/combat/floating_damage_number_3d.gd")
 
 signal died
 signal health_changed(current: int, maximum: int)
@@ -48,7 +49,6 @@ var _requested_animation: StringName = &""
 var _is_attacking: bool = false
 var _aggro_triggered: bool = false
 var _hit_flash_remaining: float = 0.0
-var _hit_flash_material: StandardMaterial3D
 var _hit_meshes: Array[GeometryInstance3D] = []
 var _previous_overlays: Array[Material] = []
 var _burn_remaining: float = 0.0
@@ -297,9 +297,8 @@ func take_damage(amount: int) -> void:
 	_aggro_triggered = true
 	health = maxi(0, health - amount)
 	health_changed.emit(health, maximum_health)
-	var dmg_script = load("res://core/combat/floating_damage_number_3d.gd")
-	if dmg_script != null and get_parent() != null:
-		var dmg_num = dmg_script.new()
+	if FloatingDamageNumberScript != null and get_parent() != null:
+		var dmg_num = FloatingDamageNumberScript.new()
 		get_parent().add_child(dmg_num)
 		dmg_num.setup(amount, false, false, global_position)
 	if health_bar != null:

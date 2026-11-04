@@ -16,7 +16,31 @@ var _hp_label: Label
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_ui()
+	_init_cached_ring()
 	visible = false
+
+func _init_cached_ring() -> void:
+	_target_ring = MeshInstance3D.new()
+	_target_ring.name = "TargetSelectionRing"
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.95
+	torus.outer_radius = 1.08
+	torus.rings = 24
+	torus.ring_segments = 4
+	_target_ring.mesh = torus
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.15, 0.18, 0.95)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.20, 0.20)
+	mat.emission_energy_multiplier = 1.8
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.no_depth_test = true
+	_target_ring.material_override = mat
+	_target_ring.visible = false
+	var root := get_tree().current_scene
+	if root != null:
+		root.add_child.call_deferred(_target_ring)
 
 
 func _build_ui() -> void:
@@ -144,31 +168,13 @@ func set_target(enemy: TowerEnemy, area_lvl: int = 1) -> void:
 
 
 func _create_ring(enemy: Node3D) -> void:
-	_target_ring = MeshInstance3D.new()
-	_target_ring.name = "TargetSelectionRing"
-	var torus := TorusMesh.new()
-	torus.inner_radius = 0.95
-	torus.outer_radius = 1.08
-	torus.rings = 24
-	torus.ring_segments = 4
-	_target_ring.mesh = torus
-
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(1.0, 0.15, 0.18, 0.95)
-	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.20, 0.20)
-	mat.emission_energy_multiplier = 1.8
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.no_depth_test = true
-	_target_ring.material_override = mat
-	_target_ring.position = Vector3(0.0, 0.03, 0.0)
-	enemy.add_child(_target_ring)
-
+	if _target_ring != null and is_instance_valid(_target_ring) and enemy != null and is_instance_valid(enemy):
+		_target_ring.global_position = enemy.global_position + Vector3(0.0, 0.03, 0.0)
+		_target_ring.visible = true
 
 func _remove_ring() -> void:
 	if _target_ring != null and is_instance_valid(_target_ring):
-		_target_ring.queue_free()
-		_target_ring = null
+		_target_ring.visible = false
 
 
 func _update_stats() -> void:
@@ -183,10 +189,14 @@ func _update_stats() -> void:
 
 func _process(_delta: float) -> void:
 	if not visible:
+		_remove_ring()
 		return
 	if _target_enemy == null or not is_instance_valid(_target_enemy) or _target_enemy.health <= 0:
 		visible = false
 		_remove_ring()
 		_target_enemy = null
 		return
+	if _target_ring != null and is_instance_valid(_target_ring):
+		_target_ring.global_position = _target_enemy.global_position + Vector3(0.0, 0.03, 0.0)
+		_target_ring.visible = true
 	_update_stats()

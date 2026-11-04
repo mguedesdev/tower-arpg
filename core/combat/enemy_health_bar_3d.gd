@@ -142,7 +142,7 @@ func _apply_bar_ratios() -> void:
 		_fill_node.scale.x = r
 		_fill_node.position.x = -INNER_WIDTH * 0.5 * (1.0 - r)
 	if _trail_node != null:
-		var tr: float = maxf(_trail_ratio, _target_ratio)
-		_trail_node.visible = tr > 0.001
-		_trail_node.scale.x = maxf(tr, 0.0001)
-		_trail_node.position.x = -INNER_WIDTH * 0.5 * (1.0 - tr)
+		var trail_max: float = maxf(_trail_ratio, _target_ratio)
+		_trail_node.visible = trail_max > 0.001
+		_trail_node.scale.x = maxf(trail_max, 0.0001)
+		_trail_node.position.x = -INNER_WIDTH * 0.5 * (1.0 - trail_max)

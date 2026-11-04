@@ -1,5 +1,6 @@
 extends CharacterBody3D
 class_name TowerPlayer
+const FloatingDamageNumberScript = preload("res://core/combat/floating_damage_number_3d.gd")
 
 signal health_changed(current: int, maximum: int)
 signal died
@@ -240,9 +241,10 @@ func _physics_process(delta: float) -> void:
 	if input_axis.length_squared() > 0.0001:
 		cast_lock_remaining = 0.0
 		chase_direction = Vector3.ZERO
+	elif chase_direction.length_squared() > 0.0001:
+		cast_lock_remaining = 0.0
+		desired_direction = Vector3(chase_direction.x, 0.0, chase_direction.z).limit_length(1.0)
 	else:
-		if chase_direction.length_squared() > 0.0001:
-			desired_direction = Vector3(chase_direction.x, 0.0, chase_direction.z).limit_length(1.0)
 		cast_lock_remaining = maxf(cast_lock_remaining - delta, 0.0)
 		if cast_lock_remaining > 0.0:
 			desired_direction = Vector3.ZERO
@@ -634,9 +636,8 @@ func take_damage(amount: int) -> void:
 	else:
 		health = maxi(health - amount, 0)
 		health_changed.emit(health, max_health)
-	var dmg_script = load("res://core/combat/floating_damage_number_3d.gd")
-	if dmg_script != null and get_parent() != null:
-		var dmg_num = dmg_script.new()
+	if FloatingDamageNumberScript != null and get_parent() != null:
+		var dmg_num = FloatingDamageNumberScript.new()
 		get_parent().add_child(dmg_num)
 		dmg_num.setup(amount, false, true, global_position)
 	if health == 0:

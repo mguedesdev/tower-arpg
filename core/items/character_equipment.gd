@@ -45,9 +45,8 @@ func equip_item(item: ItemInstance, slot: ItemDefinition.EquipmentSlot, stats: C
 		previous.equipped_slot = ItemDefinition.EquipmentSlot.NONE
 
 	# Se for arma de duas mãos (2H) na Mão Principal, remove o escudo/item da Mão Secundária
-	var unequipped_offhand: ItemInstance = null
 	if slot == ItemDefinition.EquipmentSlot.MAIN_HAND and item.definition.is_two_handed():
-		unequipped_offhand = unequip_item(ItemDefinition.EquipmentSlot.OFF_HAND)
+		unequip_item(ItemDefinition.EquipmentSlot.OFF_HAND)
 
 	# Se estiver equipando na mão secundária, verifica se não está usando arma 2H
 	if slot == ItemDefinition.EquipmentSlot.OFF_HAND:
