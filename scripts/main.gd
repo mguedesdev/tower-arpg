@@ -197,6 +197,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_E:
+			if _pickup_nearest_ground_item():
+				get_viewport().set_input_as_handled()
+				return
 			for station in _active_interactables:
 				if is_instance_valid(station) and station.is_player_in_range():
 					station.trigger_interaction()
@@ -514,6 +517,28 @@ func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false) -> void:
 		_ground_items_root.add_child(ground_drop)
 		var spread := Vector3(randf_range(-0.6, 0.6), 0.0, randf_range(-0.6, 0.6))
 		ground_drop.setup_drop(item, pos + spread)
+
+
+func _get_nearest_ground_item(max_dist: float = 3.5) -> GroundItem3D:
+	if _ground_items_root == null or player == null:
+		return null
+	var p_pos: Vector3 = player.global_position
+	var nearest: GroundItem3D = null
+	var min_d: float = max_dist
+	for child in _ground_items_root.get_children():
+		if child is GroundItem3D and not child.is_picked and is_instance_valid(child):
+			var d: float = p_pos.distance_to(child.global_position)
+			if d < min_d:
+				min_d = d
+				nearest = child
+	return nearest
+
+
+func _pickup_nearest_ground_item() -> bool:
+	var item: GroundItem3D = _get_nearest_ground_item(3.5)
+	if item != null:
+		return item.attempt_pickup(player)
+	return false
 
 
 func _grant_starter_items() -> void:

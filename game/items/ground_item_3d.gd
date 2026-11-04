@@ -1,9 +1,15 @@
 extends Area3D
 class_name GroundItem3D
-## Drop 3D primitivo no chão (bloco/cilindro + feixe de luz vertical + placa de texto flutuante).
-## Estilo clássico Diablo 2 / Path of Exile.
+## Drop 3D no chão (bloco/cilindro + feixe de luz vertical + placa de texto flutuante).
+## Estilo clássico Diablo 2 / Path of Exile. Coleta exclusivamente manual via tecla [E].
 
 signal picked_up(item: ItemInstance)
+
+static var _mat_cache: Dictionary = {}
+static var _beam_mat_cache: Dictionary = {}
+static var _cyl_mesh: CylinderMesh = null
+static var _beam_mesh: CylinderMesh = null
+static var _box_meshes: Dictionary = {}
 
 var item: ItemInstance
 var is_picked: bool = false
@@ -14,11 +20,12 @@ var _bob_time: float = 0.0
 
 
 func _ready() -> void:
+	# Desativa detecção automática de colisão física com o jogador:
+	# A coleta é EXCLUSIVA via tecla [E], evitando travamentos ou coletas indesejadas no meio da luta.
 	collision_layer = 4
-	collision_mask = 3 # Camadas 1 e 2 (Player)
-	monitoring = true
+	collision_mask = 0
+	monitoring = false
 	monitorable = false
-	body_entered.connect(_on_body_entered)
 
 
 func setup_drop(p_item: ItemInstance, spawn_pos: Vector3) -> void:
@@ -27,50 +34,66 @@ func setup_drop(p_item: ItemInstance, spawn_pos: Vector3) -> void:
 
 	var r_col: Color = item.get_rarity_color() if item != null else Color.WHITE
 
-	# 1. Geometria 3D Primitiva (Bloco para armas/armaduras, cilindro para anéis/amuletos)
+	# 1. Geometria 3D Primitiva em cache (Bloco para armas/armaduras, cilindro para anéis/amuletos)
 	_mesh_instance = MeshInstance3D.new()
-	var is_round: bool = item != null and (item.definition.category == ItemDefinition.ItemCategory.RING or item.definition.category == ItemDefinition.ItemCategory.AMULET or item.definition.category == ItemDefinition.ItemCategory.CONSUMABLE)
-	if is_round:
-		var cyl := CylinderMesh.new()
-		cyl.top_radius = 0.18
-		cyl.bottom_radius = 0.18
-		cyl.height = 0.12
-		_mesh_instance.mesh = cyl
-	else:
-		var box := BoxMesh.new()
-		var sz: Vector2i = item.definition.grid_size if item != null and item.definition != null else Vector2i(2, 3)
-		box.size = Vector3(float(sz.x) * 0.18, 0.08, float(sz.y) * 0.22)
-		_mesh_instance.mesh = box
+	var is_round: bool = item != null and (
+		item.definition.category == ItemDefinition.ItemCategory.RING
+		or item.definition.category == ItemDefinition.ItemCategory.AMULET
+		or item.definition.category == ItemDefinition.ItemCategory.CONSUMABLE
+	)
 
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = r_col
-	mat.metallic = 0.5
-	mat.roughness = 0.3
-	mat.emission_enabled = true
-	mat.emission = r_col * 0.4
-	_mesh_instance.material_override = mat
+	if is_round:
+		if _cyl_mesh == null:
+			_cyl_mesh = CylinderMesh.new()
+			_cyl_mesh.top_radius = 0.18
+			_cyl_mesh.bottom_radius = 0.18
+			_cyl_mesh.height = 0.12
+		_mesh_instance.mesh = _cyl_mesh
+	else:
+		var sz: Vector2i = item.definition.grid_size if item != null and item.definition != null else Vector2i(2, 3)
+		var box_key: Vector2i = sz
+		if not _box_meshes.has(box_key):
+			var box := BoxMesh.new()
+			box.size = Vector3(float(sz.x) * 0.18, 0.08, float(sz.y) * 0.22)
+			_box_meshes[box_key] = box
+		_mesh_instance.mesh = _box_meshes[box_key]
+
+	# Material compartilhado em cache por raridade
+	var mat_key: int = item.rarity if item != null else 0
+	if not _mat_cache.has(mat_key):
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = r_col
+		mat.metallic = 0.5
+		mat.roughness = 0.3
+		mat.emission_enabled = true
+		mat.emission = r_col * 0.4
+		_mat_cache[mat_key] = mat
+	_mesh_instance.material_override = _mat_cache[mat_key]
 	add_child(_mesh_instance)
 
-	# 2. Feixe de Luz Vertical (Pilar de raridade em itens Mágicos, Raros e Únicos)
+	# 2. Feixe de Luz Vertical em cache (Pilar de raridade em itens Mágicos, Raros e Únicos)
 	if item != null and item.rarity != ItemInstance.ItemRarity.NORMAL:
 		_light_beam = MeshInstance3D.new()
-		var beam_mesh := CylinderMesh.new()
-		beam_mesh.top_radius = 0.06
-		beam_mesh.bottom_radius = 0.12
-		beam_mesh.height = 2.4
-		_light_beam.mesh = beam_mesh
+		if _beam_mesh == null:
+			_beam_mesh = CylinderMesh.new()
+			_beam_mesh.top_radius = 0.06
+			_beam_mesh.bottom_radius = 0.12
+			_beam_mesh.height = 2.4
+		_light_beam.mesh = _beam_mesh
 		_light_beam.position = Vector3(0.0, 1.2, 0.0)
 
-		var beam_mat := StandardMaterial3D.new()
-		beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		beam_mat.albedo_color = Color(r_col.r, r_col.g, r_col.b, 0.28)
-		beam_mat.emission_enabled = true
-		beam_mat.emission = r_col * 0.8
-		beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_light_beam.material_override = beam_mat
+		if not _beam_mat_cache.has(mat_key):
+			var beam_mat := StandardMaterial3D.new()
+			beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			beam_mat.albedo_color = Color(r_col.r, r_col.g, r_col.b, 0.28)
+			beam_mat.emission_enabled = true
+			beam_mat.emission = r_col * 0.8
+			beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			_beam_mat_cache[mat_key] = beam_mat
+		_light_beam.material_override = _beam_mat_cache[mat_key]
 		add_child(_light_beam)
 
-	# 3. Placa de Texto Flutuante Estilo Diablo 2 / Path of Exile (Grande, Nítida e com Alto Contraste)
+	# 3. Placa de Texto Flutuante Estilo Diablo 2 / Path of Exile
 	_label_3d = Label3D.new()
 	_label_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label_3d.no_depth_test = true
@@ -87,15 +110,10 @@ func setup_drop(p_item: ItemInstance, spawn_pos: Vector3) -> void:
 	_label_3d.position = Vector3(0.0, 0.75, 0.0)
 	add_child(_label_3d)
 
-	# Colisor esférico para detecção do jogador
-	var shape := CollisionShape3D.new()
-	var sphere := SphereShape3D.new()
-	sphere.radius = 1.35
-	shape.shape = sphere
-	add_child(shape)
-
 
 func _process(delta: float) -> void:
+	if is_picked:
+		return
 	_bob_time += delta
 	if _mesh_instance != null:
 		_mesh_instance.rotation.y += delta * 1.5
@@ -104,12 +122,7 @@ func _process(delta: float) -> void:
 		_label_3d.position.y = 0.75 + sin(_bob_time * 3.0) * 0.04
 
 
-func _on_body_entered(body: Node3D) -> void:
-	if is_picked or not (body is TowerPlayer):
-		return
-	attempt_pickup(body as TowerPlayer)
-
-
+## Chamado exclusivamente ao apertar [E] próximo ao item
 func attempt_pickup(_player: Node = null) -> bool:
 	if is_picked or item == null:
 		return false

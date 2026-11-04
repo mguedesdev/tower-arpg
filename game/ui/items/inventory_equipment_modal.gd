@@ -352,15 +352,23 @@ func _process(_delta: float) -> void:
 		_held_preview.position = mpos - _held_preview.size * 0.5
 
 
+var _grid_dirty: bool = true
+
+
 func _refresh_all() -> void:
-	_refresh_grid_view()
+	_grid_dirty = false
+	_refresh_grid_view(true)
 	_refresh_paperdoll_view()
 	_refresh_stats_view()
 
 
-func _refresh_grid_view() -> void:
+func _refresh_grid_view(force: bool = false) -> void:
 	if _grid_container == null or inventory == null:
 		return
+	if not visible and not force:
+		_grid_dirty = true
+		return
+	_grid_dirty = false
 	for child in _grid_container.get_children():
 		child.queue_free()
 
