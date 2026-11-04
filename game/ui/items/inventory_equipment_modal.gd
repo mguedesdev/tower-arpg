@@ -141,7 +141,7 @@ func _build_ui() -> void:
 	left_vbox.add_child(doll_title)
 
 	var doll_root := Control.new()
-	doll_root.custom_minimum_size = Vector2(250, 310)
+	doll_root.custom_minimum_size = Vector2(250, 360)
 	left_vbox.add_child(doll_root)
 	_build_paperdoll(doll_root)
 
@@ -156,19 +156,19 @@ func _build_ui() -> void:
 	var v_sep := VSeparator.new()
 	body_hbox.add_child(v_sep)
 
-	# --- PAINEL DIREITO: MOCHILA (GRID 10x4) ---
+	# --- PAINEL DIREITO: MOCHILA (GRID 10x5) ---
 	var right_vbox := VBoxContainer.new()
 	right_vbox.add_theme_constant_override("separation", 8)
 	body_hbox.add_child(right_vbox)
 
 	var grid_title := Label.new()
-	grid_title.text = "MOCHILA (10 x 4 ESPAÇOS)"
+	grid_title.text = "MOCHILA (10 x 5 ESPAÇOS)"
 	grid_title.add_theme_font_size_override("font_size", 12)
 	grid_title.add_theme_color_override("font_color", GOLD_COLOR)
 	right_vbox.add_child(grid_title)
 
 	_grid_container = Control.new()
-	_grid_container.custom_minimum_size = Vector2(10 * CELL_SIZE, 4 * CELL_SIZE)
+	_grid_container.custom_minimum_size = Vector2(10 * CELL_SIZE, 5 * CELL_SIZE)
 	_grid_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	_grid_container.gui_input.connect(_on_grid_gui_input)
 	right_vbox.add_child(_grid_container)
@@ -210,15 +210,15 @@ func _build_ui() -> void:
 
 
 func _build_paperdoll(root: Control) -> void:
-	# Posições clássicas do boneco
+	# Posições clássicas do boneco (com Peitoral 4x2 e Cinto ajustado)
 	_create_doll_slot(root, ItemDefinition.EquipmentSlot.HELMET, "Elmo", Vector2(96, 6), Vector2(2, 2))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.AMULET, "Amul.", Vector2(174, 18), Vector2(1, 1))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.CHEST, "Peitoral", Vector2(96, 84), Vector2(2, 3))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.AMULET, "Amul.", Vector2(174, 20), Vector2(1, 1))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.CHEST, "Peitoral", Vector2(96, 84), Vector2(2, 4))
 	_create_doll_slot(root, ItemDefinition.EquipmentSlot.MAIN_HAND, "Arma 1H/2H", Vector2(16, 84), Vector2(2, 4))
 	_create_doll_slot(root, ItemDefinition.EquipmentSlot.OFF_HAND, "Escudo", Vector2(174, 84), Vector2(2, 4))
 	_create_doll_slot(root, ItemDefinition.EquipmentSlot.GLOVES, "Luvas", Vector2(16, 234), Vector2(2, 2))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BELT, "Cinto", Vector2(96, 198), Vector2(2, 1))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BOOTS, "Botas", Vector2(96, 240), Vector2(2, 2))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BELT, "Cinto", Vector2(96, 234), Vector2(2, 1))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BOOTS, "Botas", Vector2(96, 276), Vector2(2, 2))
 	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_1, "Anel 1", Vector2(174, 234), Vector2(1, 1))
 	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_2, "Anel 2", Vector2(212, 234), Vector2(1, 1))
 

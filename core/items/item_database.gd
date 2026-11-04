@@ -17,52 +17,52 @@ static func get_definition(base_id: String) -> ItemDefinition:
 
 
 static func _initialize_catalog() -> void:
-	# 1. Espada Montante 2H (2x4 - 4 de altura, 2 de largura)
+	# 1. Espada Montante 2H (2 colunas x 4 linhas - 4x2 grande e pesada)
 	_register("greatsword_iron", "Espada Montante Pesada", ItemDefinition.ItemCategory.WEAPON_2H, ItemDefinition.EquipmentSlot.MAIN_HAND, Vector2i(2, 4), {
 		"dmg_min": 28, "dmg_max": 42, "atk_spd": 0.85, "req_str": 24, "req_agi": 10, "gold": 65, "icon": "res://assets/items/greatsword.png"
 	})
 
-	# 2. Espada Longa 1H (2x3)
-	_register("sword_steel", "Espada Longa de Aço", ItemDefinition.ItemCategory.WEAPON_1H, ItemDefinition.EquipmentSlot.MAIN_HAND, Vector2i(2, 3), {
+	# 2. Espada Longa 1H (1 coluna x 4 linhas - 4x1 fina e comprida)
+	_register("sword_steel", "Espada Longa de Aço", ItemDefinition.ItemCategory.WEAPON_1H, ItemDefinition.EquipmentSlot.MAIN_HAND, Vector2i(1, 4), {
 		"dmg_min": 16, "dmg_max": 24, "atk_spd": 1.10, "req_str": 16, "req_agi": 12, "gold": 40, "icon": "res://assets/items/sword.png"
 	})
 
-	# 3. Adaga Afiada (2x2)
-	_register("dagger_sharp", "Adaga de Aço", ItemDefinition.ItemCategory.WEAPON_1H, ItemDefinition.EquipmentSlot.MAIN_HAND, Vector2i(2, 2), {
+	# 3. Adaga Afiada (1 coluna x 3 linhas - 3x1 fina e compacta)
+	_register("dagger_sharp", "Adaga de Aço", ItemDefinition.ItemCategory.WEAPON_1H, ItemDefinition.EquipmentSlot.MAIN_HAND, Vector2i(1, 3), {
 		"dmg_min": 9, "dmg_max": 14, "atk_spd": 1.45, "req_str": 10, "req_agi": 18, "gold": 25, "icon": "res://assets/items/dagger.png"
 	})
 
-	# 4. Escudo de Torre (2x4)
+	# 4. Escudo de Torre (2 colunas x 4 linhas - 4x2)
 	_register("shield_tower", "Escudo de Torre de Ferro", ItemDefinition.ItemCategory.SHIELD, ItemDefinition.EquipmentSlot.OFF_HAND, Vector2i(2, 4), {
 		"armor": 32, "hp": 40, "req_str": 25, "gold": 55, "icon": "res://assets/items/tower_shield.png"
 	})
 
-	# 5. Escudo Redondo (2x3)
-	_register("shield_round", "Escudo com Crista", ItemDefinition.ItemCategory.SHIELD, ItemDefinition.EquipmentSlot.OFF_HAND, Vector2i(2, 3), {
+	# 5. Escudo Redondo (2 colunas x 2 linhas - 2x2)
+	_register("shield_round", "Escudo com Crista", ItemDefinition.ItemCategory.SHIELD, ItemDefinition.EquipmentSlot.OFF_HAND, Vector2i(2, 2), {
 		"armor": 18, "hp": 20, "req_str": 14, "gold": 30, "icon": "res://assets/items/shield.png"
 	})
 
-	# 6. Peitoral de Placas (2x3)
-	_register("chest_plate", "Peitoral de Placas de Aço", ItemDefinition.ItemCategory.CHEST, ItemDefinition.EquipmentSlot.CHEST, Vector2i(2, 3), {
+	# 6. Peitoral de Placas (2 colunas x 4 linhas - 4x2 robusto)
+	_register("chest_plate", "Peitoral de Placas de Aço", ItemDefinition.ItemCategory.CHEST, ItemDefinition.EquipmentSlot.CHEST, Vector2i(2, 4), {
 		"armor": 35, "hp": 50, "req_str": 22, "gold": 70, "icon": "res://assets/items/chest.png"
 	})
 
-	# 7. Elmo de Ferro (2x2)
+	# 7. Elmo de Ferro (2 colunas x 2 linhas - 4 slots)
 	_register("helm_iron", "Elmo de Ferro Pesado", ItemDefinition.ItemCategory.HELMET, ItemDefinition.EquipmentSlot.HELMET, Vector2i(2, 2), {
 		"armor": 16, "hp": 25, "req_str": 16, "gold": 35, "icon": "res://assets/items/helm.png"
 	})
 
-	# 8. Botas de Placa (2x2)
+	# 8. Botas de Placa (2 colunas x 2 linhas - 4 slots)
 	_register("boots_plate", "Grevas de Combate", ItemDefinition.ItemCategory.BOOTS, ItemDefinition.EquipmentSlot.BOOTS, Vector2i(2, 2), {
 		"armor": 12, "spd_pct": 0.08, "req_str": 14, "gold": 30, "icon": "res://assets/items/boots.png"
 	})
 
-	# 9. Luvas de Malha (2x2)
+	# 9. Luvas de Malha (2 colunas x 2 linhas - mais largas, 4 slots)
 	_register("gloves_chain", "Manoplas Reforçadas", ItemDefinition.ItemCategory.GLOVES, ItemDefinition.EquipmentSlot.GLOVES, Vector2i(2, 2), {
 		"armor": 10, "req_str": 12, "gold": 25, "icon": "res://assets/items/gloves.png"
 	})
 
-	# 10. Cinto Reforçado (2x1)
+	# 10. Cinto Reforçado (2 colunas x 1 linha - 2x1)
 	_register("belt_leather", "Cinto de Couro Cravejado", ItemDefinition.ItemCategory.BELT, ItemDefinition.EquipmentSlot.BELT, Vector2i(2, 1), {
 		"armor": 6, "hp": 18, "req_str": 10, "gold": 20, "icon": "res://assets/items/belt.png"
 	})

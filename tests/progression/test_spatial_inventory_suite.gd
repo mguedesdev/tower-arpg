@@ -127,26 +127,29 @@ func _test_item_identification_and_rarity() -> void:
 func _test_icon_procedural_generation_all_sizes() -> void:
 	var cat: Dictionary = ItemDatabase.get_catalog()
 	var def_1x1: ItemDefinition = cat["ring_ruby"]
+	var def_1x3: ItemDefinition = cat["dagger_sharp"]
+	var def_1x4: ItemDefinition = cat["sword_steel"]
 	var def_2x2: ItemDefinition = cat["helm_iron"]
-	var def_2x3: ItemDefinition = cat["chest_plate"]
-	var def_2x4: ItemDefinition = cat["greatsword_iron"]
+	var def_2x4: ItemDefinition = cat["chest_plate"]
 
 	var tex_1x1 := ItemIconFactory.get_icon(def_1x1)
+	var tex_1x3 := ItemIconFactory.get_icon(def_1x3)
+	var tex_1x4 := ItemIconFactory.get_icon(def_1x4)
 	var tex_2x2 := ItemIconFactory.get_icon(def_2x2)
-	var tex_2x3 := ItemIconFactory.get_icon(def_2x3)
 	var tex_2x4 := ItemIconFactory.get_icon(def_2x4)
 
-	_check(tex_1x1 != null and tex_1x1.get_width() == 32 and tex_1x1.get_height() == 32, "14a. Ícone 1x1 gerado com 32x32 pixels")
-	_check(tex_2x2 != null and tex_2x2.get_width() == 64 and tex_2x2.get_height() == 64, "14b. Ícone 2x2 gerado com 64x64 pixels")
-	_check(tex_2x3 != null and tex_2x3.get_width() == 64 and tex_2x3.get_height() == 96, "14c. Ícone 2x3 gerado com 64x96 pixels")
-	_check(tex_2x4 != null and tex_2x4.get_width() == 64 and tex_2x4.get_height() == 128, "14d. Ícone 2x4 (Montante) gerado com 64x128 pixels")
+	_check(tex_1x1 != null and tex_1x1.get_width() == 32 and tex_1x1.get_height() == 32, "14a. Ícone 1x1 (Anel) gerado com 32x32 pixels")
+	_check(tex_1x3 != null and tex_1x3.get_width() == 32 and tex_1x3.get_height() == 96, "14b. Ícone 1x3 (Adaga fina) gerado com 32x96 pixels")
+	_check(tex_1x4 != null and tex_1x4.get_width() == 32 and tex_1x4.get_height() == 128, "14c. Ícone 1x4 (Espada 1H) gerado com 32x128 pixels")
+	_check(tex_2x2 != null and tex_2x2.get_width() == 64 and tex_2x2.get_height() == 64, "14d. Ícone 2x2 (Elmo/Luva/Bota) gerado com 64x64 pixels")
+	_check(tex_2x4 != null and tex_2x4.get_width() == 64 and tex_2x4.get_height() == 128, "14e. Ícone 2x4 (Peitoral/Montante 2H) gerado com 64x128 pixels")
 
 
 func _test_main_scene_inventory_integration() -> void:
 	var main_node = MAIN_SCENE.instantiate()
 	root.add_child(main_node)
 
-	_check(main_node.backpack != null, "15. Mochila espacial (backpack 10x4) inicializada na Main")
+	_check(main_node.backpack != null and main_node.backpack.columns == 10 and main_node.backpack.rows == 5, "15. Mochila espacial (backpack 10x5) inicializada na Main")
 	_check(main_node.equipment != null, "16. Gerenciador de Equipamento (Paperdoll) inicializado")
 	_check(main_node.inventory_modal != null, "17. Modal de Inventário & Paperdoll adicionado ao HUD")
 	_check(main_node.backpack.items.size() >= 5, "18. Itens de partida foram distribuídos na mochila para teste imediato")

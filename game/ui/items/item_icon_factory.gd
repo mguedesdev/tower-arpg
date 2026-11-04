@@ -51,9 +51,9 @@ static func _generate_procedural_icon(def: ItemDefinition) -> Texture2D:
 		ItemDefinition.ItemCategory.WEAPON_2H: # Espada Montante 2H (2x4)
 			_draw_greatsword(img, w, h, steel_color, accent_color)
 		ItemDefinition.ItemCategory.WEAPON_1H:
-			if def.grid_size.y <= 2: # Adaga (2x2)
+			if def.grid_size.x == 1 and def.grid_size.y <= 3: # Adaga (1x3)
 				_draw_dagger(img, w, h, steel_color, accent_color)
-			else: # Espada Longa 1H (2x3)
+			else: # Espada Longa 1H (1x4)
 				_draw_sword(img, w, h, steel_color, accent_color)
 		ItemDefinition.ItemCategory.SHIELD:
 			_draw_shield(img, w, h, dark_steel, accent_color)
@@ -109,27 +109,52 @@ static func _draw_sword(img: Image, w: int, h: int, steel: Color, gold: Color) -
 	var cx: int = w / 2
 	for y in range(6, h - 18):
 		for x in range(cx - 2, cx + 3):
-			img.set_pixel(x, y, steel)
-		img.set_pixel(cx, y, steel.lightened(0.25))
+			if x >= 0 and x < w:
+				img.set_pixel(x, y, steel)
+		if cx >= 0 and cx < w:
+			img.set_pixel(cx, y, steel.lightened(0.25))
 	var guard_y: int = h - 18
-	for x in range(cx - 10, cx + 11):
-		img.set_pixel(x, guard_y, gold)
+	for x in range(cx - 7, cx + 8):
+		if x >= 0 and x < w:
+			img.set_pixel(x, guard_y, gold)
 	for y in range(guard_y + 1, h - 6):
-		img.set_pixel(cx, y, Color(0.4, 0.25, 0.15))
-	img.set_pixel(cx, h - 5, gold)
+		if cx >= 0 and cx < w:
+			img.set_pixel(cx, y, Color(0.4, 0.25, 0.15))
+	if cx >= 0 and cx < w:
+		img.set_pixel(cx, h - 5, gold)
 
 
 static func _draw_dagger(img: Image, w: int, h: int, steel: Color, gold: Color) -> void:
 	var cx: int = w / 2
-	for y in range(10, h - 14):
+	for y in range(8, h - 14):
 		for x in range(cx - 1, cx + 2):
-			img.set_pixel(x, y, steel)
-	img.set_pixel(cx, 8, steel)
+			if x >= 0 and x < w:
+				img.set_pixel(x, y, steel)
+	if cx >= 0 and cx < w:
+		img.set_pixel(cx, 6, steel)
 	var gy: int = h - 14
-	for x in range(cx - 7, cx + 8):
-		img.set_pixel(x, gy, gold)
+	for x in range(cx - 5, cx + 6):
+		if x >= 0 and x < w:
+			img.set_pixel(x, gy, gold)
 	for y in range(gy + 1, h - 6):
-		img.set_pixel(cx, y, Color(0.4, 0.25, 0.15))
+		if cx >= 0 and cx < w:
+			img.set_pixel(cx, y, Color(0.4, 0.25, 0.15))
+
+
+static func _draw_gloves(img: Image, w: int, h: int, col: Color, gold: Color) -> void:
+	# Par de manoplas blindadas distintas e largas (2x2)
+	for y in range(12, h - 10):
+		# Luva esquerda
+		for x in range(8, w / 2 - 4):
+			img.set_pixel(x, y, col)
+		# Luva direita
+		for x in range(w / 2 + 4, w - 8):
+			img.set_pixel(x, y, col)
+	# Articulações douradas
+	for x in range(10, w / 2 - 6):
+		img.set_pixel(x, h / 2, gold)
+	for x in range(w / 2 + 6, w - 10):
+		img.set_pixel(x, h / 2, gold)
 
 
 static func _draw_shield(img: Image, w: int, h: int, base_col: Color, trim_col: Color) -> void:
@@ -187,14 +212,6 @@ static func _draw_boots(img: Image, w: int, h: int, col: Color, gold: Color) -> 
 			img.set_pixel(x, y, col)
 	for x in range(8, w - 8):
 		img.set_pixel(x, h - 10, gold)
-
-
-static func _draw_gloves(img: Image, w: int, h: int, col: Color, gold: Color) -> void:
-	for y in range(12, h - 12):
-		for x in range(12, w - 12):
-			img.set_pixel(x, y, col)
-	for x in range(14, w - 14):
-		img.set_pixel(x, h - 13, gold)
 
 
 static func _draw_belt(img: Image, w: int, h: int, col: Color, gold: Color) -> void:
