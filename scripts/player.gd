@@ -628,6 +628,11 @@ func take_damage(amount: int) -> void:
 	else:
 		health = maxi(health - amount, 0)
 		health_changed.emit(health, max_health)
+	var dmg_script = load("res://core/combat/floating_damage_number_3d.gd")
+	if dmg_script != null and get_parent() != null:
+		var dmg_num = dmg_script.new()
+		get_parent().add_child(dmg_num)
+		dmg_num.setup(amount, false, true, global_position)
 	if health == 0:
 		alive = false
 		velocity = Vector3.ZERO

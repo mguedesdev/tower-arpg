@@ -561,6 +561,7 @@ func _build_albion_stone_mandala_plaza(center_pos: Vector3 = Vector3.ZERO) -> vo
 
 func _build_town_encampment() -> void:
 	_build_albion_stone_mandala_plaza(Vector3.ZERO)
+	_build_albion_dungeon_props()
 	# Fogueira Central do Acampamento dos Exilados (estilo Rogue Encampment - Diablo 2)
 	_cylinder(Vector3(0.0, 0.04, 0.0), 1.45, 0.08, COLOR_STONE_DARK, 16)
 	for i in range(10):
@@ -636,3 +637,140 @@ func _build_campaign_zone_props(zone_id: String) -> void:
 			Vector3(-9.5, 0.0, -4.5), Vector3(9.5, 0.0, -4.5),
 		]:
 			_gravestone(extra_grave, rng.randf_range(-0.25, 0.25))
+
+func _build_albion_dungeon_props() -> void:
+	# 1. Barris de armas (barris de madeira com espadas/lanças dentro)
+	for b_pos in [Vector3(-5.2, 0.0, -8.5), Vector3(6.5, 0.0, -7.2), Vector3(-6.8, 0.0, 7.8)]:
+		_weapon_barrel(b_pos)
+
+	# 2. Caixotes de madeira quebrados nos cantos
+	for c_pos in [Vector3(-7.2, 0.0, -10.5), Vector3(8.2, 0.0, -11.0), Vector3(-8.5, 0.0, 9.5), Vector3(7.5, 0.0, 8.5)]:
+		_wooden_crate(c_pos, rng.randf_range(-0.4, 0.4))
+
+	# 3. Manchas de palha / feno espalhadas pelo chão de pedra
+	for s_pos in [Vector3(-2.8, 0.0, -4.5), Vector3(3.5, 0.0, -3.8), Vector3(1.8, 0.0, 4.2), Vector3(-3.5, 0.0, 3.5)]:
+		_straw_patch(s_pos)
+
+	# 4. Brasão de armas entalhado nas pedras do piso (Escudo e Espada estilo Albion)
+	_heraldic_floor_carving(Vector3(-4.8, 0.0, -1.5))
+
+
+func _weapon_barrel(pos: Vector3) -> void:
+	var root := Node3D.new()
+	root.name = _unique("WeaponBarrel")
+	root.position = pos
+	add_child(root)
+
+	var barrel_mat := _material("barrel_wood", Color(0.24, 0.16, 0.10), 0.85)
+	var barrel := CylinderMesh.new()
+	barrel.top_radius = 0.36
+	barrel.bottom_radius = 0.34
+	barrel.height = 0.78
+	var b_node := MeshInstance3D.new()
+	b_node.mesh = barrel
+	b_node.material_override = barrel_mat
+	b_node.position = Vector3(0.0, 0.39, 0.0)
+	root.add_child(b_node)
+
+	var rim_mat := _material("barrel_iron", Color(0.12, 0.12, 0.14), 0.5)
+	var r1 := CylinderMesh.new()
+	r1.top_radius = 0.37
+	r1.bottom_radius = 0.37
+	r1.height = 0.06
+	var r1_node := MeshInstance3D.new()
+	r1_node.mesh = r1
+	r1_node.material_override = rim_mat
+	r1_node.position = Vector3(0.0, 0.22, 0.0)
+	root.add_child(r1_node)
+
+	var r2_node := MeshInstance3D.new()
+	r2_node.mesh = r1
+	r2_node.material_override = rim_mat
+	r2_node.position = Vector3(0.0, 0.56, 0.0)
+	root.add_child(r2_node)
+
+	var blade_mat := _material("steel_blade", Color(0.65, 0.70, 0.78), 0.25)
+	for i in range(3):
+		var ang := float(i) * TAU / 3.0 + 0.3
+		var blade := BoxMesh.new()
+		blade.size = Vector3(0.05, 0.85, 0.12)
+		var bl_node := MeshInstance3D.new()
+		bl_node.mesh = blade
+		bl_node.material_override = blade_mat
+		bl_node.position = Vector3(cos(ang) * 0.12, 0.82, sin(ang) * 0.12)
+		bl_node.rotation.z = cos(ang) * 0.22
+		bl_node.rotation.x = sin(ang) * 0.22
+		root.add_child(bl_node)
+
+
+func _wooden_crate(pos: Vector3, rot_y: float) -> void:
+	var root := Node3D.new()
+	root.name = _unique("WoodCrate")
+	root.position = pos
+	root.rotation.y = rot_y
+	add_child(root)
+
+	var crate_mat := _material("crate_wood", Color(0.32, 0.22, 0.14), 0.9)
+	var crate_mesh := BoxMesh.new()
+	crate_mesh.size = Vector3(0.72, 0.70, 0.72)
+	var c_node := MeshInstance3D.new()
+	c_node.mesh = crate_mesh
+	c_node.material_override = crate_mat
+	c_node.position = Vector3(0.0, 0.35, 0.0)
+	root.add_child(c_node)
+
+	var plank_mat := _material("plank_wood", Color(0.22, 0.15, 0.10), 0.95)
+	var p_mesh := BoxMesh.new()
+	p_mesh.size = Vector3(0.75, 0.08, 0.75)
+	var p_node := MeshInstance3D.new()
+	p_node.mesh = p_mesh
+	p_node.material_override = plank_mat
+	p_node.position = Vector3(0.0, 0.70, 0.0)
+	root.add_child(p_node)
+
+
+func _straw_patch(pos: Vector3) -> void:
+	var straw_mat := StandardMaterial3D.new()
+	straw_mat.albedo_color = Color(0.68, 0.58, 0.28, 0.75)
+	straw_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	straw_mat.roughness = 1.0
+
+	var s_mesh := BoxMesh.new()
+	s_mesh.size = Vector3(1.6, 0.015, 1.3)
+	var node := MeshInstance3D.new()
+	node.name = _unique("StrawPatch")
+	node.mesh = s_mesh
+	node.material_override = straw_mat
+	node.position = pos + Vector3(0.0, 0.022, 0.0)
+	node.rotation.y = rng.randf_range(-PI, PI)
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(node)
+
+
+func _heraldic_floor_carving(pos: Vector3) -> void:
+	var emblem_mat := StandardMaterial3D.new()
+	emblem_mat.albedo_color = Color(0.08, 0.10, 0.14, 0.75)
+	emblem_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	emblem_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	emblem_mat.no_depth_test = true
+	emblem_mat.render_priority = 6
+
+	var sword_blade := BoxMesh.new()
+	sword_blade.size = Vector3(0.12, 0.002, 3.4)
+	var sw_node := MeshInstance3D.new()
+	sw_node.mesh = sword_blade
+	sw_node.material_override = emblem_mat
+	sw_node.position = pos + Vector3(0.0, 0.026, 0.0)
+	sw_node.rotation.y = PI * 0.25
+	sw_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(sw_node)
+
+	var guard := BoxMesh.new()
+	guard.size = Vector3(0.85, 0.002, 0.10)
+	var g_node := MeshInstance3D.new()
+	g_node.mesh = guard
+	g_node.material_override = emblem_mat
+	g_node.position = pos + Vector3(-0.6, 0.027, -0.6)
+	g_node.rotation.y = PI * 0.25
+	g_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(g_node)

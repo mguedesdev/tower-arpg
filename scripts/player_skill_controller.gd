@@ -9,7 +9,8 @@ class_name PlayerSkillController
 ## • Clicou no chão vazio → golpeia no lugar, na direção do cursor.
 ## • WASD sempre tem prioridade e cancela a perseguição.
 
-signal slots_changed()
+signal slots_changed
+signal target_selected(enemy: Node3D)
 signal skill_cast(skill_id: String)
 
 const VFX = preload("res://scripts/vfx/tower_vfx_spawner.gd")
@@ -204,6 +205,8 @@ func _begin_action(slot_idx: int) -> void:
 		return
 	_pending_slot = slot_idx
 	_pending_target = pick_enemy_under_cursor()
+	if _pending_target != null:
+		target_selected.emit(_pending_target)
 	_has_ground_point = false
 	if _pending_target == null:
 		var gp: Variant = get_cursor_ground_point()

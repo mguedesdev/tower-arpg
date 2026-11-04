@@ -50,6 +50,7 @@ var xp_hud: RunXpHUD
 var skill_bar_hud: SkillBarHUD
 var town_npc_modal: TownNpcModal
 var inventory_modal: InventoryEquipmentModal
+var target_frame: TargetFrameHUD
 
 var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 5)
 var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
@@ -112,6 +113,17 @@ func _ready() -> void:
 		player.skill_controller.set_enabled(true)
 	skill_bar_hud.visible = true
 
+	# Placa de Alvo Selecionado no Topo Central (estilo Albion)
+	var target_frame_script = load("res://game/ui/campaign/target_frame_hud.gd")
+	if target_frame_script != null:
+		target_frame = target_frame_script.new()
+		$HUD.add_child(target_frame)
+		if player != null and player.skill_controller != null:
+			player.skill_controller.target_selected.connect(func(target_enemy: TowerEnemy):
+				if target_frame != null:
+					target_frame.set_target(target_enemy, area_level)
+			)
+
 	# Modal de NPCs e Waypoints da Vila
 	town_npc_modal = TOWN_NPC_MODAL_SCRIPT.new() as TownNpcModal
 	$HUD.add_child(town_npc_modal)
@@ -160,6 +172,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_E:
+			# 1. Pega item caído no chão próximo (prioridade ao loot)
+			if _pickup_nearest_ground_item():
+				get_viewport().set_input_as_handled()
+				return
+			# 2. Interage com NPC / Baú / Waypoint da Vila
 			for station in _active_interactables:
 				if is_instance_valid(station) and station.is_player_in_range():
 					station.trigger_interaction()
@@ -382,7 +399,10 @@ func _update_campaign_world(delta: float) -> void:
 			if station.update_proximity(p_pos, delta) and near_station == null:
 				near_station = station
 
-	if near_station != null and (town_npc_modal == null or not town_npc_modal.visible):
+	var near_item: GroundItem3D = _get_nearest_ground_item(3.2)
+	if near_item != null and (town_npc_modal == null or not town_npc_modal.visible):
+		status_label.text = "✦ Pressione [E] para coletar: %s" % near_item.item.get_display_name()
+	elif near_station != null and (town_npc_modal == null or not town_npc_modal.visible):
 		status_label.text = "%s — Pressione [E] para interagir" % near_station.station_title
 
 	for gate in _active_portals:
@@ -476,29 +496,56 @@ func _on_level_gained(new_lvl: int) -> void:
 		inventory_modal._refresh_stats_view()
 
 
+func _get_nearest_ground_item(max_dist: float = 3.5) -> GroundItem3D:
+	if _ground_items_root == null or player == null:
+		return null
+	var p_pos: Vector3 = player.global_position
+	var nearest: GroundItem3D = null
+	var min_d: float = max_dist
+	for child in _ground_items_root.get_children():
+		if child is GroundItem3D and not child.is_picked and is_instance_valid(child):
+			var d: float = p_pos.distance_to(child.global_position)
+			if d < min_d:
+				min_d = d
+				nearest = child
+	return nearest
+
+
+func _pickup_nearest_ground_item() -> bool:
+	var item: GroundItem3D = _get_nearest_ground_item(3.5)
+	if item != null:
+		return item.attempt_pickup(player)
+	return false
+
+
 func _grant_starter_items() -> void:
 	if backpack == null:
 		return
 	backpack.clear()
+	var player_stats: CharacterStats = player.stats if player != null else null
 	var sword = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "sword_steel")
-	backpack.auto_add_item(sword)
+	if equipment != null and sword != null:
+		equipment.equip_item(sword, ItemDefinition.EquipmentSlot.MAIN_HAND, player_stats)
+
 	var chest = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "chest_plate")
-	backpack.auto_add_item(chest)
-	var helm = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "helm_iron")
-	backpack.auto_add_item(helm)
+	if equipment != null and chest != null:
+		equipment.equip_item(chest, ItemDefinition.EquipmentSlot.CHEST, player_stats)
+
 	var boots = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "boots_plate")
-	backpack.auto_add_item(boots)
+	if equipment != null and boots != null:
+		equipment.equip_item(boots, ItemDefinition.EquipmentSlot.BOOTS, player_stats)
+
 	var dagger = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "dagger_sharp")
 	backpack.auto_add_item(dagger)
-	var greatsword = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "greatsword_iron")
-	greatsword.is_identified = false
-	backpack.auto_add_item(greatsword)
+
 	var ring = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "ring_ruby")
 	backpack.auto_add_item(ring)
-	var amulet = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "amulet_hawk")
-	backpack.auto_add_item(amulet)
+
 	var pot = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")
 	backpack.auto_add_item(pot)
+
+	if inventory_modal != null:
+		inventory_modal._refresh_all()
 
 
 func _on_town_identify_items_requested() -> void:
@@ -566,4 +613,15 @@ func _input(event: InputEvent) -> void:
 			player.skill_controller.set_enabled(true)
 		if skill_bar_hud != null:
 			skill_bar_hud.visible = true
+
+	# Placa de Alvo Selecionado no Topo Central (estilo Albion)
+	var target_frame_script = load("res://game/ui/campaign/target_frame_hud.gd")
+	if target_frame_script != null:
+		target_frame = target_frame_script.new()
+		$HUD.add_child(target_frame)
+		if player != null and player.skill_controller != null:
+			player.skill_controller.target_selected.connect(func(target_enemy: TowerEnemy):
+				if target_frame != null:
+					target_frame.set_target(target_enemy, area_level)
+			)
 		_load_campaign_zone("town")

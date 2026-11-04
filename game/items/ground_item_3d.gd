@@ -14,8 +14,8 @@ var _bob_time: float = 0.0
 
 
 func _ready() -> void:
-	collision_layer = 0
-	collision_mask = 2 # Detecta o Player
+	collision_layer = 4
+	collision_mask = 3 # Camadas 1 e 2 (Player)
 	monitoring = true
 	monitorable = false
 	body_entered.connect(_on_body_entered)
@@ -83,7 +83,7 @@ func setup_drop(p_item: ItemInstance, spawn_pos: Vector3) -> void:
 	_label_3d.outline_modulate = Color(0.01, 0.01, 0.02, 1.0)
 	_label_3d.modulate = r_col.lightened(0.40)
 	var prefix: String = "✦ " if item != null and item.rarity != ItemInstance.ItemRarity.NORMAL else ""
-	_label_3d.text = "[ %s%s ]" % [prefix, item.get_display_name() if item != null else "Item"]
+	_label_3d.text = "[E]  %s%s" % [prefix, item.get_display_name() if item != null else "Item"]
 	_label_3d.position = Vector3(0.0, 0.75, 0.0)
 	add_child(_label_3d)
 
@@ -110,25 +110,29 @@ func _on_body_entered(body: Node3D) -> void:
 	attempt_pickup(body as TowerPlayer)
 
 
-func attempt_pickup(player: TowerPlayer) -> bool:
+func attempt_pickup(player: Node = null) -> bool:
 	if is_picked or item == null:
 		return false
-	var main_scene = get_tree().current_scene
-	if main_scene == null or not ("backpack" in main_scene):
+	var scene = get_tree().current_scene
+	if scene == null or not ("backpack" in scene):
+		scene = find_parent("ARPGGame")
+		if scene == null:
+			scene = find_parent("Arena")
+	if scene == null or not ("backpack" in scene):
 		return false
 
-	var backpack: SpatialInventoryGrid = main_scene.backpack as SpatialInventoryGrid
+	var backpack: SpatialInventoryGrid = scene.backpack as SpatialInventoryGrid
 	if backpack == null:
 		return false
 
 	if backpack.auto_add_item(item):
 		is_picked = true
 		picked_up.emit(item)
-		if main_scene.has_method("notify_item_pickup"):
-			main_scene.call("notify_item_pickup", item)
+		if scene.has_method("notify_item_pickup"):
+			scene.call("notify_item_pickup", item)
 		queue_free()
 		return true
 	else:
-		if main_scene.has_method("notify_inventory_full"):
-			main_scene.call("notify_inventory_full")
+		if scene.has_method("notify_inventory_full"):
+			scene.call("notify_inventory_full")
 		return false
