@@ -650,73 +650,153 @@ def create_all_animations(armature):
 
         key_all_bones(armature, f)
 
-    # ---------------- 3. ATTACK (24 frames / 1.0s @ 24fps) — CLEAVE DESCENDENTE ----------------
+    # ---------------- 3. ATTACK (24 frames / 1.0s @ 24fps) — MACHADADA VERTICAL DEVASTADORA ----------------
     start_action(armature, "attack")
     total_atk = 24
     for f in range(1, total_atk + 1):
         reset_pose(armature)
 
-        # Fases:
-        # 1..8: Antecipação brutal (ergue o cutelo no alto, peito arqueia para trás)
-        # 9..13: O IMPACTO devastador (corta o ar e crava no chão à frente)
-        # 14..24: Recuperação de força e retorno à guarda
-        if f <= 8:
-            t = smooth_step(1, 8, f)
+        # Fases da Machadada:
+        # Frames 1..10: ERGUER O CUTELO (Windup colossal overhead, peito expande, garra esquerda ergue, rugido)
+        # Frames 11..14: A MACHADADA (Descida explosiva em arco vertical, lâmina corta à frente e enterra no chão)
+        # Frames 15..17: HIT-STOP / TREMOR DE IMPACTO (Trava com a lâmina cravada no chão)
+        # Frames 18..24: RECUPERAÇÃO (Arranca o cutelo do chão e retorna à base de combate)
+        if f <= 10:
+            t = smooth_step(1, 10, f)
+            # Postura ereta e imponente (sem curvar barriga para a frente!)
             if "hips" in pbs:
-                pbs["hips"].rotation_euler = (radians(-8.0 * t), 0.0, 0.0)
+                pbs["hips"].location = (0.0, 0.0, 0.04 * t)
+                pbs["hips"].rotation_euler = (radians(-6.0 * t), 0.0, radians(-4.0 * t))
             if "spine" in pbs:
-                pbs["spine"].rotation_euler = (radians(-12.0 * t), radians(-6.0 * t), 0.0)
+                pbs["spine"].rotation_euler = (radians(-8.0 * t), radians(-4.0 * t), 0.0)
             if "chest" in pbs:
-                pbs["chest"].rotation_euler = (radians(-15.0 * t), radians(-8.0 * t), 0.0)
+                pbs["chest"].rotation_euler = (radians(-10.0 * t), radians(-6.0 * t), 0.0)
             if "head" in pbs:
-                pbs["head"].rotation_euler = (radians(14.0 * t), 0.0, 0.0)
+                pbs["head"].rotation_euler = (radians(12.0 * t), 0.0, radians(4.0 * t))
             if "jaw" in pbs:
-                pbs["jaw"].rotation_euler = (radians(18.0 * t), 0.0, 0.0) # rugido ao erguer
+                pbs["jaw"].rotation_euler = (radians(24.0 * t), 0.0, 0.0) # Rugido voraz
+
+            # Base das pernas abrindo para o golpe
+            if "thigh.L" in pbs:
+                pbs["thigh.L"].rotation_euler = (radians(14.0 * t), 0.0, radians(8.0 * t))
+            if "shin.L" in pbs:
+                pbs["shin.L"].rotation_euler = (radians(-16.0 * t), 0.0, 0.0)
+            if "thigh.R" in pbs:
+                pbs["thigh.R"].rotation_euler = (radians(-12.0 * t), 0.0, radians(-6.0 * t))
+            if "shin.R" in pbs:
+                pbs["shin.R"].rotation_euler = (radians(-8.0 * t), 0.0, 0.0)
+
+            # BRAÇO DIREITO + CUTELO: Ergue lá no alto acima da cabeça (Overhead stance)
             if "upper_arm.R" in pbs:
-                pbs["upper_arm.R"].rotation_euler = (radians(-110.0 * t), radians(15.0 * t), radians(-18.0 * t))
+                pbs["upper_arm.R"].rotation_euler = (radians(-135.0 * t), radians(18.0 * t), radians(-20.0 * t))
             if "forearm.R" in pbs:
-                pbs["forearm.R"].rotation_euler = (radians(-85.0 * t), 0.0, 0.0)
+                pbs["forearm.R"].rotation_euler = (radians(-55.0 * t), radians(-10.0 * t), 0.0)
             if "cleaver" in pbs:
-                pbs["cleaver"].rotation_euler = (radians(-45.0 * t), 0.0, 0.0)
-            # Garra esquerda abre para equilíbrio
+                pbs["cleaver"].rotation_euler = (radians(-55.0 * t), radians(-15.0 * t), 0.0)
+
+            # BRAÇO ESQUERDO (Garra de predador equilibrando o machado)
             if "upper_arm.L" in pbs:
-                pbs["upper_arm.L"].rotation_euler = (radians(20.0 * t), radians(-25.0 * t), radians(35.0 * t))
-        elif f <= 13:
-            t = (f - 8) / 5.0
-            t_whip = t ** 2.5 # Descida violenta tipo chicote
+                pbs["upper_arm.L"].rotation_euler = (radians(-70.0 * t), radians(-25.0 * t), radians(30.0 * t))
+            if "forearm.L" in pbs:
+                pbs["forearm.L"].rotation_euler = (radians(-45.0 * t), 0.0, 0.0)
+
+        elif f <= 14:
+            # Impacto explosivo descendente (t_strike vai de 0.0 a 1.0 bem acelerado)
+            t_strike = ((f - 10) / 4.0) ** 2.8
+
+            # Hips abaixam absorvendo o impacto no chão (Y e Z afundam)
             if "hips" in pbs:
-                pbs["hips"].location = (0.0, 0.0, -0.08 * t_whip)
-                pbs["hips"].rotation_euler = (radians(-8.0 + 26.0 * t_whip), 0.0, 0.0)
+                pbs["hips"].location = (0.0, 0.08 * t_strike, -0.16 * t_strike)
+                pbs["hips"].rotation_euler = (radians(-6.0 + 14.0 * t_strike), 0.0, 0.0)
+            # Tronco inclina APENAS o necessário para acompanhar o golpe do machado (+14 graus)
             if "spine" in pbs:
-                pbs["spine"].rotation_euler = (radians(-12.0 + 35.0 * t_whip), 0.0, 0.0)
+                pbs["spine"].rotation_euler = (radians(-8.0 + 18.0 * t_strike), 0.0, 0.0)
             if "chest" in pbs:
-                pbs["chest"].rotation_euler = (radians(-15.0 + 40.0 * t_whip), 0.0, 0.0)
+                pbs["chest"].rotation_euler = (radians(-10.0 + 22.0 * t_strike), 0.0, 0.0)
             if "head" in pbs:
-                pbs["head"].rotation_euler = (radians(14.0 - 24.0 * t_whip), 0.0, 0.0)
+                pbs["head"].rotation_euler = (radians(12.0 - 20.0 * t_strike), 0.0, 0.0)
+            if "jaw" in pbs:
+                pbs["jaw"].rotation_euler = (radians(24.0 * (1.0 - t_strike)), 0.0, 0.0)
+
+            # Pernas fincam na terra
+            if "thigh.L" in pbs:
+                pbs["thigh.L"].rotation_euler = (radians(14.0 + 16.0 * t_strike), 0.0, radians(10.0))
+            if "shin.L" in pbs:
+                pbs["shin.L"].rotation_euler = (radians(-16.0 - 18.0 * t_strike), 0.0, 0.0)
+            if "thigh.R" in pbs:
+                pbs["thigh.R"].rotation_euler = (radians(-12.0 - 10.0 * t_strike), 0.0, radians(-8.0))
+            if "shin.R" in pbs:
+                pbs["shin.R"].rotation_euler = (radians(-8.0 - 12.0 * t_strike), 0.0, 0.0)
+
+            # MACHADADA: Braço direito corta o ar de cima para baixo
             if "upper_arm.R" in pbs:
-                pbs["upper_arm.R"].rotation_euler = (radians(-110.0 + 175.0 * t_whip), 0.0, 0.0)
+                pbs["upper_arm.R"].rotation_euler = (radians(-135.0 + 165.0 * t_strike), radians(18.0 * (1.0 - t_strike)), 0.0)
             if "forearm.R" in pbs:
-                pbs["forearm.R"].rotation_euler = (radians(-85.0 + 75.0 * t_whip), 0.0, 0.0)
+                pbs["forearm.R"].rotation_euler = (radians(-55.0 + 45.0 * t_strike), 0.0, 0.0)
+            # Cutelo gira com a lâmina pesada liderando e cravando no chão na frente do boss
             if "cleaver" in pbs:
-                pbs["cleaver"].rotation_euler = (radians(-45.0 + 95.0 * t_whip), 0.0, 0.0)
+                pbs["cleaver"].rotation_euler = (radians(-55.0 + 155.0 * t_strike), 0.0, 0.0)
+
+            # Garra esquerda dá contra-peso lateral
+            if "upper_arm.L" in pbs:
+                pbs["upper_arm.L"].rotation_euler = (radians(-70.0 + 95.0 * t_strike), radians(-20.0), radians(40.0 * t_strike))
+            if "forearm.L" in pbs:
+                pbs["forearm.L"].rotation_euler = (radians(-45.0 + 20.0 * t_strike), 0.0, 0.0)
+
+        elif f <= 17:
+            # HIT-STOP / O MACHADO ESTÁ CRAVADO NO CHÃO (Vibração de impacto)
+            shake = 1.0 if f % 2 == 0 else -1.0
+            if "hips" in pbs:
+                pbs["hips"].location = (0.0, 0.08, -0.16 + shake * 0.01)
+                pbs["hips"].rotation_euler = (radians(8.0), 0.0, 0.0)
+            if "spine" in pbs:
+                pbs["spine"].rotation_euler = (radians(10.0), 0.0, 0.0)
+            if "chest" in pbs:
+                pbs["chest"].rotation_euler = (radians(12.0), 0.0, 0.0)
+            if "head" in pbs:
+                pbs["head"].rotation_euler = (radians(-8.0), 0.0, 0.0)
+            if "upper_arm.R" in pbs:
+                pbs["upper_arm.R"].rotation_euler = (radians(30.0 + shake * 1.5), 0.0, 0.0)
+            if "forearm.R" in pbs:
+                pbs["forearm.R"].rotation_euler = (radians(-10.0), 0.0, 0.0)
+            if "cleaver" in pbs:
+                pbs["cleaver"].rotation_euler = (radians(100.0 + shake * 2.0), 0.0, 0.0)
+            if "thigh.L" in pbs:
+                pbs["thigh.L"].rotation_euler = (radians(30.0), 0.0, radians(10.0))
+            if "shin.L" in pbs:
+                pbs["shin.L"].rotation_euler = (radians(-34.0), 0.0, 0.0)
+            if "thigh.R" in pbs:
+                pbs["thigh.R"].rotation_euler = (radians(-22.0), 0.0, radians(-8.0))
+            if "shin.R" in pbs:
+                pbs["shin.R"].rotation_euler = (radians(-20.0), 0.0, 0.0)
+
         else:
-            t = smooth_step(13, 24, f)
-            # Retorna da estocada no chão para o repouso
+            # RECUPERAÇÃO (Frames 18..24: Arranca o machado com força bruta)
+            t_rec = smooth_step(17, 24, f)
+            inv = 1.0 - t_rec
             if "hips" in pbs:
-                pbs["hips"].location = (0.0, 0.0, -0.08 * (1.0 - t))
-                pbs["hips"].rotation_euler = (radians(18.0 * (1.0 - t)), 0.0, 0.0)
+                pbs["hips"].location = (0.0, 0.08 * inv, -0.16 * inv)
+                pbs["hips"].rotation_euler = (radians(8.0 * inv), 0.0, 0.0)
             if "spine" in pbs:
-                pbs["spine"].rotation_euler = (radians(23.0 * (1.0 - t)), 0.0, 0.0)
+                pbs["spine"].rotation_euler = (radians(10.0 * inv), 0.0, 0.0)
             if "chest" in pbs:
-                pbs["chest"].rotation_euler = (radians(25.0 * (1.0 - t)), 0.0, 0.0)
+                pbs["chest"].rotation_euler = (radians(12.0 * inv), 0.0, 0.0)
             if "head" in pbs:
-                pbs["head"].rotation_euler = (radians(-10.0 * (1.0 - t)), 0.0, 0.0)
+                pbs["head"].rotation_euler = (radians(-8.0 * inv), 0.0, 0.0)
             if "upper_arm.R" in pbs:
-                pbs["upper_arm.R"].rotation_euler = (radians(65.0 * (1.0 - t)), 0.0, 0.0)
+                pbs["upper_arm.R"].rotation_euler = (radians(30.0 * inv), 0.0, 0.0)
             if "forearm.R" in pbs:
-                pbs["forearm.R"].rotation_euler = (radians(-10.0 * (1.0 - t) - 35.0 * t), 0.0, 0.0)
+                pbs["forearm.R"].rotation_euler = (radians(-10.0 * inv - 40.0 * t_rec), 0.0, 0.0)
             if "cleaver" in pbs:
-                pbs["cleaver"].rotation_euler = (radians(50.0 * (1.0 - t)), 0.0, 0.0)
+                pbs["cleaver"].rotation_euler = (radians(100.0 * inv), 0.0, 0.0)
+            if "thigh.L" in pbs:
+                pbs["thigh.L"].rotation_euler = (radians(30.0 * inv), 0.0, radians(10.0 * inv))
+            if "shin.L" in pbs:
+                pbs["shin.L"].rotation_euler = (radians(-34.0 * inv), 0.0, 0.0)
+            if "thigh.R" in pbs:
+                pbs["thigh.R"].rotation_euler = (radians(-22.0 * inv), 0.0, radians(-8.0 * inv))
+            if "shin.R" in pbs:
+                pbs["shin.R"].rotation_euler = (radians(-20.0 * inv), 0.0, 0.0)
 
         key_all_bones(armature, f)
 

@@ -10,6 +10,7 @@ const BOSS_SCENE: PackedScene = preload("res://scenes/enemies/executioner_boss.t
 const BOSS_MODEL_PATH: String = "res://assets/models/skeleton_boss.glb"
 const MALAKOR_SCENE: PackedScene = preload("res://scenes/enemies/boss_malakor.tscn")
 const MALAKOR_MODEL_PATH: String = "res://assets/models/boss_malakor.glb"
+const BOSS_HEALTH_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/boss_health_bar_hud.gd")
 
 const RUN_PROGRESSION_SCRIPT: Script = preload("res://core/progression/run_progression_service.gd")
 const CAMPAIGN_ZONE_DEF_SCRIPT = preload("res://game/campaign/campaign_zone_definition.gd")
@@ -49,6 +50,7 @@ var run_progression: RunProgressionService
 var skill_bar_hud: SkillBarHUD
 var town_npc_modal: TownNpcModal
 var inventory_modal: InventoryEquipmentModal
+var boss_health_bar_hud: Control = null
 
 var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 5)
 var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
@@ -127,6 +129,10 @@ func _ready() -> void:
 	inventory_modal.bind_context(backpack, equipment, player.stats)
 	inventory_modal.add_to_group("blocking_modal")
 	_grant_starter_items()
+
+	# Barra de Vida Épica de Chefe no Topo Central
+	boss_health_bar_hud = BOSS_HEALTH_BAR_HUD_SCRIPT.new() as Control
+	$HUD.add_child(boss_health_bar_hud)
 
 	# Menu de Pausa / Retornar ao Launcher
 	_build_pause_menu()
@@ -286,6 +292,8 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 	for child in enemies_root.get_children():
 		child.queue_free()
 	_clear_campaign_props()
+	if boss_health_bar_hud != null:
+		boss_health_bar_hud.hide_bar()
 
 	if arena_art != null and arena_art.has_method("rebuild_campaign_zone"):
 		arena_art.call("rebuild_campaign_zone", zone_def)
@@ -295,7 +303,7 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 	if subtitle_text_label != null:
 		subtitle_text_label.text = zone_def.subtitle
 
-	var spawn_pos: Vector3 = custom_spawn if custom_spawn is Vector3 else zone_def.default_spawn_pos
+	var spawn_pos: Vector3 = (custom_spawn as Vector3) if custom_spawn is Vector3 else zone_def.default_spawn_pos
 	player.global_position = spawn_pos + Vector3(0.0, 0.05, 0.0)
 	player.velocity = Vector3.ZERO
 
@@ -469,25 +477,46 @@ func _on_enemy_died(_xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 func _spawn_zone_boss_malakor() -> void:
 	_malakor_spawned = true
 	enemies_left = 1
-	var boss: TowerEnemy = MALAKOR_SCENE.instantiate() as TowerEnemy
-	boss.aggro_radius = 18.0
-	boss.set_target(player)
+
 	var spawn_pos: Vector3 = Vector3(0.0, 0.0, -4.5)
+	var scene_root: Node3D = self as Node3D
+
+	# 1. Efeitos Visuais Épicos de Invocação: Pilares de Chamas nos 4 cantos do Altar
+	for i in range(4):
+		var ang: float = float(i) * TAU / 4.0
+		var pillar_pos: Vector3 = spawn_pos + Vector3(cos(ang) * 2.4, 0.0, sin(ang) * 2.4)
+		VFX_SPAWNER.fire_burst(scene_root, pillar_pos, 1.8)
+
+	# 2. Vórtice de Chamas Negras e Tremor Central
+	VFX_SPAWNER.spin(scene_root, spawn_pos + Vector3.UP * 1.0, 3.5)
+	VFX_SPAWNER.fire_burst(scene_root, spawn_pos + Vector3.UP * 0.9, 2.5)
+	VFX_SPAWNER.spin(scene_root, spawn_pos + Vector3.UP * 0.4, 2.8)
+
+	# 3. Tremor de tela dramático
+	if camera != null and camera.has_method("apply_shake"):
+		camera.call("apply_shake", 0.65, 1.6)
+
+	# 4. Instanciação e Conexão do Chefe
+	var boss: BossMalakor = MALAKOR_SCENE.instantiate() as BossMalakor
+	boss.aggro_radius = 24.0
+	boss.set_target(player)
 	enemies_root.add_child(boss)
 	boss.global_position = spawn_pos
-	var scene_root: Node3D = self as Node3D
-	VFX_SPAWNER.fire_burst(scene_root, spawn_pos + Vector3.UP * 0.8, 2.0)
-	VFX_SPAWNER.spin(scene_root, spawn_pos + Vector3.UP * 0.4, 2.4)
+
+	# 5. Vinculação da Barra de Vida Épica de Chefe no HUD
+	if boss_health_bar_hud != null:
+		boss_health_bar_hud.bind_boss(boss)
+
 	boss.died.connect(func() -> void:
-		_on_enemy_died(10, boss)
+		_on_enemy_died(25, boss)
 		if status_label != null:
 			status_label.text = "✦ VITÓRIA! MALAKOR FOI DESTRUÍDO! O CAMINHO PARA A NOVA ÁREA ESTÁ ABERTO!"
-			_status_timer = 8.0
+			_status_timer = 9.0
 	)
 	if zone_info_label != null:
-		zone_info_label.text = "CHEFE: Malakor (Cripta)"
+		zone_info_label.text = "CHEFE: Malakor, o Carrasco da Cripta"
 	if status_label != null:
-		status_label.text = "☠ A TERRA TREME... MALAKOR, O CEIFADOR DE ALMAS DESPERTOU!"
+		status_label.text = "☠ A TERRA ESTREMECE... MALAKOR, O CEIFADOR DA CRIPTA DESPERTOU!"
 		_status_timer = 6.0
 
 

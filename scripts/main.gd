@@ -711,7 +711,7 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 	if subtitle_text_label != null:
 		subtitle_text_label.text = zone_def.subtitle
 
-	var spawn_pos: Vector3 = custom_spawn if custom_spawn is Vector3 else zone_def.default_spawn_pos
+	var spawn_pos: Vector3 = (custom_spawn as Vector3) if custom_spawn is Vector3 else zone_def.default_spawn_pos
 	player.global_position = spawn_pos + Vector3(0.0, 0.05, 0.0)
 	player.velocity = Vector3.ZERO
 

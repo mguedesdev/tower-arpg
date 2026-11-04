@@ -15,6 +15,13 @@ var _in_lobby: bool = false
 var _target_view_size: float = 9.2
 var _active_offset: Vector3 = Vector3(6.6, 8.8, 6.6)
 var _look_height: float = 0.65
+var _shake_timer: float = 0.0
+var _shake_intensity: float = 0.0
+
+
+func apply_shake(intensity: float = 0.45, duration: float = 1.2) -> void:
+	_shake_intensity = intensity
+	_shake_timer = duration
 
 func _ready() -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
@@ -59,6 +66,15 @@ func _process(delta: float) -> void:
 	var weight: float = 1.0 - exp(-follow_speed * delta)
 	var clamped_w: float = clampf(weight, 0.0, 1.0)
 	global_position = global_position.lerp(desired, clamped_w)
+	if _shake_timer > 0.0:
+		_shake_timer -= delta
+		var trauma: float = clampf(_shake_timer, 0.0, 1.0)
+		var shake_vec := Vector3(
+			randf_range(-1.0, 1.0) * _shake_intensity * trauma,
+			randf_range(-1.0, 1.0) * _shake_intensity * 0.4 * trauma,
+			randf_range(-1.0, 1.0) * _shake_intensity * trauma
+		)
+		global_position += shake_vec
 	size = lerpf(size, _target_view_size, clamped_w)
 	_look_height = lerpf(_look_height, desired_look_h, clamped_w)
 	look_at(global_position - _active_offset + Vector3(0, _look_height, 0))
