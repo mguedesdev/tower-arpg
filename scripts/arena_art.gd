@@ -28,10 +28,25 @@ const COLOR_ROCK: Color = Color(0.22, 0.23, 0.28)
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _name_id: int = 0
 var _material_cache: Dictionary = {}
+var _is_campaign_mode: bool = false
+var _is_town_zone: bool = false
 
 func _ready() -> void:
+	rebuild_tower_arena()
+
+
+func _clear_children() -> void:
+	for child in get_children():
+		remove_child(child)
+		child.queue_free()
+
+
+func rebuild_tower_arena() -> void:
+	_clear_children()
+	_is_campaign_mode = false
+	_is_town_zone = false
 	rng.seed = 9042026
-	_build_ground()
+	_build_ground(90420)
 	_build_altar()
 	_build_perimeter_ring()
 	_build_ruins()
@@ -40,6 +55,22 @@ func _ready() -> void:
 	_build_rocks()
 	_build_grass_tufts()
 	_build_braziers()
+
+
+func rebuild_campaign_zone(zone_def: Resource) -> void:
+	_clear_children()
+	_is_campaign_mode = true
+	_is_town_zone = bool(zone_def.get("is_safe_town")) if zone_def != null else false
+	var t_seed: int = int(zone_def.get("terrain_seed")) if zone_def != null else 77701
+	var z_id: String = String(zone_def.get("zone_id")) if zone_def != null else "town"
+	rng.seed = t_seed
+	_build_ground(t_seed)
+	_build_perimeter_ring()
+	if _is_town_zone:
+		_build_town_encampment()
+	else:
+		_build_campaign_zone_props(z_id)
+	_build_grass_tufts()
 
 func _unique(base: String) -> String:
 	_name_id += 1
@@ -105,7 +136,7 @@ func _ring_mesh(inner_radius: float, outer_radius: float, segments: int = 72) ->
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
 
-func _build_ground() -> void:
+func _build_ground(noise_seed: int = 90420) -> void:
 	# Uma unica malha continua substitui os antigos 676 quadrados verdes.
 	# Mantemos a colisao existente em main.tscn, pois esta etapa e SOMENTE visual.
 	# O relevo e sutil e fica abaixo do piso fisico para evitar obstaculos falsos.
@@ -129,7 +160,7 @@ func _build_ground() -> void:
 
 	# Noise apenas na construcao, nao ha calculo procedural por frame.
 	var terrain_noise := FastNoiseLite.new()
-	terrain_noise.seed = 90420
+	terrain_noise.seed = noise_seed
 	terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	terrain_noise.frequency = 0.082
 	terrain_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
@@ -165,11 +196,18 @@ func _build_ground() -> void:
 			var relief_factor: float = smoothstep(10.0, 18.0, radial)
 			var height: float = clampf(-0.030 + relief_factor * (relief * 0.042 + detail * 0.012), -0.075, -0.012)
 
-			# Clareira do altar e uma trilha sinuosa de terra, sem borda quadrada.
+			# Clareira do altar/vila e estrada sinuosa Norte-Sul (no modo Campanha ARPG)
 			var altar_dirt: float = 1.0 - smoothstep(5.5, 9.0, radial + broad * 1.0)
 			var curving_trail: float = pz - sin(px * 0.22) * 1.5
 			var trail_width: float = absf(curving_trail) + broad * 0.35
 			var dirt_trail: float = (1.0 - smoothstep(0.9, 2.2, trail_width)) * smoothstep(5.5, 9.5, absf(px)) * 0.84
+			if _is_campaign_mode:
+				var ns_road_center: float = sin(pz * 0.16) * (0.8 if _is_town_zone else 2.6)
+				var ns_dist: float = absf(px - ns_road_center) + broad * 0.28
+				var ns_road: float = 1.0 - smoothstep(1.6, 3.1, ns_dist)
+				dirt_trail = maxf(dirt_trail, ns_road * 0.96)
+				if _is_town_zone:
+					altar_dirt = 1.0 - smoothstep(8.2, 11.8, radial + broad * 0.8)
 			var dirt_patches: float = smoothstep(0.17, 0.65, broad * 0.88 + detail * 0.25 + 0.21) * 0.66
 			var dirt_mask: float = clampf(maxf(altar_dirt * 0.95, maxf(dirt_trail, dirt_patches)), 0.0, 1.0)
 
@@ -470,3 +508,81 @@ func _add_cylinder_to(parent: Node3D, pos: Vector3, radius: float, height: float
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
 	return node
+
+
+func _build_town_encampment() -> void:
+	# Fogueira Central do Acampamento dos Exilados (estilo Rogue Encampment - Diablo 2)
+	_cylinder(Vector3(0.0, 0.04, 0.0), 1.45, 0.08, COLOR_STONE_DARK, 16)
+	for i in range(10):
+		var a := TAU * float(i) / 10.0
+		_box(Vector3(cos(a) * 1.10, 0.14, sin(a) * 1.10), Vector3(0.36, 0.24, 0.28), COLOR_STONE_LIGHT)
+	# Toras de lenha e braseiro central
+	for i in range(4):
+		var log_node := _box(Vector3(0.0, 0.18, 0.0), Vector3(1.25, 0.16, 0.18), COLOR_TREE)
+		log_node.rotation.y = float(i) * PI * 0.25
+		log_node.rotation.z = 0.18
+	var fire_mat := _material("campfire_glow", COLOR_FLAME, 0.2, true, 2.0)
+	var f1 := CylinderMesh.new()
+	f1.top_radius = 0.0
+	f1.bottom_radius = 0.52
+	f1.height = 0.85
+	_mesh_instance("CampfireFlameOuter", f1, fire_mat, Vector3(0.0, 0.52, 0.0))
+
+	var camp_light := OmniLight3D.new()
+	camp_light.name = "TownCampfireLight"
+	camp_light.position = Vector3(0.0, 2.35, 0.0)
+	camp_light.light_color = Color(1.0, 0.58, 0.22)
+	camp_light.light_energy = 1.85
+	camp_light.omni_range = 14.0
+	add_child(camp_light)
+
+	# Muralhas baixas do Acampamento com abertura larga no Portão Norte (Z = -16.5)
+	_broken_wall(Vector3(-8.5, 0.0, -16.5), 0.0, 9.5)
+	_broken_wall(Vector3(8.5, 0.0, -16.5), 0.0, 9.5)
+	_broken_wall(Vector3(0.0, 0.0, 14.5), 0.0, 16.0)
+	_broken_wall(Vector3(-13.5, 0.0, -1.0), PI * 0.5, 22.0)
+	_broken_wall(Vector3(13.5, 0.0, -1.0), PI * 0.5, 22.0)
+
+	# Braseiros iluminando a saída Norte e os cantos da Vila
+	for b_pos in [
+		Vector3(-3.2, 0.0, -13.5), Vector3(3.2, 0.0, -13.5),
+		Vector3(-8.5, 0.0, -6.5), Vector3(8.5, 0.0, -6.5),
+		Vector3(-8.5, 0.0, 6.5), Vector3(8.5, 0.0, 6.5),
+	]:
+		_brazier(b_pos)
+
+	# Árvores secas ao fundo fora dos muros da Vila
+	_dead_tree(Vector3(-16.5, 0.0, -18.0), 1.2, 0.12)
+	_dead_tree(Vector3(16.5, 0.0, -18.0), 1.25, -0.15)
+	_dead_tree(Vector3(-17.5, 0.0, 12.0), 1.15, 0.2)
+	_dead_tree(Vector3(17.5, 0.0, 12.0), 1.1, -0.2)
+
+
+func _build_campaign_zone_props(zone_id: String) -> void:
+	# Braseiros de estrada guiando o caminho Sul -> Norte
+	for z_step in [-14.0, -5.0, 5.0, 14.0]:
+		var road_x: float = sin(z_step * 0.16) * 2.6
+		_brazier(Vector3(road_x - 3.6, 0.0, z_step))
+		_brazier(Vector3(road_x + 3.6, 0.0, z_step))
+
+	_build_ruins()
+	_build_rocks()
+	_build_dead_trees()
+	_build_gravestones()
+
+	if zone_id == "zone_2_woods":
+		# Floresta mais densa na Mata das Sombras
+		for extra_tree in [
+			Vector3(-11.0, 0.0, -7.0), Vector3(11.5, 0.0, -6.0),
+			Vector3(-12.0, 0.0, 6.0), Vector3(12.5, 0.0, 8.0),
+			Vector3(-6.5, 0.0, -15.5), Vector3(7.0, 0.0, 14.5),
+		]:
+			_dead_tree(extra_tree, 1.32, rng.randf_range(-0.22, 0.22))
+	elif zone_id == "zone_3_crypt":
+		# Altar profanado no covil do Carrasco + lápides extras
+		_build_altar()
+		for extra_grave in [
+			Vector3(-8.5, 0.0, -10.5), Vector3(8.5, 0.0, -10.5),
+			Vector3(-9.5, 0.0, -4.5), Vector3(9.5, 0.0, -4.5),
+		]:
+			_gravestone(extra_grave, rng.randf_range(-0.25, 0.25))

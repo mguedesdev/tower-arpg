@@ -5,6 +5,7 @@ class_name SanctuaryLobbyHUD
 ## exibindo apenas um cartão limpo com Atributos + Passivas Ativas e os 2 botões principais.
 
 signal start_battle_requested
+signal start_campaign_requested
 signal open_talent_tree_requested
 signal preview_attack_requested(form_index: int)
 signal rotate_character_requested(delta_degrees: float)
@@ -40,6 +41,7 @@ var _passives_vbox: VBoxContainer
 
 var _talents_btn: Button
 var _start_btn: Button
+var _campaign_btn: Button
 
 
 func _ready() -> void:
@@ -121,14 +123,25 @@ func _build_ui() -> void:
 
 	_start_btn = Button.new()
 	_start_btn.name = "StartBattleButton"
-	_start_btn.text = "⚔  ENTRAR NA TORRE  (ENTER)"
-	_start_btn.add_theme_font_size_override("font_size", 16)
+	_start_btn.text = "⚔  MODO TORRE (WAVES)"
+	_start_btn.add_theme_font_size_override("font_size", 15)
 	_start_btn.add_theme_color_override("font_color", TEXT)
-	_start_btn.add_theme_stylebox_override("normal", _style(CRIMSON, GOLD, 2, 3))
-	_start_btn.add_theme_stylebox_override("hover", _style(CRIMSON_HOVER, GOLD.lightened(0.2), 2, 3))
-	_start_btn.add_theme_stylebox_override("pressed", _style(CRIMSON.darkened(0.2), GOLD, 2, 3))
+	_start_btn.add_theme_stylebox_override("normal", _style(BG_PILL, BORDER, 2, 3))
+	_start_btn.add_theme_stylebox_override("hover", _style(BG_PILL.lightened(0.10), GOLD, 2, 3))
+	_start_btn.add_theme_stylebox_override("pressed", _style(BG_PILL.darkened(0.10), GOLD, 2, 3))
 	_start_btn.pressed.connect(func() -> void: start_battle_requested.emit())
 	add_child(_start_btn)
+
+	_campaign_btn = Button.new()
+	_campaign_btn.name = "StartCampaignButton"
+	_campaign_btn.text = "🗺  CAMPANHA ARPG (VILA & MAPAS)  [ENTER]"
+	_campaign_btn.add_theme_font_size_override("font_size", 16)
+	_campaign_btn.add_theme_color_override("font_color", TEXT)
+	_campaign_btn.add_theme_stylebox_override("normal", _style(CRIMSON, GOLD, 2, 3))
+	_campaign_btn.add_theme_stylebox_override("hover", _style(CRIMSON_HOVER, GOLD.lightened(0.2), 2, 3))
+	_campaign_btn.add_theme_stylebox_override("pressed", _style(CRIMSON.darkened(0.2), GOLD, 2, 3))
+	_campaign_btn.pressed.connect(func() -> void: start_campaign_requested.emit())
+	add_child(_campaign_btn)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -138,7 +151,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if not key_event.pressed or key_event.echo:
 		return
 	if key_event.keycode == KEY_ENTER or key_event.keycode == KEY_KP_ENTER:
-		start_battle_requested.emit()
+		start_campaign_requested.emit()
 		get_viewport().set_input_as_handled()
 
 
@@ -271,11 +284,12 @@ func _relayout() -> void:
 	_passives_vbox.position = Vector2(16.0, 186.0)
 	_passives_vbox.size = Vector2(card_w - 32.0, float(passive_rows) * 22.0)
 
-	# Rodapé Central: 2 Botões limpos lado a lado
-	var btn_gap: float = 16.0
-	var talents_w: float = 250.0
-	var start_w: float = 270.0
-	var total_w: float = talents_w + btn_gap + start_w
+	# Rodapé Central: Seleção de Modo (Campanha ARPG em destaque + Modo Torre + Passivas da Torre)
+	var btn_gap: float = 14.0
+	var talents_w: float = 215.0
+	var tower_w: float = 225.0
+	var campaign_w: float = 350.0
+	var total_w: float = talents_w + btn_gap + tower_w + btn_gap + campaign_w
 	var start_x: float = (vp.x - total_w) * 0.5
 	var btn_y: float = vp.y - margin - 52.0
 
@@ -283,7 +297,10 @@ func _relayout() -> void:
 	_talents_btn.size = Vector2(talents_w, 52.0)
 
 	_start_btn.position = Vector2(start_x + talents_w + btn_gap, btn_y)
-	_start_btn.size = Vector2(start_w, 52.0)
+	_start_btn.size = Vector2(tower_w, 52.0)
+
+	_campaign_btn.position = Vector2(start_x + talents_w + btn_gap + tower_w + btn_gap, btn_y)
+	_campaign_btn.size = Vector2(campaign_w, 52.0)
 
 
 func _make_panel(parent_node: Node, node_name: String, bg: Color, border: Color, bw: int, radius: int) -> Panel:

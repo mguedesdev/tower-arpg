@@ -26,6 +26,7 @@ const HealthBar3DScript = preload("res://core/combat/enemy_health_bar_3d.gd")
 @export_range(0.4, 4.0, 0.05) var walk_stride_meters: float = 1.50
 @export var xp_reward_multiplier: int = 1
 @export var is_mini_boss: bool = false
+@export var aggro_radius: float = 999.0
 
 # Flash de hit: leve, curto e aplicado somente no inimigo atingido.
 @export_range(0.05, 0.45, 0.01) var hit_flash_opacity: float = 0.22
@@ -45,6 +46,7 @@ var _idle_animation: StringName = &""
 var _attack_animation: StringName = &""
 var _requested_animation: StringName = &""
 var _is_attacking: bool = false
+var _aggro_triggered: bool = false
 var _hit_flash_remaining: float = 0.0
 var _hit_flash_material: StandardMaterial3D
 var _hit_meshes: Array[GeometryInstance3D] = []
@@ -205,6 +207,17 @@ func _physics_process(delta: float) -> void:
 	towards.y = 0.0
 	var distance: float = towards.length()
 
+	if not _aggro_triggered and distance <= aggro_radius:
+		_aggro_triggered = true
+
+	if not _aggro_triggered:
+		velocity.x = 0.0
+		velocity.z = 0.0
+		_play_animation(_idle_animation)
+		if health_bar != null and is_inside_tree():
+			health_bar.align_to_camera(get_viewport())
+		return
+
 	var stop_distance: float = 0.85 if is_mini_boss else 0.70
 	if distance > stop_distance:
 		var motion: Vector3 = towards.normalized() * movement_speed
@@ -281,6 +294,7 @@ func _on_enemy_animation_finished(finished_clip: StringName) -> void:
 func take_damage(amount: int) -> void:
 	if not alive:
 		return
+	_aggro_triggered = true
 	health = maxi(0, health - amount)
 	health_changed.emit(health, maximum_health)
 	if health_bar != null:

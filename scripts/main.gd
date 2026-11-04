@@ -13,6 +13,10 @@ const LEVEL_UP_MODAL_SCRIPT: Script = preload("res://game/ui/progression/level_u
 const RUN_RESULT_MODAL_SCRIPT: Script = preload("res://game/ui/progression/run_result_modal.gd")
 const TALENT_TREE_MODAL_SCRIPT: Script = preload("res://game/ui/progression/talent_tree_modal.gd")
 const SANCTUARY_LOBBY_SCRIPT: Script = preload("res://game/ui/progression/sanctuary_lobby_hud.gd")
+const CAMPAIGN_ZONE_DEF_SCRIPT = preload("res://game/campaign/campaign_zone_definition.gd")
+const TOWN_INTERACTABLE_SCRIPT = preload("res://game/campaign/town_interactable_3d.gd")
+const ZONE_PORTAL_SCRIPT = preload("res://game/campaign/zone_portal_3d.gd")
+const TOWN_NPC_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/town_npc_modal.gd")
 const VFX_EFFECT_SCRIPT: Script = preload("res://scripts/vfx/tower_vfx_effect.gd")
 const VFX_SPAWNER = preload("res://scripts/vfx/tower_vfx_spawner.gd")
 const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
@@ -26,6 +30,9 @@ const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
 @onready var form_label: Label = $HUD/Info/FormLabel
 @onready var kills_label: Label = $HUD/Info/KillsLabel
 @onready var status_label: Label = $HUD/StatusLabel
+@onready var arena_art: Node3D = $ArenaArt
+@onready var title_text_label: Label = $HUD/TitlePlate/TitleText
+@onready var subtitle_text_label: Label = $HUD/TitlePlate/Subtitle
 
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var current_wave: int = 0
@@ -44,7 +51,15 @@ var level_up_modal: LevelUpModal
 var run_result_modal: RunResultModal
 var talent_tree_modal: TalentTreeModal
 var lobby_hud: SanctuaryLobbyHUD
+var town_npc_modal: TownNpcModal
 var in_lobby: bool = true
+var is_campaign_mode: bool = false
+var current_zone_id: String = "town"
+var campaign_zones: Dictionary = {}
+var unlocked_zones: Array[String] = ["town", "zone_1_road"]
+var _campaign_props_root: Node3D
+var _active_interactables: Array[TownInteractable3D] = []
+var _active_portals: Array[ZonePortal3D] = []
 var _initial_player_position: Vector3 = Vector3.ZERO
 var _pending_wave_spawns: Array[Dictionary] = []
 var _wolf_model_available: bool = false
@@ -92,9 +107,20 @@ func _ready() -> void:
 	$HUD.add_child(lobby_hud)
 	lobby_hud.bind_context(permanent_progression, run_progression, player, attack)
 	lobby_hud.start_battle_requested.connect(_start_new_run)
+	lobby_hud.start_campaign_requested.connect(_start_campaign_mode)
 	lobby_hud.open_talent_tree_requested.connect(_on_open_talent_tree_from_lobby)
 	lobby_hud.preview_attack_requested.connect(_on_lobby_preview_attack)
 	lobby_hud.rotate_character_requested.connect(_on_lobby_rotate_character)
+
+	town_npc_modal = TOWN_NPC_MODAL_SCRIPT.new() as TownNpcModal
+	$HUD.add_child(town_npc_modal)
+	town_npc_modal.waypoint_travel_requested.connect(_on_waypoint_travel_requested)
+	town_npc_modal.respec_build_requested.connect(_on_town_respec_build_requested)
+
+	_campaign_props_root = Node3D.new()
+	_campaign_props_root.name = "CampaignInteractiveProps"
+	add_child(_campaign_props_root)
+	campaign_zones = CAMPAIGN_ZONE_DEF_SCRIPT.build_default_campaign_zones()
 
 	run_progression.choices_changed.connect(_on_choices_changed)
 
@@ -105,7 +131,7 @@ func _ready() -> void:
 	_enter_sanctuary_lobby()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if _warm_vfx != null:
 		_warm_vfx_frames += 1
 		if _warm_vfx_frames >= 2:
@@ -113,13 +139,32 @@ func _process(_delta: float) -> void:
 				_warm_vfx.queue_free()
 			_warm_vfx = null
 	if game_over and Input.is_action_just_pressed("restart"):
-		_start_new_run()
+		if is_campaign_mode:
+			_start_campaign_mode()
+		else:
+			_start_new_run()
 		return
 	if not game_over and not _pending_wave_spawns.is_empty():
 		var count_this_frame: int = mini(3, _pending_wave_spawns.size())
 		for _i in range(count_this_frame):
 			var spec: Dictionary = _pending_wave_spawns.pop_front()
 			_spawn_single_enemy(spec)
+	if is_campaign_mode and not in_lobby and not game_over:
+		_update_campaign_world(delta)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not is_campaign_mode or in_lobby or game_over:
+		return
+	if town_npc_modal != null and town_npc_modal.visible:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_E:
+			for station in _active_interactables:
+				if is_instance_valid(station) and station.is_player_in_range():
+					station.trigger_interaction()
+					get_viewport().set_input_as_handled()
+					return
 
 
 func _warm_up_combat_shaders_and_models() -> void:
@@ -147,8 +192,18 @@ func _warm_up_combat_shaders_and_models() -> void:
 
 func _enter_sanctuary_lobby() -> void:
 	in_lobby = true
+	is_campaign_mode = false
 	game_over = false
 	get_tree().paused = false
+	_clear_campaign_props()
+	if arena_art != null and arena_art.has_method("rebuild_tower_arena"):
+		arena_art.call("rebuild_tower_arena")
+	if title_text_label != null:
+		title_text_label.text = "ALTAR PROFANADO"
+	if subtitle_text_label != null:
+		subtitle_text_label.text = "DARK FANTASY / SPAWN ALTAR"
+	if town_npc_modal != null:
+		town_npc_modal.close_modal()
 	if level_up_modal != null:
 		level_up_modal.hide_modal()
 	if run_result_modal != null:
@@ -227,7 +282,17 @@ func _on_lobby_rotate_character(delta_deg: float) -> void:
 
 func _start_new_run() -> void:
 	in_lobby = false
+	is_campaign_mode = false
 	get_tree().paused = false
+	_clear_campaign_props()
+	if arena_art != null and arena_art.has_method("rebuild_tower_arena"):
+		arena_art.call("rebuild_tower_arena")
+	if title_text_label != null:
+		title_text_label.text = "A TORRE — MODO WAVES"
+	if subtitle_text_label != null:
+		subtitle_text_label.text = "SOBREVIVÊNCIA POR ONDAS"
+	if town_npc_modal != null:
+		town_npc_modal.close_modal()
 	if lobby_hud != null:
 		lobby_hud.visible = false
 	if xp_hud != null:
@@ -351,10 +416,244 @@ func _on_enemy_died(xp_mult: int = 1) -> void:
 	kills += 1
 	enemies_left = maxi(enemies_left - 1, 0)
 	kills_label.text = "Abates: %d" % kills
+	if is_campaign_mode:
+		wave_label.text = "Inimigos na Zona: %d" % enemies_left
+		if enemies_left == 0 and not game_over:
+			waves_completed += 1
+			status_label.text = "Zona purificada! Siga pelo Portão Norte ou use o Waypoint."
+		return
 	if enemies_left == 0 and not game_over:
 		waves_completed += 1
 		status_label.text = "Wave concluida! Proxima em instantes..."
 		get_tree().create_timer(1.6, false).timeout.connect(_start_wave)
+
+
+# ===============================================================
+# MODO CAMPANHA ARPG (VILA + ZONAS CONECTADAS + NPCs + WAYPOINTS)
+# ===============================================================
+func _clear_campaign_props() -> void:
+	_active_interactables.clear()
+	_active_portals.clear()
+	if _campaign_props_root != null:
+		for child in _campaign_props_root.get_children():
+			child.queue_free()
+
+
+func _start_campaign_mode() -> void:
+	in_lobby = false
+	is_campaign_mode = true
+	game_over = false
+	get_tree().paused = false
+	if lobby_hud != null:
+		lobby_hud.visible = false
+	if xp_hud != null:
+		xp_hud.visible = true
+	if level_up_modal != null:
+		level_up_modal.hide_modal()
+	if run_result_modal != null:
+		run_result_modal.hide_modal()
+	if talent_tree_modal != null:
+		talent_tree_modal.hide_lobby()
+	if town_npc_modal != null:
+		town_npc_modal.close_modal()
+
+	current_wave = 1
+	waves_completed = 0
+	enemies_left = 0
+	kills = 0
+	current_run_summary = null
+	kills_label.text = "Abates: 0"
+	unlocked_zones = ["town", "zone_1_road"]
+
+	if xp_hud != null:
+		xp_hud.set("_dead", false)
+
+	player.set_lobby_mode(false)
+	if camera != null and camera.has_method("set_lobby_mode"):
+		camera.set_lobby_mode(false, false)
+	player.configure_character(player.character_definition)
+	attack.ability_state.setup_from_definition(attack.ability_state.definition)
+
+	run_progression.reset_run()
+	permanent_progression.apply_to_run(
+		player.character_definition.class_id if player.character_definition != null else "warrior",
+		player.stats,
+		run_progression,
+		attack.ability_state
+	)
+	attack.sync_from_ability_state()
+	_on_health_changed(player.health, player.max_health)
+	_on_form_changed(attack.form_label())
+
+	_load_campaign_zone("town")
+
+
+func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
+	if not campaign_zones.has(zone_id):
+		return
+	var zone_def: CampaignZoneDefinition = campaign_zones[zone_id] as CampaignZoneDefinition
+	current_zone_id = zone_id
+	current_wave = maxi(1, zone_def.area_level)
+	if not unlocked_zones.has(zone_id):
+		unlocked_zones.append(zone_id)
+	if not zone_def.next_zone_id.is_empty() and not unlocked_zones.has(zone_def.next_zone_id):
+		unlocked_zones.append(zone_def.next_zone_id)
+
+	for child in enemies_root.get_children():
+		child.queue_free()
+	_pending_wave_spawns.clear()
+	_clear_campaign_props()
+
+	if arena_art != null and arena_art.has_method("rebuild_campaign_zone"):
+		arena_art.call("rebuild_campaign_zone", zone_def)
+
+	if title_text_label != null:
+		title_text_label.text = zone_def.title.to_upper()
+	if subtitle_text_label != null:
+		subtitle_text_label.text = zone_def.subtitle
+
+	var spawn_pos: Vector3 = custom_spawn if custom_spawn is Vector3 else zone_def.default_spawn_pos
+	player.global_position = spawn_pos + Vector3(0.0, 0.05, 0.0)
+	player.velocity = Vector3.ZERO
+
+	# Waypoint Ancestral (presente na Vila e em todas as Zonas)
+	_spawn_town_station("waypoint", "✦ Waypoint Ancestral", "[E] Teleportar entre Zonas", zone_def.waypoint_pos, 0.0)
+
+	if zone_def.is_safe_town:
+		# Restaura a vida ao entrar na Vila segura
+		player.health = player.max_health
+		_on_health_changed(player.health, player.max_health)
+		enemies_left = 0
+		wave_label.text = "Zona: Vila Segura"
+		status_label.text = "Vila: aproxime-se do Baú/Mercadores e aperte [E], ou saia pelo Portão Norte!"
+
+		# Os 4 Interagíveis da Vila solicitados: Baú, Vendedor Físico, Vendedor Mágico e Identificador/Reset
+		_spawn_town_station("stash", "📦 Baú Pessoal (Stash)", "[E] Abrir Baú", Vector3(-5.8, 0.0, -3.5), 25.0)
+		_spawn_town_station("vendor_physical", "⚒ Ferreiro (Itens Físicos)", "[E] Negociar Armas & Armaduras", Vector3(-7.4, 0.0, 3.2), 65.0)
+		_spawn_town_station("vendor_magic", "🔮 Arcanista (Itens Mágicos)", "[E] Negociar Relíquias Mágicas", Vector3(7.4, 0.0, -3.2), -55.0)
+		_spawn_town_station("identifier_respec", "📜 Sábio (Identificar & Resetar Build)", "[E] Identificar Itens / Resetar Build", Vector3(-2.6, 0.0, -5.2), 15.0)
+
+		# Portão Norte saindo da Vila para a Zona 1 (Estrada Profanada)
+		_spawn_zone_gate(zone_def.zone_id, zone_def.next_zone_id, zone_def.next_zone_label, zone_def.next_gate_pos, false)
+	else:
+		# Portão Sul (Retorno) e Portão Norte (Avanço)
+		if not zone_def.prev_zone_id.is_empty():
+			_spawn_zone_gate(zone_def.zone_id, zone_def.prev_zone_id, zone_def.prev_zone_label, zone_def.prev_gate_pos, true)
+		if not zone_def.next_zone_id.is_empty():
+			_spawn_zone_gate(zone_def.zone_id, zone_def.next_zone_id, zone_def.next_zone_label, zone_def.next_gate_pos, false)
+
+		_spawn_campaign_packs(zone_def)
+		wave_label.text = "Inimigos na Zona: %d" % enemies_left
+		status_label.text = "%s — Siga pela estrada, elimine os packs e alcance o Portão Norte!" % zone_def.title
+
+
+func _spawn_town_station(id_val: String, title_val: String, sub_val: String, pos: Vector3, yaw_deg: float) -> void:
+	var station: TownInteractable3D = TOWN_INTERACTABLE_SCRIPT.new() as TownInteractable3D
+	_campaign_props_root.add_child(station)
+	station.configure(id_val, title_val, sub_val, pos, yaw_deg)
+	station.interaction_requested.connect(_on_town_station_interacted)
+	_active_interactables.append(station)
+
+
+func _spawn_zone_gate(from_id: String, to_id: String, label_txt: String, pos: Vector3, is_return: bool) -> void:
+	var gate: ZonePortal3D = ZONE_PORTAL_SCRIPT.new() as ZonePortal3D
+	_campaign_props_root.add_child(gate)
+	gate.configure(from_id, to_id, label_txt, pos, is_return)
+	gate.zone_transition_requested.connect(_on_zone_gate_crossed)
+	_active_portals.append(gate)
+
+
+func _spawn_campaign_packs(zone_def: CampaignZoneDefinition) -> void:
+	enemies_left = 0
+	var lvl: int = maxi(1, zone_def.area_level)
+	for pack in zone_def.monster_packs:
+		var center: Vector3 = pack.get("center", Vector3.ZERO)
+		var skel_cnt: int = int(pack.get("skeletons", 0))
+		var wolf_cnt: int = int(pack.get("wolves", 0)) if _wolf_model_available else 0
+		var boss_cnt: int = int(pack.get("boss", 0)) if _boss_model_available else 0
+		var spread: float = float(pack.get("spread", 2.6))
+		var total_in_pack: int = skel_cnt + wolf_cnt + boss_cnt
+		for idx in range(total_in_pack):
+			var is_boss: bool = idx < boss_cnt
+			var is_wolf: bool = (not is_boss) and (idx < boss_cnt + wolf_cnt)
+			var ang: float = TAU * float(idx) / float(maxi(1, total_in_pack)) + rng.randf_range(-0.3, 0.3)
+			var rad: float = 0.4 if is_boss else rng.randf_range(0.8, spread)
+			var pos: Vector3 = center + Vector3(cos(ang) * rad, 0.0, sin(ang) * rad)
+
+			var scene_to_use: PackedScene = ENEMY_SCENE
+			if is_boss:
+				scene_to_use = BOSS_SCENE
+			elif is_wolf:
+				scene_to_use = WOLF_SCENE
+			var enemy: TowerEnemy = scene_to_use.instantiate() as TowerEnemy
+			enemy.aggro_radius = 10.5
+			var hp_bonus: int = 20 if is_boss else 8
+			enemy.maximum_health += (lvl - 1) * hp_bonus
+			enemy.movement_speed += minf(float(lvl - 1) * 0.06, 0.6)
+			enemy.set_target(player)
+			enemies_root.add_child(enemy)
+			enemy.global_position = pos
+			enemy.died.connect(_on_enemy_died.bind(maxi(1, enemy.xp_reward_multiplier)))
+			enemies_left += 1
+
+
+func _update_campaign_world(delta: float) -> void:
+	if player == null or not player.alive:
+		return
+	var p_pos: Vector3 = player.global_position
+	var near_station: TownInteractable3D = null
+	for station in _active_interactables:
+		if is_instance_valid(station):
+			if station.update_proximity(p_pos, delta) and near_station == null:
+				near_station = station
+
+	if near_station != null and (town_npc_modal == null or not town_npc_modal.visible):
+		status_label.text = "%s — Pressione [E] para interagir" % near_station.station_title
+
+	for gate in _active_portals:
+		if is_instance_valid(gate):
+			if gate.check_player_crossing(p_pos, delta):
+				return
+
+
+func _on_town_station_interacted(station_id: String, _station_title: String) -> void:
+	if town_npc_modal != null:
+		town_npc_modal.open_station(station_id, unlocked_zones, current_zone_id)
+
+
+func _on_waypoint_travel_requested(dest_zone_id: String) -> void:
+	if not campaign_zones.has(dest_zone_id):
+		return
+	var zdef: CampaignZoneDefinition = campaign_zones[dest_zone_id] as CampaignZoneDefinition
+	_load_campaign_zone(dest_zone_id, zdef.waypoint_pos + Vector3(0.0, 0.0, 1.8))
+
+
+func _on_zone_gate_crossed(target_zone_id: String, origin_zone_id: String) -> void:
+	if not campaign_zones.has(target_zone_id):
+		return
+	var target_def: CampaignZoneDefinition = campaign_zones[target_zone_id] as CampaignZoneDefinition
+	var spawn_pos: Vector3 = target_def.default_spawn_pos
+	if target_def.next_zone_id == origin_zone_id:
+		# Voltou pelo portão norte da zona anterior -> nasce perto do portão norte!
+		spawn_pos = target_def.next_gate_pos + Vector3(0.0, 0.0, 2.8)
+	elif target_def.prev_zone_id == origin_zone_id:
+		# Avançou para a próxima zona -> nasce perto do portão sul!
+		spawn_pos = target_def.prev_gate_pos + Vector3(0.0, 0.0, -2.8)
+	_load_campaign_zone(target_zone_id, spawn_pos)
+
+
+func _on_town_respec_build_requested() -> void:
+	if permanent_progression != null:
+		permanent_progression.respec_all()
+	player.configure_character(player.character_definition)
+	attack.ability_state.setup_from_definition(attack.ability_state.definition)
+	run_progression.reset_run()
+	var cid: String = player.character_definition.class_id if player.character_definition != null else "warrior"
+	permanent_progression.apply_to_run(cid, player.stats, run_progression, attack.ability_state)
+	attack.sync_from_ability_state()
+	player.health = player.max_health
+	_on_health_changed(player.health, player.max_health)
+	_on_form_changed(attack.form_label())
 
 
 func _on_choices_changed(pending: int) -> void:
