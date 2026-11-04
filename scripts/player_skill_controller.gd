@@ -10,7 +10,6 @@ class_name PlayerSkillController
 ## • WASD sempre tem prioridade e cancela a perseguição.
 
 signal slots_changed
-signal target_selected(enemy: Node3D)
 signal skill_cast(skill_id: String)
 
 const VFX = preload("res://scripts/vfx/tower_vfx_spawner.gd")
@@ -209,8 +208,6 @@ func _begin_action(slot_idx: int) -> void:
 		return
 	_pending_slot = slot_idx
 	_pending_target = pick_enemy_under_cursor()
-	if _pending_target != null:
-		target_selected.emit(_pending_target)
 	_has_ground_point = false
 	if _pending_target == null:
 		var gp: Variant = get_cursor_ground_point()
@@ -242,9 +239,9 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# WASD assume o controle e cancela a perseguição automática.
-	if character.has_manual_move_input() and _pending_target != null:
-		_pending_target = null
+	if character.has_manual_move_input():
 		character.chase_direction = Vector3.ZERO
+		_pending_target = null
 
 	# Segurar o botão: re-dispara a ação continuamente (mantém o alvo se ainda vivo).
 	if _pending_slot < 0:
@@ -286,7 +283,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Se for o botão primário (LMB) e clicou no chão: move o personagem (Click-to-Move estilo Albion/Diablo)
-	if _pending_slot == SLOT_LMB and _pending_target == null:
+	if _pending_slot == SLOT_LMB and _pending_target == null and not character.has_manual_move_input():
 		var dest: Variant = null
 		if _held[SLOT_LMB]:
 			dest = get_cursor_ground_point()

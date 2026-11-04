@@ -1,6 +1,5 @@
 extends CharacterBody3D
 class_name TowerEnemy
-const FloatingDamageNumberScript = preload("res://core/combat/floating_damage_number_3d.gd")
 
 signal died
 signal health_changed(current: int, maximum: int)
@@ -297,10 +296,6 @@ func take_damage(amount: int) -> void:
 	_aggro_triggered = true
 	health = maxi(0, health - amount)
 	health_changed.emit(health, maximum_health)
-	if FloatingDamageNumberScript != null and get_parent() != null:
-		var dmg_num = FloatingDamageNumberScript.new()
-		get_parent().add_child(dmg_num)
-		dmg_num.setup(amount, false, false, global_position)
 	if health_bar != null:
 		health_bar.update_health(health, maximum_health, is_burning())
 	if health > 0:

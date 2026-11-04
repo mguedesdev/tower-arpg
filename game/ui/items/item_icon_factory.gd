@@ -1,3 +1,4 @@
+@warning_ignore("integer_division")
 extends RefCounted
 class_name ItemIconFactory
 ## Fábrica de ícones para o inventário espacial ARPG.

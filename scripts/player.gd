@@ -1,6 +1,5 @@
 extends CharacterBody3D
 class_name TowerPlayer
-const FloatingDamageNumberScript = preload("res://core/combat/floating_damage_number_3d.gd")
 
 signal health_changed(current: int, maximum: int)
 signal died
@@ -636,10 +635,6 @@ func take_damage(amount: int) -> void:
 	else:
 		health = maxi(health - amount, 0)
 		health_changed.emit(health, max_health)
-	if FloatingDamageNumberScript != null and get_parent() != null:
-		var dmg_num = FloatingDamageNumberScript.new()
-		get_parent().add_child(dmg_num)
-		dmg_num.setup(amount, false, true, global_position)
 	if health == 0:
 		alive = false
 		velocity = Vector3.ZERO

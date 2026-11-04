@@ -47,7 +47,6 @@ var run_progression: RunProgressionService
 var skill_bar_hud: SkillBarHUD
 var town_npc_modal: TownNpcModal
 var inventory_modal: InventoryEquipmentModal
-var target_frame: TargetFrameHUD
 
 var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 5)
 var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
@@ -107,17 +106,6 @@ func _ready() -> void:
 		skill_bar_hud.bind_controller(player.skill_controller)
 		player.skill_controller.set_enabled(true)
 	skill_bar_hud.visible = true
-
-	# Placa de Alvo Selecionado no Topo Central (estilo Albion)
-	var target_frame_script = load("res://game/ui/campaign/target_frame_hud.gd")
-	if target_frame_script != null:
-		target_frame = target_frame_script.new()
-		$HUD.add_child(target_frame)
-		if player != null and player.skill_controller != null:
-			player.skill_controller.target_selected.connect(func(target_enemy: TowerEnemy):
-				if target_frame != null:
-					target_frame.set_target(target_enemy, area_level)
-			)
 
 	# Modal de NPCs e Waypoints da Vila
 	town_npc_modal = TOWN_NPC_MODAL_SCRIPT.new() as TownNpcModal
