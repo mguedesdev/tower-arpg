@@ -189,7 +189,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	# Soltar o botão sempre limpa o "segurar", mesmo se a UI consumiu o clique.
+	# Soltar o botão do mouse ou tecla de skill sempre limpa o "segurar"
 	if event is InputEventMouseButton and not (event as InputEventMouseButton).pressed:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
@@ -200,6 +200,25 @@ func _input(event: InputEvent) -> void:
 			_held[SLOT_RMB] = false
 			if _pending_slot == SLOT_RMB:
 				_cancel_pending()
+	elif event is InputEventKey and not (event as InputEventKey).pressed:
+		var k := event as InputEventKey
+		match k.physical_keycode:
+			KEY_1:
+				_held[SLOT_1] = false
+				if _pending_slot == SLOT_1:
+					_cancel_pending()
+			KEY_2:
+				_held[SLOT_2] = false
+				if _pending_slot == SLOT_2:
+					_cancel_pending()
+			KEY_3:
+				_held[SLOT_3] = false
+				if _pending_slot == SLOT_3:
+					_cancel_pending()
+			KEY_4:
+				_held[SLOT_4] = false
+				if _pending_slot == SLOT_4:
+					_cancel_pending()
 
 
 func _begin_action(slot_idx: int) -> void:

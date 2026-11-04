@@ -5,6 +5,8 @@ class_name GroundItem3D
 
 signal picked_up(item: ItemInstance)
 
+const VFX = preload("res://scripts/vfx/tower_vfx_spawner.gd")
+
 static var _mat_cache: Dictionary = {}
 static var _beam_mat_cache: Dictionary = {}
 static var _cyl_mesh: CylinderMesh = null
@@ -122,6 +124,25 @@ func _process(delta: float) -> void:
 		_label_3d.position.y = 0.75 + sin(_bob_time * 3.0) * 0.04
 
 
+var _is_in_range: bool = false
+
+
+func set_in_pickup_range(in_range: bool) -> void:
+	if _is_in_range == in_range:
+		return
+	_is_in_range = in_range
+	if _label_3d != null:
+		var r_col: Color = item.get_rarity_color() if item != null else Color.WHITE
+		if in_range:
+			_label_3d.modulate = Color(1.0, 0.95, 0.70)
+			_label_3d.pixel_size = 0.012
+			_label_3d.outline_size = 14
+		else:
+			_label_3d.modulate = r_col.lightened(0.40)
+			_label_3d.pixel_size = 0.010
+			_label_3d.outline_size = 12
+
+
 ## Chamado exclusivamente ao apertar [E] próximo ao item
 func attempt_pickup(_player: Node = null) -> bool:
 	if is_picked or item == null:
@@ -141,6 +162,10 @@ func attempt_pickup(_player: Node = null) -> bool:
 	if backpack.auto_add_item(item):
 		is_picked = true
 		picked_up.emit(item)
+		if scene != null:
+			var vfx_root: Node3D = scene as Node3D
+			if vfx_root != null:
+				VFX.impact(vfx_root, global_position + Vector3.UP * 0.35, 0.65)
 		if scene.has_method("notify_item_pickup"):
 			scene.call("notify_item_pickup", item)
 		queue_free()

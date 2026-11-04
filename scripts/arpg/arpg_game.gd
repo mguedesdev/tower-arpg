@@ -63,6 +63,7 @@ var current_zone_id: String = "town"
 var _wolf_model_available: bool = false
 var _boss_model_available: bool = false
 var _pause_menu: PanelContainer
+var _status_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -382,11 +383,22 @@ func _update_campaign_world(delta: float) -> void:
 			if station.update_proximity(p_pos, delta) and near_station == null:
 				near_station = station
 
-	var near_item: GroundItem3D = _get_nearest_ground_item(3.2)
-	if near_item != null and (town_npc_modal == null or not town_npc_modal.visible):
+	var near_item: GroundItem3D = _get_nearest_ground_item(3.5)
+	if _ground_items_root != null:
+		for child in _ground_items_root.get_children():
+			if child is GroundItem3D and is_instance_valid(child) and not child.is_picked:
+				child.set_in_pickup_range(child == near_item)
+
+	if _status_timer > 0.0:
+		_status_timer -= delta
+		if _status_timer <= 0.0 and status_label != null:
+			status_label.text = ""
+	elif near_item != null and (town_npc_modal == null or not town_npc_modal.visible):
 		status_label.text = "✦ Pressione [E] para coletar: %s" % near_item.item.get_display_name()
 	elif near_station != null and (town_npc_modal == null or not town_npc_modal.visible):
 		status_label.text = "%s — Pressione [E] para interagir" % near_station.station_title
+	elif status_label != null and (status_label.text.begins_with("✦ Pressione [E]") or status_label.text.ends_with("Pressione [E] para interagir")):
+		status_label.text = ""
 
 	for gate in _active_portals:
 		if is_instance_valid(gate):
@@ -563,11 +575,13 @@ func _on_town_respec_build_requested() -> void:
 func notify_item_pickup(item: ItemInstance) -> void:
 	if status_label != null:
 		status_label.text = "✦ %s coletado! Pressione [I] para ver na Mochila." % item.get_display_name()
+		_status_timer = 3.5
 
 
 func notify_inventory_full() -> void:
 	if status_label != null:
 		status_label.text = "⚠ MOCHILA CHEIA! Abra o Inventário [I] para organizar ou descartar itens."
+		_status_timer = 4.0
 
 
 func _on_health_changed(current: int, maximum: int) -> void:
