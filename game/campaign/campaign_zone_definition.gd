@@ -39,7 +39,7 @@ static func build_default_campaign_zones() -> Dictionary:
 	town.next_zone_label = "Estrada Profanada (Nv. 1)"
 	town.next_gate_pos = Vector3(0.0, 0.0, -16.5)
 	town.waypoint_pos = Vector3(4.8, 0.0, 2.8)
-	town.default_spawn_pos = Vector3(0.0, 0.0, 2.4)
+	town.default_spawn_pos = Vector3(0.0, 0.0, 5.2)
 	zones[town.zone_id] = town
 
 	# 1. ZONA 1 — Estrada Profanada (estilo Blood Moor / Coast)

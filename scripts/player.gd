@@ -95,6 +95,12 @@ func set_lobby_mode(enabled: bool) -> void:
 			visual.rotation.z = 0.0
 
 func _ready() -> void:
+	motion_mode = CharacterBody3D.MOTION_MODE_GROUNDED
+	floor_stop_on_slope = true
+	floor_constant_speed = true
+	floor_snap_length = 0.25
+	floor_max_angle = deg_to_rad(45.0)
+	wall_min_slide_angle = deg_to_rad(15.0)
 	if skill_controller == null:
 		skill_controller = get_node_or_null("SkillController") as PlayerSkillController
 		if skill_controller == null:

@@ -282,20 +282,22 @@ func _physics_process(delta: float) -> void:
 
 	# Se for o botão primário (LMB) e clicou no chão: move o personagem (Click-to-Move estilo Albion/Diablo)
 	if _pending_slot == SLOT_LMB and _pending_target == null:
-		var dest: Variant = get_cursor_ground_point()
+		var dest: Variant = null
+		if _held[SLOT_LMB]:
+			dest = get_cursor_ground_point()
 		if not (dest is Vector3) and _has_ground_point:
 			dest = _pending_ground_point
 		if dest is Vector3:
 			var to_dest: Vector3 = (dest as Vector3) - character.global_position
 			to_dest.y = 0.0
-			if to_dest.length() > 0.45:
+			if to_dest.length() > 0.35:
 				character.chase_direction = to_dest.normalized()
 			else:
 				character.chase_direction = Vector3.ZERO
-				if not _held[SLOT_LMB]:
-					_cancel_pending()
+				_cancel_pending()
 		else:
 			character.chase_direction = Vector3.ZERO
+			_cancel_pending()
 		return
 
 	# Sem alvo em slots de skill (RMB, 1, 2, 3, 4): golpeia na direção do cursor.

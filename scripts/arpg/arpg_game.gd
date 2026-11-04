@@ -608,17 +608,6 @@ func _input(event: InputEvent) -> void:
 			player.skill_controller.set_enabled(true)
 		if skill_bar_hud != null:
 			skill_bar_hud.visible = true
-
-	# Placa de Alvo Selecionado no Topo Central (estilo Albion)
-	var target_frame_script = load("res://game/ui/campaign/target_frame_hud.gd")
-	if target_frame_script != null:
-		target_frame = target_frame_script.new()
-		$HUD.add_child(target_frame)
-		if player != null and player.skill_controller != null:
-			player.skill_controller.target_selected.connect(func(target_enemy: TowerEnemy):
-				if target_frame != null:
-					target_frame.set_target(target_enemy, area_level)
-			)
 		_load_campaign_zone("town")
 
 
