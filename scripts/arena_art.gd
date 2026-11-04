@@ -586,4 +586,3 @@ func _build_campaign_zone_props(zone_id: String) -> void:
 			Vector3(-9.5, 0.0, -4.5), Vector3(9.5, 0.0, -4.5),
 		]:
 			_gravestone(extra_grave, rng.randf_range(-0.25, 0.25))
-

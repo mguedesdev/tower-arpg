@@ -27,6 +27,9 @@ const HealthBar3DScript = preload("res://core/combat/enemy_health_bar_3d.gd")
 @export var xp_reward_multiplier: int = 1
 @export var is_mini_boss: bool = false
 @export var aggro_radius: float = 999.0
+@export var show_overhead_health_bar: bool = true
+@export var custom_stop_distance: float = -1.0
+@export var custom_hit_range: float = -1.0
 
 # Flash de hit: leve, curto e aplicado somente no inimigo atingido.
 @export_range(0.05, 0.45, 0.01) var hit_flash_opacity: float = 0.22
@@ -91,7 +94,7 @@ func _get_model_path() -> String:
 
 
 func _setup_health_bar() -> void:
-	if health_bar != null:
+	if not show_overhead_health_bar or health_bar != null:
 		return
 	health_bar = HealthBar3DScript.new() as EnemyHealthBar3D
 	health_bar.name = "HealthBar3D"
@@ -217,8 +220,8 @@ func _physics_process(delta: float) -> void:
 			health_bar.align_to_camera(get_viewport())
 		return
 
-	var stop_distance: float = 0.85 if is_mini_boss else 0.70
-	if distance > stop_distance:
+	var stop_distance: float = custom_stop_distance if custom_stop_distance > 0.0 else (0.85 if is_mini_boss else 0.70)
+	if distance > stop_distance and not _is_attacking:
 		var motion: Vector3 = towards.normalized() * movement_speed
 		velocity.x = motion.x
 		velocity.z = motion.z
@@ -229,8 +232,9 @@ func _physics_process(delta: float) -> void:
 	# O boneco foi criado olhando para +Y no Blender -> frente local -Z no Godot.
 	if towards.length_squared() > 0.0001:
 		var desired_yaw: float = atan2(-towards.x, -towards.z)
+		var turn_rate: float = turn_speed if not _is_attacking else turn_speed * 0.25
 		visual.rotation.y = lerp_angle(
-			visual.rotation.y, desired_yaw, clampf(turn_speed * delta, 0.0, 1.0)
+			visual.rotation.y, desired_yaw, clampf(turn_rate * delta, 0.0, 1.0)
 		)
 
 	velocity.y = -0.1 if is_on_floor() else velocity.y - 20.0 * delta
@@ -256,7 +260,7 @@ func _physics_process(delta: float) -> void:
 		health_bar.align_to_camera(get_viewport())
 
 	hit_timer = maxf(hit_timer - delta, 0.0)
-	var hit_range: float = 1.38 if is_mini_boss else 1.15
+	var hit_range: float = custom_hit_range if custom_hit_range > 0.0 else (1.38 if is_mini_boss else 1.15)
 	if distance < hit_range and hit_timer <= 0.0:
 		hit_timer = 1.0
 		target.take_damage(touch_damage)
