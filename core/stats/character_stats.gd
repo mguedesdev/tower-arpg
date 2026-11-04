@@ -20,6 +20,9 @@ const STAT_CRIT_DAMAGE: StringName = &"crit_damage"
 const STAT_COOLDOWN_REDUCTION: StringName = &"cooldown_reduction"
 const STAT_ARMOR: StringName = &"armor"
 const STAT_AREA_SCALE: StringName = &"area_scale"
+const STAT_STRENGTH: StringName = &"strength"
+const STAT_AGILITY: StringName = &"agility"
+const STAT_INTELLIGENCE: StringName = &"intelligence"
 
 const STAT_LIMITS: Dictionary = {
 	&"max_health": {"min": 1.0, "max": 99999.0, "is_int": true},
@@ -31,6 +34,9 @@ const STAT_LIMITS: Dictionary = {
 	&"cooldown_reduction": {"min": 0.0, "max": 0.75, "is_int": false},
 	&"armor": {"min": -50.0, "max": 200.0, "is_int": false},
 	&"area_scale": {"min": 0.3, "max": 4.0, "is_int": false},
+	&"strength": {"min": 0.0, "max": 9999.0, "is_int": true},
+	&"agility": {"min": 0.0, "max": 9999.0, "is_int": true},
+	&"intelligence": {"min": 0.0, "max": 9999.0, "is_int": true},
 }
 
 var _base_values: Dictionary = {
@@ -43,6 +49,9 @@ var _base_values: Dictionary = {
 	STAT_COOLDOWN_REDUCTION: 0.0,
 	STAT_ARMOR: 0.0,
 	STAT_AREA_SCALE: 1.0,
+	STAT_STRENGTH: 20.0,
+	STAT_AGILITY: 14.0,
+	STAT_INTELLIGENCE: 10.0,
 }
 
 var _cached_values: Dictionary = {}

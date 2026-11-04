@@ -18,6 +18,13 @@ const TOWN_INTERACTABLE_SCRIPT = preload("res://game/campaign/town_interactable_
 const ZONE_PORTAL_SCRIPT = preload("res://game/campaign/zone_portal_3d.gd")
 const TOWN_NPC_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/town_npc_modal.gd")
 const SKILL_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/skill_bar_hud.gd")
+const ITEM_DEF_SCRIPT = preload("res://core/items/item_definition.gd")
+const ITEM_INST_SCRIPT = preload("res://core/items/item_instance.gd")
+const ITEM_DB_SCRIPT = preload("res://core/items/item_database.gd")
+const SPATIAL_INV_SCRIPT = preload("res://core/items/spatial_inventory_grid.gd")
+const CHAR_EQUIP_SCRIPT = preload("res://core/items/character_equipment.gd")
+const INV_MODAL_SCRIPT: Script = preload("res://game/ui/items/inventory_equipment_modal.gd")
+const GROUND_ITEM_SCRIPT: Script = preload("res://game/items/ground_item_3d.gd")
 const VFX_EFFECT_SCRIPT: Script = preload("res://scripts/vfx/tower_vfx_effect.gd")
 const VFX_SPAWNER = preload("res://scripts/vfx/tower_vfx_spawner.gd")
 const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
@@ -54,6 +61,11 @@ var talent_tree_modal: TalentTreeModal
 var lobby_hud: SanctuaryLobbyHUD
 var town_npc_modal: TownNpcModal
 var skill_bar_hud: SkillBarHUD
+var inventory_modal: InventoryEquipmentModal
+var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 4)
+var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
+var equipment: CharacterEquipment = CharacterEquipment.new()
+var _ground_items_root: Node3D
 var in_lobby: bool = true
 var is_campaign_mode: bool = false
 var current_zone_id: String = "town"
@@ -118,6 +130,7 @@ func _ready() -> void:
 	$HUD.add_child(town_npc_modal)
 	town_npc_modal.waypoint_travel_requested.connect(_on_waypoint_travel_requested)
 	town_npc_modal.respec_build_requested.connect(_on_town_respec_build_requested)
+	town_npc_modal.identify_items_requested.connect(_on_town_identify_items_requested)
 
 	level_up_modal.add_to_group("blocking_modal")
 	run_result_modal.add_to_group("blocking_modal")
@@ -130,6 +143,15 @@ func _ready() -> void:
 	if player != null and player.skill_controller != null:
 		skill_bar_hud.bind_controller(player.skill_controller)
 	skill_bar_hud.visible = false
+
+	_ground_items_root = Node3D.new()
+	_ground_items_root.name = "GroundItems"
+	add_child(_ground_items_root)
+
+	inventory_modal = INV_MODAL_SCRIPT.new() as InventoryEquipmentModal
+	$HUD.add_child(inventory_modal)
+	inventory_modal.bind_context(backpack, equipment, player.stats)
+	_grant_starter_items()
 
 	_campaign_props_root = Node3D.new()
 	_campaign_props_root.name = "CampaignInteractiveProps"
@@ -218,6 +240,9 @@ func _enter_sanctuary_lobby() -> void:
 		subtitle_text_label.text = "DARK FANTASY / SPAWN ALTAR"
 	if town_npc_modal != null:
 		town_npc_modal.close_modal()
+	if inventory_modal != null:
+		inventory_modal.close_inventory()
+	_clear_ground_items()
 	if level_up_modal != null:
 		level_up_modal.hide_modal()
 	if run_result_modal != null:
@@ -435,13 +460,17 @@ func _spawn_single_enemy(spec: Dictionary) -> void:
 	enemy.set_target(player)
 	enemies_root.add_child(enemy)
 	enemy.global_position = player.global_position + Vector3(cos(angle) * radius, 0, sin(angle) * radius)
-	enemy.died.connect(_on_enemy_died.bind(maxi(1, enemy.xp_reward_multiplier)))
+	enemy.died.connect(func() -> void:
+		_on_enemy_died(maxi(1, enemy.xp_reward_multiplier), enemy)
+	)
 
 
-func _on_enemy_died(xp_mult: int = 1) -> void:
+func _on_enemy_died(xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 	if not game_over:
 		for _i in range(maxi(1, xp_mult)):
 			run_progression.grant_enemy_kill_xp()
+	if is_instance_valid(enemy):
+		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss)
 	kills += 1
 	enemies_left = maxi(enemies_left - 1, 0)
 	kills_label.text = "Abates: %d" % kills
@@ -457,12 +486,105 @@ func _on_enemy_died(xp_mult: int = 1) -> void:
 		get_tree().create_timer(1.6, false).timeout.connect(_start_wave)
 
 
+func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false) -> void:
+	if not is_instance_valid(_ground_items_root):
+		return
+	var chance: float = 0.95 if is_boss else 0.42
+	if randf() > chance:
+		return
+	var count: int = randi_range(2, 3) if is_boss else 1
+	for i in range(count):
+		var ilvl: int = maxi(1, current_wave)
+		var force_r: int = -1
+		if is_boss and i == 0:
+			force_r = ItemInstance.ItemRarity.RARE
+		var item: ItemInstance = ItemDatabase.generate_loot(ilvl, force_r)
+		var ground_drop: GroundItem3D = GROUND_ITEM_SCRIPT.new() as GroundItem3D
+		_ground_items_root.add_child(ground_drop)
+		var spread := Vector3(randf_range(-0.6, 0.6), 0.0, randf_range(-0.6, 0.6))
+		ground_drop.setup_drop(item, pos + spread)
+
+
+func _grant_starter_items() -> void:
+	if backpack == null:
+		return
+	backpack.clear()
+	# Dá ao jogador alguns itens de partida com tamanhos diferentes para testar o grid:
+	# 1. Espada Longa 1H (2x3)
+	var sword: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "sword_steel")
+	backpack.auto_add_item(sword)
+
+	# 2. Peitoral de Placas (2x3)
+	var chest: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "chest_plate")
+	backpack.auto_add_item(chest)
+
+	# 3. Elmo de Ferro (2x2)
+	var helm: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "helm_iron")
+	backpack.auto_add_item(helm)
+
+	# 4. Botas de Placa (2x2)
+	var boots: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "boots_plate")
+	backpack.auto_add_item(boots)
+
+	# 5. Adaga (2x2)
+	var dagger: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "dagger_sharp")
+	backpack.auto_add_item(dagger)
+
+	# 6. Espada Montante 2H (2x4) Mágica Não-Identificada
+	var greatsword: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "greatsword_iron")
+	greatsword.is_identified = false
+	backpack.auto_add_item(greatsword)
+
+	# 7. Anel de Rubi (1x1) (+Força)
+	var ring: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "ring_ruby")
+	backpack.auto_add_item(ring)
+
+	# 8. Amuleto (1x1) (+Agilidade)
+	var amulet: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "amulet_hawk")
+	backpack.auto_add_item(amulet)
+
+	# 9. Poção de Vida (1x1)
+	var pot: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")
+	backpack.auto_add_item(pot)
+
+
+func _clear_ground_items() -> void:
+	if _ground_items_root != null:
+		for child in _ground_items_root.get_children():
+			child.queue_free()
+
+
+func notify_item_pickup(item: ItemInstance) -> void:
+	if status_label != null:
+		status_label.text = "✦ %s coletado! Pressione [I] para ver na Mochila." % item.get_display_name()
+
+
+func notify_inventory_full() -> void:
+	if status_label != null:
+		status_label.text = "⚠ MOCHILA CHEIA! Abra o Inventário [I] para organizar ou descartar itens."
+
+
+func _on_town_identify_items_requested() -> void:
+	var count: int = 0
+	for it in backpack.items:
+		if not it.is_identified:
+			it.identify()
+			count += 1
+	if count > 0:
+		status_label.text = "✦ O Sábio identificou %d item(ns) na sua mochila!" % count
+	else:
+		status_label.text = "✦ Todos os itens na mochila já estão identificados."
+	if inventory_modal != null:
+		inventory_modal._refresh_all()
+
+
 # ===============================================================
 # MODO CAMPANHA ARPG (VILA + ZONAS CONECTADAS + NPCs + WAYPOINTS)
 # ===============================================================
 func _clear_campaign_props() -> void:
 	_active_interactables.clear()
 	_active_portals.clear()
+	_clear_ground_items()
 	if _campaign_props_root != null:
 		for child in _campaign_props_root.get_children():
 			child.queue_free()
@@ -628,7 +750,9 @@ func _spawn_campaign_packs(zone_def: CampaignZoneDefinition) -> void:
 			enemy.set_target(player)
 			enemies_root.add_child(enemy)
 			enemy.global_position = pos
-			enemy.died.connect(_on_enemy_died.bind(maxi(1, enemy.xp_reward_multiplier)))
+			enemy.died.connect(func() -> void:
+				_on_enemy_died(maxi(1, enemy.xp_reward_multiplier), enemy)
+			)
 			enemies_left += 1
 
 

@@ -9,6 +9,7 @@ class_name TownNpcModal
 
 signal waypoint_travel_requested(zone_id: String)
 signal respec_build_requested()
+signal identify_items_requested()
 
 const COLOR_BRONZE_BORDER := Color(0.66, 0.50, 0.25, 0.96)
 const COLOR_GOLD_TITLE := Color(0.94, 0.80, 0.46)
@@ -199,6 +200,7 @@ func _populate_identifier_respec() -> void:
 
 	var id_btn := _make_gothic_button("🔍 IDENTIFICAR TODOS OS ITENS DO INVENTÁRIO (GRÁTIS)", false)
 	id_btn.pressed.connect(func() -> void:
+		identify_items_requested.emit()
 		_feedback_label.text = "✦ Todos os seus itens foram inspecionados pelo Sábio!"
 	)
 	_content_box.add_child(id_btn)
