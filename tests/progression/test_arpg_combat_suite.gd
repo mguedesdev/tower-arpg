@@ -132,9 +132,18 @@ func _test_scene_integration_skillbar_and_modes() -> void:
 	_check(main_node.player.skill_controller.enabled, "20. PlayerSkillController fica ativado ao entrar na Campanha")
 	_check(not main_node.attack.auto_attack, "21. Ataque automatico da Torre fica desativado na Campanha (apenas combate ativo)")
 
+	# Progressão ARPG: ritmo cadenciado e sem popups de cartas de sobrevivente
+	var init_hp: int = main_node.player.stats.get_max_health()
+	var init_str: int = int(roundi(main_node.player.stats.get_base_stat(CharacterStats.STAT_STRENGTH)))
+	main_node.run_progression.grant_xp(50) # Atinge o nível 2 com balance ARPG
+	_check(main_node.run_progression.state.level == 2, "22a. Ganho de XP cadenciado atinge nível 2 aos 50 XP")
+	_check(not main_node.level_up_modal.visible, "22b. Modo ARPG não abre modal de cartas de sobrevivente ao subir de nível")
+	_check(main_node.player.stats.get_max_health() == init_hp + 12, "22c. Nível 2 concedeu +12 de vida máxima passiva")
+	_check(int(roundi(main_node.player.stats.get_base_stat(CharacterStats.STAT_STRENGTH))) == init_str + 2, "22d. Nível 2 concedeu +2 de Força passiva aos requisitos")
+
 	# Ao morrer
 	main_node._on_player_died()
-	_check(not main_node.skill_bar_hud.visible, "22. SkillBarHUD oculta ao morrer")
-	_check(not main_node.player.skill_controller.enabled, "23. PlayerSkillController desativa ao morrer")
+	_check(not main_node.skill_bar_hud.visible, "23a. SkillBarHUD oculta ao morrer")
+	_check(not main_node.player.skill_controller.enabled, "23b. PlayerSkillController desativa ao morrer")
 
 	main_node.queue_free()

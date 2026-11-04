@@ -70,16 +70,23 @@ func setup_drop(p_item: ItemInstance, spawn_pos: Vector3) -> void:
 		_light_beam.material_override = beam_mat
 		add_child(_light_beam)
 
-	# 3. Placa de Texto Flutuante (Label 3D) com a cor da Raridade
+	# 3. Placa de Texto Flutuante Estilo Diablo 2 / Path of Exile (Grande, Nítida e com Fundo Escuro)
 	_label_3d = Label3D.new()
 	_label_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label_3d.no_depth_test = true
-	_label_3d.font_size = 18
-	_label_3d.outline_size = 4
-	_label_3d.outline_modulate = Color.BLACK
-	_label_3d.modulate = r_col.lightened(0.2)
-	_label_3d.text = item.get_display_name() if item != null else "Item"
-	_label_3d.position = Vector3(0.0, 0.55, 0.0)
+	_label_3d.shaded = false
+	_label_3d.render_priority = 25
+	_label_3d.outline_render_priority = 24
+	_label_3d.pixel_size = 0.010
+	_label_3d.font_size = 30
+	_label_3d.outline_size = 10
+	_label_3d.outline_modulate = Color(0.01, 0.01, 0.02, 1.0)
+	_label_3d.modulate = r_col.lightened(0.40)
+	_label_3d.background_color = Color(0.035, 0.03, 0.045, 0.92)
+	_label_3d.background_render_priority = 23
+	var prefix: String = "✦ " if item != null and item.rarity != ItemInstance.ItemRarity.NORMAL else ""
+	_label_3d.text = "  %s%s  " % [prefix, item.get_display_name() if item != null else "Item"]
+	_label_3d.position = Vector3(0.0, 0.75, 0.0)
 	add_child(_label_3d)
 
 	# Colisor esférico para detecção do jogador
@@ -96,7 +103,7 @@ func _process(delta: float) -> void:
 		_mesh_instance.rotation.y += delta * 1.5
 		_mesh_instance.position.y = 0.12 + sin(_bob_time * 3.0) * 0.04
 	if _label_3d != null:
-		_label_3d.position.y = 0.55 + sin(_bob_time * 3.0) * 0.04
+		_label_3d.position.y = 0.75 + sin(_bob_time * 3.0) * 0.04
 
 
 func _on_body_entered(body: Node3D) -> void:

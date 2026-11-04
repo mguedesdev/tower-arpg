@@ -159,6 +159,7 @@ func _ready() -> void:
 	campaign_zones = CAMPAIGN_ZONE_DEF_SCRIPT.build_default_campaign_zones()
 
 	run_progression.choices_changed.connect(_on_choices_changed)
+	run_progression.level_gained.connect(_on_level_gained)
 
 	player.health_changed.connect(_on_health_changed)
 	player.died.connect(_on_player_died)
@@ -375,6 +376,7 @@ func _start_new_run() -> void:
 	player.configure_character(player.character_definition)
 	attack.ability_state.setup_from_definition(attack.ability_state.definition)
 
+	run_progression.balance = preload("res://content/progression/balance_dev.tres")
 	run_progression.reset_run()
 	permanent_progression.apply_to_run(
 		player.character_definition.class_id if player.character_definition != null else "warrior",
@@ -467,8 +469,17 @@ func _spawn_single_enemy(spec: Dictionary) -> void:
 
 func _on_enemy_died(xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 	if not game_over:
-		for _i in range(maxi(1, xp_mult)):
-			run_progression.grant_enemy_kill_xp()
+		if is_campaign_mode:
+			var xp_val: int = 3
+			if is_instance_valid(enemy):
+				if enemy.is_mini_boss:
+					xp_val = 28
+				elif enemy.xp_reward_multiplier > 1:
+					xp_val = 6
+			run_progression.grant_xp(xp_val)
+		else:
+			for _i in range(maxi(1, xp_mult)):
+				run_progression.grant_enemy_kill_xp()
 	if is_instance_valid(enemy):
 		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss)
 	kills += 1
@@ -625,6 +636,12 @@ func _start_campaign_mode() -> void:
 	player.configure_character(player.character_definition)
 	attack.ability_state.setup_from_definition(attack.ability_state.definition)
 
+	var arpg_bal := ProgressionBalance.new()
+	arpg_bal.first_level_xp = 50
+	arpg_bal.xp_linear_growth = 35
+	arpg_bal.xp_quadratic_growth = 10
+	arpg_bal.enemy_xp = 3
+	run_progression.balance = arpg_bal
 	run_progression.reset_run()
 	permanent_progression.apply_to_run(
 		player.character_definition.class_id if player.character_definition != null else "warrior",
@@ -822,7 +839,7 @@ func _on_town_respec_build_requested() -> void:
 
 
 func _on_choices_changed(pending: int) -> void:
-	if game_over:
+	if game_over or is_campaign_mode:
 		return
 	if in_lobby and pending > 0:
 		in_lobby = false
@@ -835,7 +852,7 @@ func _on_choices_changed(pending: int) -> void:
 
 
 func _present_next_level_up_choice() -> void:
-	if game_over or run_progression == null:
+	if game_over or is_campaign_mode or run_progression == null:
 		return
 	if run_progression.state.pending_upgrade_choices <= 0:
 		if level_up_modal != null:
@@ -854,6 +871,26 @@ func _present_next_level_up_choice() -> void:
 
 	get_tree().paused = true
 	level_up_modal.present_offers(offers, run_progression.state, player.stats)
+
+
+func _on_level_gained(new_lvl: int) -> void:
+	if is_campaign_mode:
+		# Modo ARPG: Sem pop-up de cartas no meio da tela (estilo PoE/Diablo 2)!
+		# O personagem recebe atributos base passivos automáticos (+12 HP, +2 STR, +1 AGI, +1 DANO) e recupera a vida
+		if player != null and player.stats != null:
+			player.stats.set_base_stat(CharacterStats.STAT_MAX_HEALTH, player.stats.get_base_stat(CharacterStats.STAT_MAX_HEALTH) + 12.0)
+			player.stats.set_base_stat(CharacterStats.STAT_STRENGTH, player.stats.get_base_stat(CharacterStats.STAT_STRENGTH) + 2.0)
+			player.stats.set_base_stat(CharacterStats.STAT_AGILITY, player.stats.get_base_stat(CharacterStats.STAT_AGILITY) + 1.0)
+			player.stats.set_base_stat(CharacterStats.STAT_DAMAGE, player.stats.get_base_stat(CharacterStats.STAT_DAMAGE) + 1.0)
+			player.max_health = player.stats.get_max_health()
+			player.health = player.max_health
+			_on_health_changed(player.health, player.max_health)
+		if run_progression != null and run_progression.state != null:
+			run_progression.state.pending_upgrade_choices = 0
+		if status_label != null:
+			status_label.text = "✦ NÍVEL %d ALCANÇADO! (+12 Vida Máxima, +2 Força, +1 Agilidade, +1 Dano)" % new_lvl
+		if inventory_modal != null and inventory_modal.visible:
+			inventory_modal._refresh_stats_view()
 
 
 func _on_upgrade_chosen(upgrade: ProgressionUpgradeDefinition) -> void:
