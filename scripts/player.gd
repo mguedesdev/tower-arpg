@@ -227,8 +227,29 @@ func _configure_imported_animations() -> void:
 		attack_names[0], attack_names[1], attack_names[2]
 	])
 
+var _is_being_pulled: bool = false
+var _pull_target_pos: Vector3 = Vector3.ZERO
+var _pull_timer: float = 0.0
+
+
+func pull_towards(target_position: Vector3, duration: float = 0.40) -> void:
+	_is_being_pulled = true
+	_pull_target_pos = target_position
+	_pull_timer = duration
+	velocity = Vector3.ZERO
+	cast_lock_remaining = duration
+
+
 func _physics_process(delta: float) -> void:
 	if not alive:
+		return
+	if _is_being_pulled:
+		_pull_timer -= delta
+		var p_dest: Vector3 = Vector3(_pull_target_pos.x, global_position.y, _pull_target_pos.z)
+		global_position = global_position.move_toward(p_dest, 22.0 * delta)
+		velocity = Vector3.ZERO
+		if _pull_timer <= 0.0 or global_position.distance_to(p_dest) < 0.4:
+			_is_being_pulled = false
 		return
 	if stats != null:
 		stats.tick_temporary_modifiers(delta)
