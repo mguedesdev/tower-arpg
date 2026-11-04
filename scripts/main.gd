@@ -17,6 +17,7 @@ const CAMPAIGN_ZONE_DEF_SCRIPT = preload("res://game/campaign/campaign_zone_defi
 const TOWN_INTERACTABLE_SCRIPT = preload("res://game/campaign/town_interactable_3d.gd")
 const ZONE_PORTAL_SCRIPT = preload("res://game/campaign/zone_portal_3d.gd")
 const TOWN_NPC_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/town_npc_modal.gd")
+const SKILL_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/skill_bar_hud.gd")
 const VFX_EFFECT_SCRIPT: Script = preload("res://scripts/vfx/tower_vfx_effect.gd")
 const VFX_SPAWNER = preload("res://scripts/vfx/tower_vfx_spawner.gd")
 const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
@@ -52,6 +53,7 @@ var run_result_modal: RunResultModal
 var talent_tree_modal: TalentTreeModal
 var lobby_hud: SanctuaryLobbyHUD
 var town_npc_modal: TownNpcModal
+var skill_bar_hud: SkillBarHUD
 var in_lobby: bool = true
 var is_campaign_mode: bool = false
 var current_zone_id: String = "town"
@@ -116,6 +118,18 @@ func _ready() -> void:
 	$HUD.add_child(town_npc_modal)
 	town_npc_modal.waypoint_travel_requested.connect(_on_waypoint_travel_requested)
 	town_npc_modal.respec_build_requested.connect(_on_town_respec_build_requested)
+
+	level_up_modal.add_to_group("blocking_modal")
+	run_result_modal.add_to_group("blocking_modal")
+	talent_tree_modal.add_to_group("blocking_modal")
+	town_npc_modal.add_to_group("blocking_modal")
+	lobby_hud.add_to_group("blocking_modal")
+
+	skill_bar_hud = SKILL_BAR_HUD_SCRIPT.new() as SkillBarHUD
+	$HUD.add_child(skill_bar_hud)
+	if player != null and player.skill_controller != null:
+		skill_bar_hud.bind_controller(player.skill_controller)
+	skill_bar_hud.visible = false
 
 	_campaign_props_root = Node3D.new()
 	_campaign_props_root.name = "CampaignInteractiveProps"
@@ -212,6 +226,10 @@ func _enter_sanctuary_lobby() -> void:
 		talent_tree_modal.hide_lobby()
 	if xp_hud != null:
 		xp_hud.visible = false
+	if skill_bar_hud != null:
+		skill_bar_hud.visible = false
+	if player != null and player.skill_controller != null:
+		player.skill_controller.set_enabled(false)
 	if lobby_hud != null:
 		lobby_hud.visible = true
 
@@ -243,6 +261,11 @@ func _enter_sanctuary_lobby() -> void:
 		permanent_progression.get_meta_unlocks_for_class(cid)
 	)
 	attack.sync_from_ability_state()
+	attack.auto_attack = false
+	if player != null and player.skill_controller != null:
+		player.skill_controller.set_enabled(false)
+	if skill_bar_hud != null:
+		skill_bar_hud.visible = false
 	if lobby_hud != null:
 		lobby_hud.refresh_lobby()
 
@@ -335,6 +358,12 @@ func _start_new_run() -> void:
 		attack.ability_state
 	)
 	attack.sync_from_ability_state()
+	attack.auto_attack = false
+	if player != null and player.skill_controller != null:
+		player.skill_controller.set_enabled(true)
+	if skill_bar_hud != null:
+		skill_bar_hud.visible = true
+		skill_bar_hud.refresh_slots()
 
 	_on_health_changed(player.health, player.max_health)
 	_on_form_changed(attack.form_label())
@@ -482,6 +511,12 @@ func _start_campaign_mode() -> void:
 		attack.ability_state
 	)
 	attack.sync_from_ability_state()
+	attack.auto_attack = false
+	if player != null and player.skill_controller != null:
+		player.skill_controller.set_enabled(true)
+	if skill_bar_hud != null:
+		skill_bar_hud.visible = true
+		skill_bar_hud.refresh_slots()
 	_on_health_changed(player.health, player.max_health)
 	_on_form_changed(attack.form_label())
 
@@ -651,6 +686,12 @@ func _on_town_respec_build_requested() -> void:
 	var cid: String = player.character_definition.class_id if player.character_definition != null else "warrior"
 	permanent_progression.apply_to_run(cid, player.stats, run_progression, attack.ability_state)
 	attack.sync_from_ability_state()
+	attack.auto_attack = false
+	if player != null and player.skill_controller != null:
+		player.skill_controller.set_enabled(true)
+	if skill_bar_hud != null:
+		skill_bar_hud.visible = true
+		skill_bar_hud.refresh_slots()
 	player.health = player.max_health
 	_on_health_changed(player.health, player.max_health)
 	_on_form_changed(attack.form_label())
@@ -711,6 +752,10 @@ func _on_player_died() -> void:
 	if game_over:
 		return
 	game_over = true
+	if player != null and player.skill_controller != null:
+		player.skill_controller.set_enabled(false)
+	if skill_bar_hud != null:
+		skill_bar_hud.visible = false
 	if level_up_modal != null:
 		level_up_modal.hide_modal()
 

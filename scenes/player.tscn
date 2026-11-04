@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/attack_controller.gd" id="2_attack"]
 [ext_resource type="PackedScene" path="res://scenes/placeholder_knight.tscn" id="3_placeholder"]
+[ext_resource type="Script" path="res://scripts/player_skill_controller.gd" id="4_skills"]
 
 [sub_resource type="CapsuleShape3D" id="PlayerCapsule"]
 radius = 0.32
@@ -26,3 +27,7 @@ cast_shadow = 0
 
 [node name="AttackController" type="Node" parent="."]
 script = ExtResource("2_attack")
+auto_attack = false
+
+[node name="SkillController" type="Node" parent="."]
+script = ExtResource("4_skills")

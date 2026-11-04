@@ -33,6 +33,7 @@ const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
 
 @onready var visual: Node3D = $Visual
 @onready var attack_controller: Node = $AttackController
+@onready var skill_controller: PlayerSkillController = get_node_or_null("SkillController") as PlayerSkillController
 
 var stats: CharacterStats = CharacterStats.new()
 var health: int = 100
@@ -56,9 +57,33 @@ var _last_move_dir: Vector3 = Vector3.ZERO
 var _last_real_speed: float = 0.0
 var in_lobby_mode: bool = false
 var lobby_yaw_degrees: float = 36.0
+## Modo Campanha ARPG: direção de perseguição ao mob clicado (WASD sempre tem prioridade).
+var chase_direction: Vector3 = Vector3.ZERO
+## Trava o movimento enquanto executa um golpe/skill (cast lock).
+var cast_lock_remaining: float = 0.0
+
+
+## Retorna true se o jogador está apertando WASD/setas neste frame.
+func has_manual_move_input() -> bool:
+	if in_lobby_mode:
+		return false
+	return Input.get_vector("move_left", "move_right", "move_up", "move_down").length_squared() > 0.01
+
+
+## Vira o Cavaleiro na hora para a direção da mira/alvo (resposta instantânea estilo PoE 2).
+func face_towards(direction: Vector3, hold_time: float = 0.30) -> void:
+	var flat: Vector3 = Vector3(direction.x, 0.0, direction.z)
+	if flat.length_squared() < 0.0001 or visual == null:
+		return
+	visual.rotation.y = atan2(flat.x, flat.z)
+	facing_hold_remaining = maxf(facing_hold_remaining, hold_time)
 
 func set_lobby_mode(enabled: bool) -> void:
 	in_lobby_mode = enabled
+	chase_direction = Vector3.ZERO
+	cast_lock_remaining = 0.0
+	if skill_controller != null:
+		skill_controller.set_enabled(not enabled)
 	if enabled:
 		velocity = Vector3.ZERO
 		combat_target = null
@@ -68,6 +93,14 @@ func set_lobby_mode(enabled: bool) -> void:
 			visual.rotation.z = 0.0
 
 func _ready() -> void:
+	if skill_controller == null:
+		skill_controller = get_node_or_null("SkillController") as PlayerSkillController
+		if skill_controller == null:
+			var sc_script: Script = load("res://scripts/player_skill_controller.gd") as Script
+			if sc_script != null:
+				skill_controller = sc_script.new() as PlayerSkillController
+				skill_controller.name = "SkillController"
+				add_child(skill_controller)
 	_register_input_actions()
 	if character_definition == null and ResourceLoader.exists(DEFAULT_CLASS_PATH):
 		character_definition = load(DEFAULT_CLASS_PATH) as CharacterDefinition
@@ -186,6 +219,13 @@ func _physics_process(delta: float) -> void:
 	# Nao normalizar o resultado: isso faria um toque leve no controle virar 100%.
 	var input_axis: Vector2 = Vector2.ZERO if in_lobby_mode else Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var desired_direction: Vector3 = _camera_relative_direction(input_axis)
+	# Sem WASD: segue a direção de perseguição ao mob clicado (modo Campanha).
+	if desired_direction.length_squared() < 0.0001 and chase_direction.length_squared() > 0.0001:
+		desired_direction = Vector3(chase_direction.x, 0.0, chase_direction.z).limit_length(1.0)
+	# Durante o golpe/skill o personagem fica plantado (sem deslizar).
+	cast_lock_remaining = maxf(cast_lock_remaining - delta, 0.0)
+	if cast_lock_remaining > 0.0:
+		desired_direction = Vector3.ZERO
 	var target_horizontal_velocity: Vector2 = Vector2(desired_direction.x, desired_direction.z) * move_speed
 	var current_horizontal_velocity: Vector2 = Vector2(velocity.x, velocity.z)
 
