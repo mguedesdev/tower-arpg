@@ -30,6 +30,8 @@ enum EquipmentSlot {
 	RING_2
 }
 
+const BODY_ARMOR = EquipmentSlot.CHEST
+
 @export var base_id: String = ""
 @export var display_name: String = ""
 @export var category: ItemCategory = ItemCategory.WEAPON_1H

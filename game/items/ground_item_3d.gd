@@ -110,7 +110,7 @@ func _on_body_entered(body: Node3D) -> void:
 	attempt_pickup(body as TowerPlayer)
 
 
-func attempt_pickup(player: Node = null) -> bool:
+func attempt_pickup(_player: Node = null) -> bool:
 	if is_picked or item == null:
 		return false
 	var scene = get_tree().current_scene

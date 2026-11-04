@@ -10,7 +10,6 @@ const BOSS_SCENE: PackedScene = preload("res://scenes/enemies/executioner_boss.t
 const BOSS_MODEL_PATH: String = "res://assets/models/skeleton_boss.glb"
 
 const RUN_PROGRESSION_SCRIPT: Script = preload("res://core/progression/run_progression_service.gd")
-const RUN_XP_HUD_SCRIPT: Script = preload("res://game/ui/progression/run_xp_hud.gd")
 const CAMPAIGN_ZONE_DEF_SCRIPT = preload("res://game/campaign/campaign_zone_definition.gd")
 const TOWN_INTERACTABLE_SCRIPT = preload("res://game/campaign/town_interactable_3d.gd")
 const ZONE_PORTAL_SCRIPT = preload("res://game/campaign/zone_portal_3d.gd")
@@ -34,8 +33,8 @@ const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
 @onready var title_text_label: Label = $HUD/TitlePlate/TitleText
 @onready var subtitle_text_label: Label = $HUD/TitlePlate/Subtitle
 @onready var zone_info_label: Label = $HUD/Info/ZoneLabel
-@onready var health_label: Label = $HUD/Info/HealthLabel
-@onready var kills_label: Label = $HUD/Info/KillsLabel
+var health_label: Label = null
+var kills_label: Label = null
 @onready var status_label: Label = $HUD/StatusLabel
 
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -43,10 +42,8 @@ var kills: int = 0
 var enemies_left: int = 0
 var game_over: bool = false
 var area_level: int = 1
-var current_wave: int = 1
 
 var run_progression: RunProgressionService
-var xp_hud: RunXpHUD
 var skill_bar_hud: SkillBarHUD
 var town_npc_modal: TownNpcModal
 var inventory_modal: InventoryEquipmentModal
@@ -98,12 +95,10 @@ func _ready() -> void:
 	run_progression.balance = arpg_bal
 	run_progression.reset_run()
 	run_progression.level_gained.connect(_on_level_gained)
+	run_progression.progress_changed.connect(_on_arpg_progress_changed)
 
-	# HUD de XP
-	xp_hud = RUN_XP_HUD_SCRIPT.new() as RunXpHUD
-	$HUD.add_child(xp_hud)
-	xp_hud.attach_progression(run_progression)
-	xp_hud.visible = true
+	# HUD de Experiência Minimalista ARPG (estilo Albion - barra fina no rodapé)
+	_build_arpg_xp_hud()
 
 	# Barra de Habilidades Ativas (WASD + LMB ataque básico + RMB/1/2/3/4)
 	skill_bar_hud = SKILL_BAR_HUD_SCRIPT.new() as SkillBarHUD
@@ -625,3 +620,75 @@ func _input(event: InputEvent) -> void:
 					target_frame.set_target(target_enemy, area_level)
 			)
 		_load_campaign_zone("town")
+
+
+# ===============================================================
+# HUD DE EXPERIÊNCIA & NÍVEL DO MODO ARPG (SEM WAVES OU ABATES)
+# ===============================================================
+var _arpg_xp_bar: ProgressBar
+var _arpg_xp_label: Label
+
+func _build_arpg_xp_hud() -> void:
+	var xp_container := PanelContainer.new()
+	xp_container.name = "ARPG_XpHUD"
+	xp_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	xp_container.anchors_preset = Control.PRESET_BOTTOM_WIDE
+	xp_container.offset_top = -22.0
+	xp_container.offset_bottom = -6.0
+	xp_container.offset_left = 320.0
+	xp_container.offset_right = -320.0
+	xp_container.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	xp_container.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.05, 0.07, 0.85)
+	style.border_color = Color(0.65, 0.52, 0.22, 0.70)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	xp_container.add_theme_stylebox_override("panel", style)
+
+	_arpg_xp_bar = ProgressBar.new()
+	_arpg_xp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_arpg_xp_bar.show_percentage = false
+	_arpg_xp_bar.anchors_preset = Control.PRESET_FULL_RECT
+	var fill_style := StyleBoxFlat.new()
+	fill_style.bg_color = Color(0.85, 0.68, 0.22, 0.90)
+	fill_style.set_corner_radius_all(3)
+	var bg_bar := StyleBoxFlat.new()
+	bg_bar.bg_color = Color(0.06, 0.08, 0.10, 0.60)
+	_arpg_xp_bar.add_theme_stylebox_override("fill", fill_style)
+	_arpg_xp_bar.add_theme_stylebox_override("background", bg_bar)
+	xp_container.add_child(_arpg_xp_bar)
+
+	_arpg_xp_label = Label.new()
+	_arpg_xp_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_arpg_xp_label.anchors_preset = Control.PRESET_FULL_RECT
+	_arpg_xp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_arpg_xp_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_arpg_xp_label.add_theme_font_size_override("font_size", 11)
+	_arpg_xp_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.82))
+	xp_container.add_child(_arpg_xp_label)
+
+	$HUD.add_child(xp_container)
+	_refresh_arpg_xp_hud()
+
+func _on_arpg_progress_changed(level: int, current_xp: int, xp_required: int) -> void:
+	_update_arpg_xp_display(level, current_xp, xp_required)
+
+func _refresh_arpg_xp_hud() -> void:
+	if run_progression == null or _arpg_xp_bar == null:
+		return
+	var state = run_progression.state
+	var balance = run_progression.balance
+	var lvl: int = state.level if state != null else 1
+	var cur_xp: int = state.xp if state != null else 0
+	var req_xp: int = balance.xp_to_next_level(lvl) if balance != null else 50
+	_update_arpg_xp_display(lvl, cur_xp, req_xp)
+
+func _update_arpg_xp_display(lvl: int, cur_xp: int, req_xp: int) -> void:
+	if _arpg_xp_bar == null or _arpg_xp_label == null:
+		return
+	_arpg_xp_bar.max_value = float(maxi(1, req_xp))
+	_arpg_xp_bar.value = float(cur_xp)
+	var pct: float = (float(cur_xp) / float(maxi(1, req_xp))) * 100.0
+	_arpg_xp_label.text = "✦ Nível %d  •  %d / %d XP (%.1f%%)" % [lvl, cur_xp, req_xp, pct]

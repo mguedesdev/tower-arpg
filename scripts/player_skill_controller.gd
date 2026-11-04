@@ -195,6 +195,8 @@ func _input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			_held[SLOT_LMB] = false
+			if _pending_slot == SLOT_LMB and _pending_target == null:
+				_cancel_pending()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			_held[SLOT_RMB] = false
 
@@ -278,7 +280,25 @@ func _physics_process(delta: float) -> void:
 		_after_cast()
 		return
 
-	# Sem alvo: golpeia no lugar na direção do cursor.
+	# Se for o botão primário (LMB) e clicou no chão: move o personagem (Click-to-Move estilo Albion/Diablo)
+	if _pending_slot == SLOT_LMB and _pending_target == null:
+		var dest: Variant = get_cursor_ground_point()
+		if not (dest is Vector3) and _has_ground_point:
+			dest = _pending_ground_point
+		if dest is Vector3:
+			var to_dest: Vector3 = (dest as Vector3) - character.global_position
+			to_dest.y = 0.0
+			if to_dest.length() > 0.45:
+				character.chase_direction = to_dest.normalized()
+			else:
+				character.chase_direction = Vector3.ZERO
+				if not _held[SLOT_LMB]:
+					_cancel_pending()
+		else:
+			character.chase_direction = Vector3.ZERO
+		return
+
+	# Sem alvo em slots de skill (RMB, 1, 2, 3, 4): golpeia na direção do cursor.
 	character.chase_direction = Vector3.ZERO
 	var cd_left: float = get_cooldown_remaining(def.skill_id)
 	if character.cast_lock_remaining > 0.0 or cd_left > 0.0:

@@ -102,20 +102,12 @@ text = "REFÚGIO SEGURO / ZONA DA CAMPANHA"
 offset_left = 45.0
 offset_top = 125.0
 offset_right = 325.0
-offset_bottom = 230.0
+offset_bottom = 165.0
 theme_override_constants/separation = 4
 
 [node name="ZoneLabel" type="Label" parent="HUD/Info"]
 theme_override_font_sizes/font_size = 20
 text = "Zona: Vila Segura"
-
-[node name="HealthLabel" type="Label" parent="HUD/Info"]
-theme_override_font_sizes/font_size = 19
-text = "Vida: 100 / 100"
-
-[node name="KillsLabel" type="Label" parent="HUD/Info"]
-theme_override_font_sizes/font_size = 18
-text = "Abates: 0"
 
 [node name="StatusLabel" type="Label" parent="HUD"]
 anchors_preset = 12

@@ -11,7 +11,6 @@ var _name_label: Label
 var _lvl_badge: Label
 var _hp_bar: ProgressBar
 var _hp_label: Label
-var _energy_bar: ProgressBar
 
 
 func _ready() -> void:

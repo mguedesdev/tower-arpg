@@ -67,8 +67,6 @@ var cast_lock_remaining: float = 0.0
 
 ## Retorna true se o jogador está apertando WASD/setas neste frame.
 func has_manual_move_input() -> bool:
-	if in_lobby_mode:
-		return false
 	return Input.get_vector("move_left", "move_right", "move_up", "move_down").length_squared() > 0.01
 
 
@@ -231,15 +229,17 @@ func _physics_process(delta: float) -> void:
 
 	# Input.get_vector ja limita as diagonais e respeita a intensidade do analogico.
 	# Nao normalizar o resultado: isso faria um toque leve no controle virar 100%.
-	var input_axis: Vector2 = Vector2.ZERO if in_lobby_mode else Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var input_axis: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var desired_direction: Vector3 = _camera_relative_direction(input_axis)
-	# Sem WASD: segue a direção de perseguição ao mob clicado (modo Campanha).
-	if desired_direction.length_squared() < 0.0001 and chase_direction.length_squared() > 0.0001:
-		desired_direction = Vector3(chase_direction.x, 0.0, chase_direction.z).limit_length(1.0)
-	# Durante o golpe/skill o personagem fica plantado (sem deslizar).
-	cast_lock_remaining = maxf(cast_lock_remaining - delta, 0.0)
-	if cast_lock_remaining > 0.0:
-		desired_direction = Vector3.ZERO
+	if input_axis.length_squared() > 0.0001:
+		cast_lock_remaining = 0.0
+		chase_direction = Vector3.ZERO
+	else:
+		if chase_direction.length_squared() > 0.0001:
+			desired_direction = Vector3(chase_direction.x, 0.0, chase_direction.z).limit_length(1.0)
+		cast_lock_remaining = maxf(cast_lock_remaining - delta, 0.0)
+		if cast_lock_remaining > 0.0:
+			desired_direction = Vector3.ZERO
 	var target_horizontal_velocity: Vector2 = Vector2(desired_direction.x, desired_direction.z) * move_speed
 	var current_horizontal_velocity: Vector2 = Vector2(velocity.x, velocity.z)
 
