@@ -50,17 +50,19 @@ func _build_gate_visuals() -> void:
 	# Tapete / Limiar luminoso de passagem no chão
 	_add_box(Vector3(0.0, 0.02, 0.0), Vector3(3.30, 0.03, 1.10), Color(accent.r, accent.g, accent.b, 0.45), 1.2, true)
 
-	var prefix: String = "⬅ VOLTAR: " if is_return_gate else "➔ AVANÇAR: "
+	var prefix: String = "⬅ RETORNAR: " if is_return_gate else "➔ AVANÇAR: "
 	_label_dest = Label3D.new()
-	_label_dest.text = prefix + destination_label + "\n(Atravesse o Portão)"
-	_label_dest.font_size = 34
-	_label_dest.outline_size = 10
-	_label_dest.modulate = accent.lightened(0.28)
-	_label_dest.outline_modulate = Color(0.03, 0.03, 0.04, 0.96)
+	_label_dest.text = "[ %s%s ]\n(Atravesse o Portão)" % [prefix, destination_label]
+	_label_dest.font_size = 32
+	_label_dest.outline_size = 12
+	_label_dest.modulate = accent.lightened(0.40)
+	_label_dest.outline_modulate = Color(0.01, 0.01, 0.02, 1.0)
+	_label_dest.render_priority = 25
+	_label_dest.outline_render_priority = 24
 	_label_dest.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label_dest.no_depth_test = true
-	_label_dest.pixel_size = 0.0046
-	_label_dest.position = Vector3(0.0, 4.15, 0.0)
+	_label_dest.pixel_size = 0.0085
+	_label_dest.position = Vector3(0.0, 4.35, 0.0)
 	add_child(_label_dest)
 
 

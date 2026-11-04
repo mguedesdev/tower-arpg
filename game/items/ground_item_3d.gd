@@ -70,7 +70,7 @@ func setup_drop(p_item: ItemInstance, spawn_pos: Vector3) -> void:
 		_light_beam.material_override = beam_mat
 		add_child(_light_beam)
 
-	# 3. Placa de Texto Flutuante Estilo Diablo 2 / Path of Exile (Grande, Nítida e com Fundo Escuro)
+	# 3. Placa de Texto Flutuante Estilo Diablo 2 / Path of Exile (Grande, Nítida e com Alto Contraste)
 	_label_3d = Label3D.new()
 	_label_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label_3d.no_depth_test = true
@@ -78,14 +78,12 @@ func setup_drop(p_item: ItemInstance, spawn_pos: Vector3) -> void:
 	_label_3d.render_priority = 25
 	_label_3d.outline_render_priority = 24
 	_label_3d.pixel_size = 0.010
-	_label_3d.font_size = 30
-	_label_3d.outline_size = 10
+	_label_3d.font_size = 32
+	_label_3d.outline_size = 12
 	_label_3d.outline_modulate = Color(0.01, 0.01, 0.02, 1.0)
 	_label_3d.modulate = r_col.lightened(0.40)
-	_label_3d.background_color = Color(0.035, 0.03, 0.045, 0.92)
-	_label_3d.background_render_priority = 23
 	var prefix: String = "✦ " if item != null and item.rarity != ItemInstance.ItemRarity.NORMAL else ""
-	_label_3d.text = "  %s%s  " % [prefix, item.get_display_name() if item != null else "Item"]
+	_label_3d.text = "[ %s%s ]" % [prefix, item.get_display_name() if item != null else "Item"]
 	_label_3d.position = Vector3(0.0, 0.75, 0.0)
 	add_child(_label_3d)
 

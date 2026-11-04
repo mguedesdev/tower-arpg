@@ -1,16 +1,19 @@
 extends Camera3D
 
 @export var target_path: NodePath
-@export var offset: Vector3 = Vector3(10.0, 13.0, 10.0)
-@export var lobby_offset: Vector3 = Vector3(7.2, 5.2, 7.2)
+@export var offset: Vector3 = Vector3(8.0, 10.5, 8.0)
+@export var lobby_offset: Vector3 = Vector3(6.5, 4.8, 6.5)
 @export var follow_speed: float = 10.0
-@export var view_size: float = 17.0
-@export var lobby_view_size: float = 7.4
+@export var view_size: float = 10.8
+@export var lobby_view_size: float = 7.0
+@export var min_view_size: float = 8.0
+@export var max_view_size: float = 14.5
+@export var zoom_step: float = 0.85
 
 var target: Node3D
 var _in_lobby: bool = false
-var _target_view_size: float = 17.0
-var _active_offset: Vector3 = Vector3(10.0, 13.0, 10.0)
+var _target_view_size: float = 10.8
+var _active_offset: Vector3 = Vector3(8.0, 10.5, 8.0)
 var _look_height: float = 0.65
 
 func _ready() -> void:
@@ -23,6 +26,17 @@ func _ready() -> void:
 	if target != null:
 		global_position = target.global_position + _active_offset
 		look_at(target.global_position + Vector3(0, _look_height, 0))
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _in_lobby:
+		return
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_target_view_size = clampf(_target_view_size - zoom_step, min_view_size, max_view_size)
+			view_size = _target_view_size
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_target_view_size = clampf(_target_view_size + zoom_step, min_view_size, max_view_size)
+			view_size = _target_view_size
 
 func set_lobby_mode(enabled: bool, immediate: bool = false) -> void:
 	_in_lobby = enabled

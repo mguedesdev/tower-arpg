@@ -67,30 +67,34 @@ func _build_visuals() -> void:
 		"waypoint":
 			_build_waypoint_pad()
 
-	var label_height: float = 1.75 if station_id == "stash" or station_id == "waypoint" else 2.38
+	var label_height: float = 1.85 if station_id == "stash" or station_id == "waypoint" else 2.45
 
 	_label_title = Label3D.new()
-	_label_title.text = station_title
-	_label_title.font_size = 34
-	_label_title.outline_size = 10
-	_label_title.modulate = accent_color.lightened(0.22)
-	_label_title.outline_modulate = Color(0.03, 0.03, 0.04, 0.96)
+	_label_title.text = "✦ %s ✦" % station_title
+	_label_title.font_size = 32
+	_label_title.outline_size = 12
+	_label_title.modulate = accent_color.lightened(0.35)
+	_label_title.outline_modulate = Color(0.01, 0.01, 0.02, 1.0)
+	_label_title.render_priority = 25
+	_label_title.outline_render_priority = 24
 	_label_title.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label_title.no_depth_test = true
-	_label_title.pixel_size = 0.0045
+	_label_title.pixel_size = 0.0085
 	_label_title.position = Vector3(0.0, label_height, 0.0)
 	add_child(_label_title)
 
 	_label_prompt = Label3D.new()
-	_label_prompt.text = station_subtitle
+	_label_prompt.text = "[ %s ]" % station_subtitle
 	_label_prompt.font_size = 26
-	_label_prompt.outline_size = 8
-	_label_prompt.modulate = Color(0.95, 0.92, 0.84, 0.95)
-	_label_prompt.outline_modulate = Color(0.03, 0.03, 0.04, 0.96)
+	_label_prompt.outline_size = 10
+	_label_prompt.modulate = Color(0.98, 0.95, 0.88, 0.98)
+	_label_prompt.outline_modulate = Color(0.01, 0.01, 0.02, 1.0)
+	_label_prompt.render_priority = 25
+	_label_prompt.outline_render_priority = 24
 	_label_prompt.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label_prompt.no_depth_test = true
-	_label_prompt.pixel_size = 0.0042
-	_label_prompt.position = Vector3(0.0, label_height - 0.24, 0.0)
+	_label_prompt.pixel_size = 0.0075
+	_label_prompt.position = Vector3(0.0, label_height - 0.35, 0.0)
 	_label_prompt.visible = false
 	add_child(_label_prompt)
 
