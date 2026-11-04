@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EnemyDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://core/combat/enemy_definition.gd" id="1_enemy_def"]
+
+[resource]
+script = ExtResource("1_enemy_def")
+enemy_id = "boss_malakor"
+display_name = "Malakor, o Carrasco da Cripta"
+model_path = "res://assets/models/boss_malakor.glb"
+base_max_health = 380
+base_movement_speed = 2.15
+base_touch_damage = 22
+health_bar_height = 3.45
+health_bar_width_scale = 2.25
+visual_scale = 1.15
+visual_yaw_degrees = 0.0
+visual_offset_y = 0.0
+walk_stride_meters = 2.20
+xp_reward_multiplier = 10
+is_mini_boss = true

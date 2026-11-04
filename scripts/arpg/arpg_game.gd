@@ -8,6 +8,8 @@ const WOLF_SCENE: PackedScene = preload("res://scenes/enemies/wolf.tscn")
 const WOLF_MODEL_PATH: String = "res://assets/models/wolf.glb"
 const BOSS_SCENE: PackedScene = preload("res://scenes/enemies/executioner_boss.tscn")
 const BOSS_MODEL_PATH: String = "res://assets/models/skeleton_boss.glb"
+const MALAKOR_SCENE: PackedScene = preload("res://scenes/enemies/boss_malakor.tscn")
+const MALAKOR_MODEL_PATH: String = "res://assets/models/boss_malakor.glb"
 
 const RUN_PROGRESSION_SCRIPT: Script = preload("res://core/progression/run_progression_service.gd")
 const CAMPAIGN_ZONE_DEF_SCRIPT = preload("res://game/campaign/campaign_zone_definition.gd")
@@ -62,6 +64,8 @@ var current_zone_id: String = "town"
 
 var _wolf_model_available: bool = false
 var _boss_model_available: bool = false
+var _malakor_model_available: bool = false
+var _malakor_spawned: bool = false
 var _pause_menu: PanelContainer
 var _status_timer: float = 0.0
 
@@ -71,6 +75,7 @@ func _ready() -> void:
 	rng.randomize()
 	_wolf_model_available = ResourceLoader.exists(WOLF_MODEL_PATH)
 	_boss_model_available = ResourceLoader.exists(BOSS_MODEL_PATH)
+	_malakor_model_available = ResourceLoader.exists(MALAKOR_MODEL_PATH)
 	VFX_EFFECT_SCRIPT.warm_up_caches()
 	_warm_up_models()
 
@@ -181,6 +186,9 @@ func _warm_up_models() -> void:
 	if _boss_model_available:
 		var m = SkinnedCache.instantiate_optimized(BOSS_MODEL_PATH)
 		if m != null: m.free()
+	if _malakor_model_available:
+		var m = SkinnedCache.instantiate_optimized(MALAKOR_MODEL_PATH)
+		if m != null: m.free()
 
 
 func _build_pause_menu() -> void:
@@ -268,6 +276,7 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 		return
 	var zone_def: CampaignZoneDefinition = campaign_zones[zone_id] as CampaignZoneDefinition
 	current_zone_id = zone_id
+	_malakor_spawned = false
 	area_level = maxi(1, zone_def.area_level)
 	if not unlocked_zones.has(zone_id):
 		unlocked_zones.append(zone_id)
@@ -450,7 +459,36 @@ func _on_enemy_died(_xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 	if zone_info_label != null:
 		zone_info_label.text = "Inimigos na Zona: %d" % enemies_left
 	if enemies_left == 0 and not game_over:
-		status_label.text = "Zona purificada! Siga pelo Portão Norte ou use o Waypoint."
+		if current_zone_id == "zone_3_crypt" and not _malakor_spawned:
+			_spawn_zone_boss_malakor()
+		else:
+			status_label.text = "Zona purificada! Siga pelo Portão Norte ou use o Waypoint."
+			_status_timer = 5.0
+
+
+func _spawn_zone_boss_malakor() -> void:
+	_malakor_spawned = true
+	enemies_left = 1
+	var boss: TowerEnemy = MALAKOR_SCENE.instantiate() as TowerEnemy
+	boss.aggro_radius = 18.0
+	boss.set_target(player)
+	var spawn_pos: Vector3 = Vector3(0.0, 0.0, -4.5)
+	enemies_root.add_child(boss)
+	boss.global_position = spawn_pos
+	var scene_root: Node3D = self as Node3D
+	VFX_SPAWNER.fire_burst(scene_root, spawn_pos + Vector3.UP * 0.8, 2.0)
+	VFX_SPAWNER.spin(scene_root, spawn_pos + Vector3.UP * 0.4, 2.4)
+	boss.died.connect(func() -> void:
+		_on_enemy_died(10, boss)
+		if status_label != null:
+			status_label.text = "✦ VITÓRIA! MALAKOR FOI DESTRUÍDO! O CAMINHO PARA A NOVA ÁREA ESTÁ ABERTO!"
+			_status_timer = 8.0
+	)
+	if zone_info_label != null:
+		zone_info_label.text = "CHEFE: Malakor (Cripta)"
+	if status_label != null:
+		status_label.text = "☠ A TERRA TREME... MALAKOR, O CEIFADOR DE ALMAS DESPERTOU!"
+		_status_timer = 6.0
 
 
 func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false) -> void:
