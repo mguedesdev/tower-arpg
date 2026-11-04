@@ -27,6 +27,7 @@ signal died
 const KNIGHT_MODEL_PATH: String = "res://assets/models/knight.glb"
 const DEFAULT_CLASS_PATH: String = "res://content/classes/warrior_class.tres"
 const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
+const OverheadHUDScript = preload("res://core/combat/player_overhead_hud_3d.gd")
 @export_range(0.1, 4.0, 0.05) var knight_visual_scale: float = 1.0
 @export_range(-180.0, 180.0, 5.0) var knight_yaw_degrees: float = 0.0
 @export var character_definition: CharacterDefinition
@@ -34,6 +35,7 @@ const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
 @onready var visual: Node3D = $Visual
 @onready var attack_controller: Node = $AttackController
 @onready var skill_controller: PlayerSkillController = get_node_or_null("SkillController") as PlayerSkillController
+var overhead_hud: PlayerOverheadHUD3D
 
 var stats: CharacterStats = CharacterStats.new()
 var health: int = 100
@@ -84,6 +86,8 @@ func set_lobby_mode(enabled: bool) -> void:
 	cast_lock_remaining = 0.0
 	if skill_controller != null:
 		skill_controller.set_enabled(not enabled)
+	if overhead_hud != null:
+		overhead_hud.visible = not enabled
 	if enabled:
 		velocity = Vector3.ZERO
 		combat_target = null
@@ -113,6 +117,16 @@ func _ready() -> void:
 			# Fallback para modelos antigos sem tracks suficientes para o overlay.
 			animation_player.animation_finished.connect(_on_animation_finished)
 			_play_model_animation("idle-loop")
+	overhead_hud = OverheadHUDScript.new() as PlayerOverheadHUD3D
+	overhead_hud.name = "PlayerOverheadHUD"
+	overhead_hud.position = Vector3(0.0, 2.15, 0.0)
+	add_child(overhead_hud)
+	overhead_hud.update_health(health, max_health)
+	health_changed.connect(func(cur: int, max_hp: int):
+		if overhead_hud != null:
+			overhead_hud.update_health(cur, max_hp)
+	)
+
 	health_changed.emit(health, max_health)
 
 

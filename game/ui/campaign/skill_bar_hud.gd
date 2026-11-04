@@ -11,7 +11,7 @@ const BORDER := Color(0.52, 0.39, 0.22, 0.95)
 const GOLD := Color(0.90, 0.72, 0.36)
 const TEXT := Color(0.93, 0.89, 0.80)
 const MUTED := Color(0.60, 0.56, 0.50)
-const SLOT_SIZE := Vector2(64, 64)
+const SLOT_SIZE := Vector2(58, 58)
 
 var controller: PlayerSkillController
 var _slot_panels: Array[Panel] = []
@@ -62,8 +62,8 @@ func _build_ui() -> void:
 		var icon := TextureRect.new()
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.position = Vector2(8, 6)
-		icon.size = Vector2(48, 40)
+		icon.position = Vector2(9, 7)
+		icon.size = Vector2(40, 36)
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.add_child(icon)
 
@@ -97,8 +97,9 @@ func _build_ui() -> void:
 
 		var key_lbl := Label.new()
 		key_lbl.text = PlayerSkillController.SLOT_LABELS[i]
-		key_lbl.position = Vector2(3, 1)
-		key_lbl.size = Vector2(30, 14)
+		key_lbl.position = Vector2(4, 40)
+		key_lbl.size = Vector2(50, 16)
+		key_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		key_lbl.add_theme_font_size_override("font_size", 10)
 		key_lbl.add_theme_color_override("font_color", GOLD)
 		key_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0))
@@ -242,8 +243,8 @@ func _process(_delta: float) -> void:
 		var sid: String = controller.slots[i]
 		var ratio: float = controller.get_cooldown_ratio(sid)
 		var remaining: float = controller.get_cooldown_remaining(sid)
-		_slot_cd_curtains[i].size = Vector2(60, 60.0 * ratio)
-		_slot_cd_curtains[i].position = Vector2(2, 2 + 60.0 * (1.0 - ratio))
+		_slot_cd_curtains[i].size = Vector2(54, 54.0 * ratio)
+		_slot_cd_curtains[i].position = Vector2(2, 2 + 54.0 * (1.0 - ratio))
 		_slot_cd_labels[i].text = ("%.1f" % remaining) if remaining > 0.35 else ""
 
 
@@ -291,7 +292,7 @@ func _style(bg: Color, border: Color, bw: int) -> StyleBoxFlat:
 	s.bg_color = bg
 	s.border_color = border
 	s.set_border_width_all(bw)
-	s.set_corner_radius_all(3)
+	s.set_corner_radius_all(29)
 	s.shadow_color = Color(0, 0, 0, 0.3)
 	s.shadow_size = 4
 	return s

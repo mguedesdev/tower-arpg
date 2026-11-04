@@ -510,7 +510,57 @@ func _add_cylinder_to(parent: Node3D, pos: Vector3, radius: float, height: float
 	return node
 
 
+func _build_albion_stone_mandala_plaza(center_pos: Vector3 = Vector3.ZERO) -> void:
+	# 1. Base Circular de lajotas de pedra azul-ardósia polidas (estilo praça de Albion)
+	var slate_mat := _material("slate_floor", Color(0.12, 0.15, 0.20), 0.85)
+	var slab := CylinderMesh.new()
+	slab.top_radius = 6.4
+	slab.bottom_radius = 6.5
+	slab.height = 0.04
+	slab.radial_segments = 48
+	_mesh_instance("AlbionPlazaFloor", slab, slate_mat, center_pos + Vector3(0.0, 0.015, 0.0))
+
+	# 2. Anéis concêntricos de pedra esculpida em tom mármore escuro e dourado rúnico
+	var ring_stone_mat := _material("ring_stone", Color(0.20, 0.18, 0.24), 0.85)
+	var gold_rune_mat := _material("gold_rune", Color(0.85, 0.70, 0.35), 0.60, false, 0.25)
+	_mesh_instance("AlbionOuterRing", _ring_mesh(5.8, 6.3, 56), ring_stone_mat, center_pos + Vector3(0.0, 0.024, 0.0))
+	_mesh_instance("AlbionMidRing", _ring_mesh(3.7, 4.1, 56), ring_stone_mat, center_pos + Vector3(0.0, 0.026, 0.0))
+	_mesh_instance("AlbionInnerRing", _ring_mesh(1.6, 1.85, 40), gold_rune_mat, center_pos + Vector3(0.0, 0.028, 0.0))
+
+	# 3. Padrão gótico de arcos e rosácea central (projeção de vitral catedralesco no chão do Albion)
+	var shadow_mat := StandardMaterial3D.new()
+	shadow_mat.albedo_color = Color(0.012, 0.016, 0.028, 0.68)
+	shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	shadow_mat.no_depth_test = true
+	shadow_mat.render_priority = 6
+
+	for i in range(8):
+		var ang := float(i) * TAU / 8.0
+		var ray_mesh := BoxMesh.new()
+		ray_mesh.size = Vector3(0.12, 0.002, 4.2)
+		var ray_node := MeshInstance3D.new()
+		ray_node.name = _unique("RoseRay")
+		ray_node.mesh = ray_mesh
+		ray_node.material_override = shadow_mat
+		ray_node.position = center_pos + Vector3(cos(ang) * 2.1, 0.032, sin(ang) * 2.1)
+		ray_node.rotation.y = -ang + PI * 0.5
+		ray_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(ray_node)
+
+		var arc_mesh := BoxMesh.new()
+		arc_mesh.size = Vector3(1.25, 0.002, 0.12)
+		var arc_node := MeshInstance3D.new()
+		arc_node.name = _unique("RoseArc")
+		arc_node.mesh = arc_mesh
+		arc_node.material_override = shadow_mat
+		arc_node.position = center_pos + Vector3(cos(ang + TAU / 16.0) * 3.5, 0.032, sin(ang + TAU / 16.0) * 3.5)
+		arc_node.rotation.y = -ang - TAU / 16.0
+		arc_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(arc_node)
+
 func _build_town_encampment() -> void:
+	_build_albion_stone_mandala_plaza(Vector3.ZERO)
 	# Fogueira Central do Acampamento dos Exilados (estilo Rogue Encampment - Diablo 2)
 	_cylinder(Vector3(0.0, 0.04, 0.0), 1.45, 0.08, COLOR_STONE_DARK, 16)
 	for i in range(10):

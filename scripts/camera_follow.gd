@@ -1,19 +1,19 @@
 extends Camera3D
 
 @export var target_path: NodePath
-@export var offset: Vector3 = Vector3(8.0, 10.5, 8.0)
+@export var offset: Vector3 = Vector3(6.6, 8.8, 6.6)
 @export var lobby_offset: Vector3 = Vector3(6.5, 4.8, 6.5)
 @export var follow_speed: float = 10.0
-@export var view_size: float = 10.8
+@export var view_size: float = 9.2
 @export var lobby_view_size: float = 7.0
-@export var min_view_size: float = 8.0
-@export var max_view_size: float = 14.5
+@export var min_view_size: float = 7.0
+@export var max_view_size: float = 13.5
 @export var zoom_step: float = 0.85
 
 var target: Node3D
 var _in_lobby: bool = false
-var _target_view_size: float = 10.8
-var _active_offset: Vector3 = Vector3(8.0, 10.5, 8.0)
+var _target_view_size: float = 9.2
+var _active_offset: Vector3 = Vector3(6.6, 8.8, 6.6)
 var _look_height: float = 0.65
 
 func _ready() -> void:
