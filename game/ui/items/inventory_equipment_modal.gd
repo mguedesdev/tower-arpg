@@ -1,7 +1,9 @@
-extends PanelContainer
+extends Control
 class_name InventoryEquipmentModal
-## Modal de Inventário Espacial em Grid (Diablo 2 / PoE) + Paperdoll de Equipamento.
-## Tecla de atalho: [I] ou [TAB].
+## Modal Unificado de Inventário Espacial em Grid (Diablo 2 / PoE) + Paperdoll + Status do Personagem.
+## • Janela centralizada por padrão e arrastável pelo cabeçalho.
+## • Preview do item seguro com tamanho real exato do grid (sem distorção de escala).
+## • Atalho: [I] ou [B].
 
 signal closed()
 
@@ -16,7 +18,15 @@ var inventory: SpatialInventoryGrid
 var equipment: CharacterEquipment
 var stats: CharacterStats
 
-# Estado de arrasto
+# Janela móvel
+var _window_panel: PanelContainer
+var _header_bar: HBoxContainer
+var _is_dragging_window: bool = false
+var _drag_start_mouse: Vector2 = Vector2.ZERO
+var _drag_start_win_pos: Vector2 = Vector2.ZERO
+var _has_custom_window_pos: bool = false
+
+# Estado de arrasto de itens
 var _held_item: ItemInstance = null
 var _held_preview: TextureRect
 
@@ -32,9 +42,11 @@ func _ready() -> void:
 	name = "InventoryEquipmentModal"
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_to_group("blocking_modal")
 	_build_ui()
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
 
 
 func bind_context(inv: SpatialInventoryGrid, eq: CharacterEquipment, p_stats: CharacterStats) -> void:
@@ -58,6 +70,8 @@ func bind_context(inv: SpatialInventoryGrid, eq: CharacterEquipment, p_stats: Ch
 func open_inventory() -> void:
 	visible = true
 	_refresh_all()
+	if not _has_custom_window_pos:
+		call_deferred("_center_window_on_screen")
 
 
 func close_inventory() -> void:
@@ -66,6 +80,7 @@ func close_inventory() -> void:
 		inventory.auto_add_item(_held_item)
 		_set_held_item(null)
 	visible = false
+	_is_dragging_window = false
 	_hide_tooltip()
 	closed.emit()
 
@@ -87,48 +102,94 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 
+func _input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if not mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			_is_dragging_window = false
+	elif event is InputEventMouseMotion and _is_dragging_window:
+		var current_mouse: Vector2 = get_viewport().get_mouse_position()
+		var new_pos: Vector2 = _drag_start_win_pos + (current_mouse - _drag_start_mouse)
+		var vp: Vector2 = get_viewport_rect().size
+		new_pos.x = clampf(new_pos.x, 6.0, vp.x - _window_panel.size.x - 6.0)
+		new_pos.y = clampf(new_pos.y, 6.0, vp.y - _window_panel.size.y - 6.0)
+		_window_panel.position = new_pos
+		_has_custom_window_pos = true
+
+
+func _on_viewport_size_changed() -> void:
+	if not _has_custom_window_pos:
+		_center_window_on_screen()
+
+
+func _center_window_on_screen() -> void:
+	if _window_panel == null:
+		return
+	_window_panel.reset_size()
+	var vp: Vector2 = get_viewport_rect().size
+	if vp.x > 100.0 and vp.y > 100.0:
+		_window_panel.position = Vector2(
+			maxf(10.0, (vp.x - _window_panel.size.x) * 0.5),
+			maxf(10.0, (vp.y - _window_panel.size.y) * 0.5)
+		)
+
+
 func _build_ui() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	# Janela principal arrastável
+	_window_panel = PanelContainer.new()
+	_window_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var root_style := StyleBoxFlat.new()
 	root_style.bg_color = BG_COLOR
 	root_style.border_color = BORDER_COLOR
 	root_style.set_border_width_all(3)
 	root_style.set_corner_radius_all(6)
-	root_style.shadow_color = Color(0, 0, 0, 0.7)
-	root_style.shadow_size = 10
+	root_style.shadow_color = Color(0, 0, 0, 0.75)
+	root_style.shadow_size = 14
 	root_style.content_margin_left = 18
 	root_style.content_margin_right = 18
-	root_style.content_margin_top = 14
+	root_style.content_margin_top = 12
 	root_style.content_margin_bottom = 16
-	add_theme_stylebox_override("panel", root_style)
+	_window_panel.add_theme_stylebox_override("panel", root_style)
+	add_child(_window_panel)
 
 	var main_vbox := VBoxContainer.new()
 	main_vbox.add_theme_constant_override("separation", 10)
-	add_child(main_vbox)
+	_window_panel.add_child(main_vbox)
 
-	# Cabeçalho com Título e Fechar [X]
-	var header := HBoxContainer.new()
+	# Cabeçalho arrastável
+	_header_bar = HBoxContainer.new()
+	_header_bar.mouse_filter = Control.MOUSE_FILTER_STOP
+	_header_bar.gui_input.connect(_on_header_gui_input)
+
 	var title := Label.new()
-	title.text = "⚔ EQUIPAMENTO DO CAVALEIRO & MOCHILA (GRID)"
-	title.add_theme_font_size_override("font_size", 16)
+	title.text = "⚔ PERSONAGEM & MOCHILA (GRID ARPG) — [ARRASTE AQUI]"
+	title.add_theme_font_size_override("font_size", 14)
 	title.add_theme_color_override("font_color", GOLD_COLOR)
-	header.add_child(title)
-	header.add_spacer(false)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_header_bar.add_child(title)
+	_header_bar.add_spacer(false)
 
 	var close_btn := Button.new()
 	close_btn.text = " [X] "
 	close_btn.add_theme_font_size_override("font_size", 13)
 	close_btn.add_theme_color_override("font_color", GOLD_COLOR)
+	close_btn.focus_mode = Control.FOCUS_NONE
 	close_btn.pressed.connect(close_inventory)
-	header.add_child(close_btn)
-	main_vbox.add_child(header)
+	_header_bar.add_child(close_btn)
+	main_vbox.add_child(_header_bar)
 
-	# Corpo dividido: Esquerda = Paperdoll + Atributos | Direita = Grid da Mochila
+	# Separador de cabeçalho
+	var h_sep := HSeparator.new()
+	main_vbox.add_child(h_sep)
+
+	# Corpo dividido: Esquerda = Paperdoll + Status | Direita = Grid da Mochila
 	var body_hbox := HBoxContainer.new()
-	body_hbox.add_theme_constant_override("separation", 24)
+	body_hbox.add_theme_constant_override("separation", 22)
 	main_vbox.add_child(body_hbox)
 
-	# --- PAINEL ESQUERDO: PAPERDOLL ---
+	# --- PAINEL ESQUERDO: PAPERDOLL + STATUS DO PERSONAGEM ---
 	var left_vbox := VBoxContainer.new()
 	left_vbox.add_theme_constant_override("separation", 8)
 	body_hbox.add_child(left_vbox)
@@ -145,14 +206,28 @@ func _build_ui() -> void:
 	left_vbox.add_child(doll_root)
 	_build_paperdoll(doll_root)
 
-	# Atributos do personagem abaixo do Paperdoll
+	# Painel de Status do Personagem (na mesma janela!)
+	var stats_card := PanelContainer.new()
+	var sc_style := StyleBoxFlat.new()
+	sc_style.bg_color = Color(0.06, 0.05, 0.07, 0.9)
+	sc_style.border_color = Color(0.35, 0.28, 0.18, 0.8)
+	sc_style.set_border_width_all(1)
+	sc_style.set_corner_radius_all(3)
+	sc_style.content_margin_left = 10
+	sc_style.content_margin_right = 10
+	sc_style.content_margin_top = 8
+	sc_style.content_margin_bottom = 8
+	stats_card.add_theme_stylebox_override("panel", sc_style)
+
 	_stats_label = RichTextLabel.new()
 	_stats_label.bbcode_enabled = true
 	_stats_label.fit_content = true
-	_stats_label.custom_minimum_size = Vector2(250, 95)
-	left_vbox.add_child(_stats_label)
+	_stats_label.custom_minimum_size = Vector2(245, 110)
+	_stats_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_card.add_child(_stats_label)
+	left_vbox.add_child(stats_card)
 
-	# Separador vertical
+	# Separador vertical elegante
 	var v_sep := VSeparator.new()
 	body_hbox.add_child(v_sep)
 
@@ -162,7 +237,7 @@ func _build_ui() -> void:
 	body_hbox.add_child(right_vbox)
 
 	var grid_title := Label.new()
-	grid_title.text = "MOCHILA (10 x 5 ESPAÇOS)"
+	grid_title.text = "MOCHILA ESPACIAL (10 x 5 ESPAÇOS)"
 	grid_title.add_theme_font_size_override("font_size", 12)
 	grid_title.add_theme_color_override("font_color", GOLD_COLOR)
 	right_vbox.add_child(grid_title)
@@ -174,21 +249,24 @@ func _build_ui() -> void:
 	right_vbox.add_child(_grid_container)
 
 	var hint := Label.new()
-	hint.text = "• Clique Esquerdo: pegar/soltar  |  Clique Direito: equipar direto"
+	hint.text = "• Clique Esquerdo: pegar/soltar  |  Clique Direito: equipar direto\n• Arraste o cabeçalho superior para mover a janela."
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.add_theme_color_override("font_color", Color(0.65, 0.60, 0.55))
 	right_vbox.add_child(hint)
 
-	# Preview flutuante do item seguro na mão
+	# Preview flutuante do item seguro na mão (top_level = true para nunca ser esticado por containers!)
 	_held_preview = TextureRect.new()
+	_held_preview.top_level = true
 	_held_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_held_preview.visible = false
 	_held_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_held_preview.modulate = Color(1, 1, 1, 0.85)
+	_held_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_held_preview.modulate = Color(1, 1, 1, 0.88)
 	add_child(_held_preview)
 
-	# Tooltip flutuante
+	# Tooltip flutuante (top_level = true para flutuar acima de tudo livremente)
 	_tooltip_panel = PanelContainer.new()
+	_tooltip_panel.top_level = true
 	_tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tooltip_panel.visible = false
 	var t_style := StyleBoxFlat.new()
@@ -205,12 +283,23 @@ func _build_ui() -> void:
 	_tooltip_text.bbcode_enabled = true
 	_tooltip_text.fit_content = true
 	_tooltip_text.custom_minimum_size = Vector2(230, 40)
+	_tooltip_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tooltip_panel.add_child(_tooltip_text)
 	add_child(_tooltip_panel)
 
 
+func _on_header_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_is_dragging_window = true
+			_drag_start_mouse = get_viewport().get_mouse_position()
+			_drag_start_win_pos = _window_panel.position
+		else:
+			_is_dragging_window = false
+
+
 func _build_paperdoll(root: Control) -> void:
-	# Posições clássicas do boneco (com Peitoral 4x2 e Cinto ajustado)
+	# Posições clássicas do boneco com Peitoral 4x2 e Cinto ajustado
 	_create_doll_slot(root, ItemDefinition.EquipmentSlot.HELMET, "Elmo", Vector2(96, 6), Vector2(2, 2))
 	_create_doll_slot(root, ItemDefinition.EquipmentSlot.AMULET, "Amul.", Vector2(174, 20), Vector2(1, 1))
 	_create_doll_slot(root, ItemDefinition.EquipmentSlot.CHEST, "Peitoral", Vector2(96, 84), Vector2(2, 4))
@@ -258,8 +347,9 @@ func _create_doll_slot(parent: Control, slot: ItemDefinition.EquipmentSlot, labe
 func _process(_delta: float) -> void:
 	if not visible:
 		return
-	if _held_item != null and _held_preview.visible:
-		_held_preview.position = get_local_mouse_position() - _held_preview.size * 0.5
+	if _held_item != null and _held_preview != null and _held_preview.visible:
+		var mpos: Vector2 = get_viewport().get_mouse_position()
+		_held_preview.position = mpos - _held_preview.size * 0.5
 
 
 func _refresh_all() -> void:
@@ -274,7 +364,7 @@ func _refresh_grid_view() -> void:
 	for child in _grid_container.get_children():
 		child.queue_free()
 
-	# 1. Desenha as células de fundo (10 colunas x 4 linhas)
+	# 1. Desenha as células de fundo (10 colunas x 5 linhas)
 	for y in range(inventory.rows):
 		for x in range(inventory.columns):
 			var cell := Panel.new()
@@ -341,14 +431,19 @@ func _refresh_stats_view() -> void:
 	var hp: int = stats.get_max_health()
 	var dmg: int = stats.get_damage()
 	var armor: int = int(roundi(stats.get_stat(&"armor")))
+	var atk_spd: float = stats.get_stat(&"attack_speed")
+	var mov_spd: float = stats.get_stat(&"move_speed")
+	var crit_c: float = stats.get_stat(&"crit_chance") * 100.0
 	var str_val: int = int(roundi(stats.get_stat(&"strength")))
 	var agi_val: int = int(roundi(stats.get_stat(&"agility")))
 	var int_val: int = int(roundi(stats.get_stat(&"intelligence")))
 
-	_stats_label.text = "[color=#e6ba5a]✦ ATRIBUTOS GLOBAIS:[/color]\n" + \
+	_stats_label.text = "[color=#f2cb6f][b]✦ STATUS DO GUERREIRO[/b][/color]\n" + \
 		"♥ Vida: [color=#ffffff]%d[/color]   |   🛡️ Armadura: [color=#ffffff]%d[/color]\n" % [hp, armor] + \
-		"⚔ Dano: [color=#ffffff]%d[/color]   |   ⚡ Força: [color=#ffffff]%d[/color]\n" % [dmg, str_val] + \
-		"🏹 Agilidade: [color=#ffffff]%d[/color]   |   🔮 Inteligência: [color=#ffffff]%d[/color]" % [agi_val, int_val]
+		"⚔ Dano: [color=#ffffff]%d[/color]   |   ⚡ Cadência: [color=#ffffff]%.2fx[/color]\n" % [dmg, atk_spd] + \
+		"👟 Desloc.: [color=#ffffff]%.1fm/s[/color] |  🎯 Crítico: [color=#ffffff]%d%%[/color]\n" % [mov_spd, int(roundi(crit_c))] + \
+		"[color=#98a3b3]────────────────────────────[/color]\n" + \
+		"🏋 Força: [color=#e8b356]%d[/color]  |  🏹 Agilidade: [color=#6cc8e8]%d[/color]  |  🔮 Inteligência: [color=#b58ce8]%d[/color]" % [str_val, agi_val, int_val]
 
 
 # --- INTERAÇÃO COM O MOUSE ---
@@ -432,8 +527,13 @@ func _on_doll_slot_hover(slot: ItemDefinition.EquipmentSlot, entered: bool) -> v
 func _set_held_item(item: ItemInstance) -> void:
 	_held_item = item
 	if _held_item != null and _held_item.definition != null:
-		_held_preview.texture = ItemIconFactory.get_icon(_held_item.definition)
-		_held_preview.size = Vector2(_held_item.definition.grid_size) * float(CELL_SIZE)
+		var def: ItemDefinition = _held_item.definition
+		_held_preview.texture = ItemIconFactory.get_icon(def)
+		# Tamanho rigorosamente exato correspondente aos slots da grade (sem escala gigantesca!)
+		var exact_w: float = float(def.grid_size.x) * float(CELL_SIZE)
+		var exact_h: float = float(def.grid_size.y) * float(CELL_SIZE)
+		_held_preview.custom_minimum_size = Vector2(exact_w, exact_h)
+		_held_preview.size = Vector2(exact_w, exact_h)
 		_held_preview.visible = true
 	else:
 		_held_preview.texture = null
@@ -488,8 +588,11 @@ func _show_item_tooltip(item: ItemInstance) -> void:
 	_tooltip_text.text = t
 	_tooltip_panel.visible = true
 	_tooltip_panel.reset_size()
-	var mp: Vector2 = get_local_mouse_position()
-	_tooltip_panel.position = mp + Vector2(16, 16)
+	var mp: Vector2 = get_viewport().get_mouse_position()
+	var vp: Vector2 = get_viewport_rect().size
+	var tx: float = clampf(mp.x + 18.0, 8.0, vp.x - _tooltip_panel.size.x - 8.0)
+	var ty: float = clampf(mp.y + 18.0, 8.0, vp.y - _tooltip_panel.size.y - 8.0)
+	_tooltip_panel.position = Vector2(tx, ty)
 
 
 func _hide_tooltip() -> void:
