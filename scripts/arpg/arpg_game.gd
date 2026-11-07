@@ -690,10 +690,13 @@ func _on_level_gained(new_lvl: int) -> void:
 		inventory_modal._refresh_stats_view()
 
 
-func _get_nearest_ground_item(max_dist: float = 3.5) -> GroundItem3D:
+func _get_nearest_ground_item(max_dist: float = 3.8) -> GroundItem3D:
 	if _ground_items_root == null or player == null:
 		return null
 	var p_pos: Vector3 = player.global_position
+	var highlighted: GroundItem3D = GroundItem3D.get_highlighted_item(p_pos, max_dist)
+	if highlighted != null:
+		return highlighted
 	var nearest: GroundItem3D = null
 	var min_d: float = max_dist
 	for child in _ground_items_root.get_children():
