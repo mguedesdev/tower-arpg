@@ -10,8 +10,11 @@ class_name CharacterStats
 
 signal stats_changed
 signal health_changed(current_hp: int, max_hp: int)
+signal mana_changed(current_mana: int, max_mana: int)
 
 const STAT_MAX_HEALTH: StringName = &"max_health"
+const STAT_MAX_MANA: StringName = &"max_mana"
+const STAT_MANA_REGEN: StringName = &"mana_regen"
 const STAT_DAMAGE: StringName = &"damage"
 const STAT_ATTACK_SPEED: StringName = &"attack_speed"
 const STAT_MOVE_SPEED: StringName = &"move_speed"
@@ -26,6 +29,8 @@ const STAT_INTELLIGENCE: StringName = &"intelligence"
 
 const STAT_LIMITS: Dictionary = {
 	&"max_health": {"min": 1.0, "max": 99999.0, "is_int": true},
+	&"max_mana": {"min": 10.0, "max": 99999.0, "is_int": true},
+	&"mana_regen": {"min": 0.0, "max": 200.0, "is_int": false},
 	&"damage": {"min": 1.0, "max": 99999.0, "is_int": true},
 	&"attack_speed": {"min": 0.2, "max": 5.0, "is_int": false},
 	&"move_speed": {"min": 1.0, "max": 18.0, "is_int": false},
@@ -41,6 +46,8 @@ const STAT_LIMITS: Dictionary = {
 
 var _base_values: Dictionary = {
 	STAT_MAX_HEALTH: 100.0,
+	STAT_MAX_MANA: 60.0,
+	STAT_MANA_REGEN: 6.0,
 	STAT_DAMAGE: 14.0,
 	STAT_ATTACK_SPEED: 1.0,
 	STAT_MOVE_SPEED: 5.5,
@@ -57,6 +64,8 @@ var _base_values: Dictionary = {
 var _cached_values: Dictionary = {}
 var _modifiers: Array[StatModifier] = []
 var current_health: int = 100
+var current_mana: int = 60
+var _mana_accum: float = 0.0
 
 
 func _init(initial_bases: Dictionary = {}) -> void:
@@ -64,12 +73,15 @@ func _init(initial_bases: Dictionary = {}) -> void:
 		_base_values[StringName(key)] = float(initial_bases[key])
 	_recalculate_all(false)
 	current_health = get_max_health()
+	current_mana = get_max_mana()
 
 
 func configure_from_definition(definition: Resource) -> void:
 	if definition == null:
 		return
 	_base_values[STAT_MAX_HEALTH] = float(definition.get("base_max_health") if definition.get("base_max_health") != null else 100)
+	_base_values[STAT_MAX_MANA] = float(definition.get("base_max_mana") if definition.get("base_max_mana") != null else 60)
+	_base_values[STAT_MANA_REGEN] = float(definition.get("base_mana_regen") if definition.get("base_mana_regen") != null else 6.0)
 	_base_values[STAT_DAMAGE] = float(definition.get("base_damage") if definition.get("base_damage") != null else 14)
 	_base_values[STAT_ATTACK_SPEED] = float(definition.get("base_attack_speed") if definition.get("base_attack_speed") != null else 1.0)
 	_base_values[STAT_MOVE_SPEED] = float(definition.get("base_move_speed") if definition.get("base_move_speed") != null else 5.5)
@@ -81,8 +93,10 @@ func configure_from_definition(definition: Resource) -> void:
 	_modifiers.clear()
 	_recalculate_all(false)
 	current_health = get_max_health()
+	current_mana = get_max_mana()
 	stats_changed.emit()
 	health_changed.emit(current_health, get_max_health())
+	mana_changed.emit(current_mana, get_max_mana())
 
 
 func set_base_stat(stat_name: StringName, value: float) -> void:
@@ -103,6 +117,14 @@ func get_stat(stat_name: StringName) -> float:
 
 func get_max_health() -> int:
 	return int(roundi(get_stat(STAT_MAX_HEALTH)))
+
+
+func get_max_mana() -> int:
+	return int(roundi(get_stat(STAT_MAX_MANA)))
+
+
+func get_mana_regen() -> float:
+	return get_stat(STAT_MANA_REGEN)
 
 
 func get_damage() -> int:
@@ -241,6 +263,38 @@ func heal(amount: int) -> int:
 	return healed
 
 
+func apply_mana_cost(amount: int) -> bool:
+	if amount <= 0:
+		return true
+	if current_mana < amount:
+		return false
+	current_mana = maxi(0, current_mana - amount)
+	mana_changed.emit(current_mana, get_max_mana())
+	return true
+
+
+func restore_mana(amount: int) -> void:
+	if amount <= 0:
+		return
+	current_mana = mini(get_max_mana(), current_mana + amount)
+	mana_changed.emit(current_mana, get_max_mana())
+
+
+func regenerate_mana(delta: float) -> void:
+	var max_m: int = get_max_mana()
+	if current_mana >= max_m:
+		return
+	var regen_rate: float = get_mana_regen()
+	if regen_rate <= 0.0:
+		return
+	_mana_accum += regen_rate * delta
+	if _mana_accum >= 1.0:
+		var gain: int = int(_mana_accum)
+		_mana_accum -= float(gain)
+		current_mana = mini(max_m, current_mana + gain)
+		mana_changed.emit(current_mana, max_m)
+
+
 func _recalculate_all(emit_signals: bool, previous_max_hp: int = -1) -> void:
 	var old_max: int = previous_max_hp if previous_max_hp > 0 else int(_cached_values.get(STAT_MAX_HEALTH, _base_values[STAT_MAX_HEALTH]))
 	_cached_values.clear()
@@ -249,9 +303,13 @@ func _recalculate_all(emit_signals: bool, previous_max_hp: int = -1) -> void:
 	var new_max: int = get_max_health()
 	if new_max != old_max:
 		_adjust_current_health_for_max_change(old_max, new_max)
+	var new_max_m: int = get_max_mana()
+	if current_mana > new_max_m:
+		current_mana = new_max_m
 	if emit_signals:
 		stats_changed.emit()
 		health_changed.emit(current_health, new_max)
+		mana_changed.emit(current_mana, new_max_m)
 
 
 func _adjust_current_health_for_max_change(old_max: int, new_max: int) -> void:

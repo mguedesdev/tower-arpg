@@ -19,6 +19,8 @@ const TOWN_INTERACTABLE_SCRIPT = preload("res://game/campaign/town_interactable_
 const ZONE_PORTAL_SCRIPT = preload("res://game/campaign/zone_portal_3d.gd")
 const TOWN_NPC_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/town_npc_modal.gd")
 const WORLD_MAP_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/world_map_modal.gd")
+const HEALTH_GLOBE_HUD_SCRIPT: Script = preload("res://game/ui/campaign/health_globe_hud.gd")
+const MANA_GLOBE_HUD_SCRIPT: Script = preload("res://game/ui/campaign/mana_globe_hud.gd")
 const SKILL_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/skill_bar_hud.gd")
 const ITEM_DEF_SCRIPT = preload("res://core/items/item_definition.gd")
 const ITEM_INST_SCRIPT = preload("res://core/items/item_instance.gd")
@@ -50,6 +52,8 @@ var area_level: int = 1
 var gold: int = 150
 
 var run_progression: RunProgressionService
+var health_globe_hud: HealthGlobeHUD
+var mana_globe_hud: ManaGlobeHUD
 var skill_bar_hud: SkillBarHUD
 var town_npc_modal: TownNpcModal
 var world_map_modal: WorldMapModal
@@ -112,13 +116,23 @@ func _ready() -> void:
 	# HUD de Experiência Minimalista ARPG (estilo Albion - barra fina no rodapé)
 	_build_arpg_xp_hud()
 
-	# Barra de Habilidades Ativas (WASD + LMB ataque básico + RMB/1/2/3/4)
+	# HUD Inferior: Orbe de Vida (Esquerda) + Barra de Habilidades (Centro) + Orbe de Mana (Direita)
+	health_globe_hud = HEALTH_GLOBE_HUD_SCRIPT.new() as HealthGlobeHUD
+	$HUD.add_child(health_globe_hud)
+
+	mana_globe_hud = MANA_GLOBE_HUD_SCRIPT.new() as ManaGlobeHUD
+	$HUD.add_child(mana_globe_hud)
+
 	skill_bar_hud = SKILL_BAR_HUD_SCRIPT.new() as SkillBarHUD
 	$HUD.add_child(skill_bar_hud)
 	if player != null and player.skill_controller != null:
 		skill_bar_hud.bind_controller(player.skill_controller)
 		player.skill_controller.set_enabled(true)
 	skill_bar_hud.visible = true
+
+	var controls_plate: Node = $HUD.get_node_or_null("ControlsPlate")
+	if controls_plate != null:
+		controls_plate.visible = false
 
 	# Modal de NPCs e Waypoints da Vila
 	town_npc_modal = TOWN_NPC_MODAL_SCRIPT.new() as TownNpcModal
@@ -171,8 +185,10 @@ func _ready() -> void:
 	if player.attack_controller != null:
 		player.attack_controller.auto_attack = false
 	player.health_changed.connect(_on_health_changed)
+	player.mana_changed.connect(_on_mana_changed)
 	player.died.connect(_on_player_died)
 	_on_health_changed(player.health, player.max_health)
+	_on_mana_changed(player.mana, player.max_mana)
 
 	player.bind_equipment(equipment)
 	if player.belt_lantern != null:
@@ -872,11 +888,15 @@ func notify_inventory_full() -> void:
 func _on_health_changed(current: int, maximum: int) -> void:
 	if health_label != null:
 		health_label.text = "Vida: %d / %d" % [current, maximum]
-	if _arpg_hp_bar != null:
-		_arpg_hp_bar.max_value = float(maxi(1, maximum))
-		_arpg_hp_bar.value = float(clampi(current, 0, maximum))
-	if _arpg_hp_label != null:
-		_arpg_hp_label.text = "♥ Vida: %d / %d" % [current, maximum]
+	if health_globe_hud != null:
+		health_globe_hud.update_health(current, maximum)
+
+
+func _on_mana_changed(current: int, maximum: int) -> void:
+	if mana_globe_hud != null:
+		mana_globe_hud.update_mana(current, maximum)
+	if skill_bar_hud != null:
+		skill_bar_hud.refresh_mana_availability(current)
 
 
 func _on_player_died() -> void:
@@ -887,6 +907,10 @@ func _on_player_died() -> void:
 		player.skill_controller.set_enabled(false)
 	if skill_bar_hud != null:
 		skill_bar_hud.visible = false
+	if health_globe_hud != null:
+		health_globe_hud.visible = false
+	if mana_globe_hud != null:
+		mana_globe_hud.visible = false
 	status_label.text = "☠ VOCÊ CAIU EM COMBATE! Pressione [R] para renascer na Vila ou [ESC] para o Menu."
 
 
@@ -895,21 +919,27 @@ func _input(event: InputEvent) -> void:
 		game_over = false
 		player.alive = true
 		player.health = player.max_health
+		player.mana = player.max_mana
 		_on_health_changed(player.health, player.max_health)
+		_on_mana_changed(player.mana, player.max_mana)
 		if player.skill_controller != null:
 			player.skill_controller.set_enabled(true)
 		if skill_bar_hud != null:
 			skill_bar_hud.visible = true
+		if health_globe_hud != null:
+			health_globe_hud.visible = true
+			health_globe_hud.set_values_immediate(player.health, player.max_health)
+		if mana_globe_hud != null:
+			mana_globe_hud.visible = true
+			mana_globe_hud.set_values_immediate(player.mana, player.max_mana)
 		_load_campaign_zone("town")
 
 
 # ===============================================================
-# HUD DE VIDA, OURO, MOCHILA E EXPERIÊNCIA DO MODO ARPG
+# HUD DE OURO, MOCHILA E EXPERIÊNCIA DO MODO ARPG
 # ===============================================================
 var _arpg_xp_bar: ProgressBar
 var _arpg_xp_label: Label
-var _arpg_hp_bar: ProgressBar
-var _arpg_hp_label: Label
 var _gold_hud_label: Label
 
 func _build_arpg_xp_hud() -> void:
@@ -918,10 +948,10 @@ func _build_arpg_xp_hud() -> void:
 	xp_container.name = "ARPG_XpHUD"
 	xp_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	xp_container.anchors_preset = Control.PRESET_BOTTOM_WIDE
-	xp_container.offset_top = -20.0
-	xp_container.offset_bottom = -4.0
-	xp_container.offset_left = 300.0
-	xp_container.offset_right = -300.0
+	xp_container.offset_top = -14.0
+	xp_container.offset_bottom = -2.0
+	xp_container.offset_left = 320.0
+	xp_container.offset_right = -320.0
 	xp_container.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	xp_container.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
@@ -950,81 +980,44 @@ func _build_arpg_xp_hud() -> void:
 	_arpg_xp_label.anchors_preset = Control.PRESET_FULL_RECT
 	_arpg_xp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_arpg_xp_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_arpg_xp_label.add_theme_font_size_override("font_size", 11)
+	_arpg_xp_label.add_theme_font_size_override("font_size", 10)
 	_arpg_xp_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.82))
 	xp_container.add_child(_arpg_xp_label)
 	$HUD.add_child(xp_container)
 
-	# 2. Barra de Vida Carmesim + Ouro + Atalho de Mochila no Canto Direito Inferior
-	var right_hud := PanelContainer.new()
-	right_hud.name = "ARPG_StatusRightHUD"
-	right_hud.anchors_preset = Control.PRESET_BOTTOM_RIGHT
-	right_hud.offset_left = -278.0
-	right_hud.offset_right = -18.0
-	right_hud.offset_top = -94.0
-	right_hud.offset_bottom = -22.0
-	right_hud.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	right_hud.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	# 2. Painel de Ouro + Atalho da Mochila [I] no Canto Superior Direito
+	var top_right_hud := PanelContainer.new()
+	top_right_hud.name = "ARPG_TopRightHUD"
+	top_right_hud.anchors_preset = Control.PRESET_TOP_RIGHT
+	top_right_hud.offset_left = -260.0
+	top_right_hud.offset_right = -18.0
+	top_right_hud.offset_top = 24.0
+	top_right_hud.offset_bottom = 66.0
+	top_right_hud.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	top_right_hud.grow_vertical = Control.GROW_DIRECTION_END
 
 	var r_style := StyleBoxFlat.new()
 	r_style.bg_color = Color(0.045, 0.045, 0.058, 0.94)
 	r_style.border_color = Color(0.65, 0.52, 0.25, 0.85)
 	r_style.set_border_width_all(1)
 	r_style.set_corner_radius_all(8)
-	r_style.content_margin_left = 10
-	r_style.content_margin_right = 10
-	r_style.content_margin_top = 6
-	r_style.content_margin_bottom = 6
-	right_hud.add_theme_stylebox_override("panel", r_style)
+	r_style.content_margin_left = 12
+	r_style.content_margin_right = 12
+	r_style.content_margin_top = 5
+	r_style.content_margin_bottom = 5
+	top_right_hud.add_theme_stylebox_override("panel", r_style)
 
-	var rv := VBoxContainer.new()
-	rv.add_theme_constant_override("separation", 5)
-	right_hud.add_child(rv)
-
-	# Barra de Vida do Herói
-	var hp_wrap := PanelContainer.new()
-	hp_wrap.custom_minimum_size = Vector2(0, 24)
-	var hp_border := StyleBoxFlat.new()
-	hp_border.bg_color = Color(0.08, 0.03, 0.04, 0.9)
-	hp_border.border_color = Color(0.75, 0.25, 0.25, 0.85)
-	hp_border.set_border_width_all(1)
-	hp_border.set_corner_radius_all(4)
-	hp_wrap.add_theme_stylebox_override("panel", hp_border)
-
-	_arpg_hp_bar = ProgressBar.new()
-	_arpg_hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_arpg_hp_bar.show_percentage = false
-	_arpg_hp_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
-	var hp_fill := StyleBoxFlat.new()
-	hp_fill.bg_color = Color(0.78, 0.16, 0.18, 0.95)
-	hp_fill.set_corner_radius_all(3)
-	var hp_bg := StyleBoxFlat.new()
-	hp_bg.bg_color = Color(0.14, 0.04, 0.05, 0.75)
-	_arpg_hp_bar.add_theme_stylebox_override("fill", hp_fill)
-	_arpg_hp_bar.add_theme_stylebox_override("background", hp_bg)
-	hp_wrap.add_child(_arpg_hp_bar)
-
-	_arpg_hp_label = Label.new()
-	_arpg_hp_label.text = "♥ Vida: 100 / 100"
-	_arpg_hp_label.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_arpg_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_arpg_hp_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_arpg_hp_label.add_theme_font_size_override("font_size", 12)
-	_arpg_hp_label.add_theme_color_override("font_color", Color(0.98, 0.94, 0.92))
-	hp_wrap.add_child(_arpg_hp_label)
-	rv.add_child(hp_wrap)
-
-	# Linha de Ouro + Botão Rápido de Mochila [I]
-	var bottom_row := HBoxContainer.new()
-	bottom_row.add_theme_constant_override("separation", 8)
-	rv.add_child(bottom_row)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	top_right_hud.add_child(row)
 
 	_gold_hud_label = Label.new()
 	_gold_hud_label.text = "🪙 %d Ouro" % gold
 	_gold_hud_label.add_theme_font_size_override("font_size", 13)
 	_gold_hud_label.add_theme_color_override("font_color", Color(0.98, 0.84, 0.36))
-	bottom_row.add_child(_gold_hud_label)
-	bottom_row.add_spacer(false)
+	_gold_hud_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(_gold_hud_label)
+	row.add_spacer(false)
 
 	var bag_btn := Button.new()
 	bag_btn.text = "🎒 Mochila [I]"
@@ -1046,9 +1039,9 @@ func _build_arpg_xp_hud() -> void:
 		if inventory_modal != null:
 			inventory_modal.toggle_inventory()
 	)
-	bottom_row.add_child(bag_btn)
+	row.add_child(bag_btn)
 
-	$HUD.add_child(right_hud)
+	$HUD.add_child(top_right_hud)
 	_refresh_arpg_xp_hud()
 	_refresh_gold_hud()
 

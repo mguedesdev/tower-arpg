@@ -18,6 +18,8 @@ const TOWN_INTERACTABLE_SCRIPT = preload("res://game/campaign/town_interactable_
 const ZONE_PORTAL_SCRIPT = preload("res://game/campaign/zone_portal_3d.gd")
 const TOWN_NPC_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/town_npc_modal.gd")
 const WORLD_MAP_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/world_map_modal.gd")
+const HEALTH_GLOBE_HUD_SCRIPT: Script = preload("res://game/ui/campaign/health_globe_hud.gd")
+const MANA_GLOBE_HUD_SCRIPT: Script = preload("res://game/ui/campaign/mana_globe_hud.gd")
 const SKILL_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/skill_bar_hud.gd")
 const DAY_NIGHT_HUD_SCRIPT: Script = preload("res://game/ui/campaign/day_night_cycle_hud.gd")
 const ITEM_DEF_SCRIPT = preload("res://core/items/item_definition.gd")
@@ -63,6 +65,8 @@ var talent_tree_modal: TalentTreeModal
 var lobby_hud: SanctuaryLobbyHUD
 var town_npc_modal: TownNpcModal
 var world_map_modal: WorldMapModal
+var health_globe_hud: HealthGlobeHUD
+var mana_globe_hud: ManaGlobeHUD
 var skill_bar_hud: SkillBarHUD
 var inventory_modal: InventoryEquipmentModal
 var day_night_hud: DayNightCycleHUD = null
@@ -149,6 +153,14 @@ func _ready() -> void:
 		skill_bar_hud.bind_controller(player.skill_controller)
 	skill_bar_hud.visible = false
 
+	health_globe_hud = HEALTH_GLOBE_HUD_SCRIPT.new() as HealthGlobeHUD
+	$HUD.add_child(health_globe_hud)
+	health_globe_hud.visible = false
+
+	mana_globe_hud = MANA_GLOBE_HUD_SCRIPT.new() as ManaGlobeHUD
+	$HUD.add_child(mana_globe_hud)
+	mana_globe_hud.visible = false
+
 	_ground_items_root = Node3D.new()
 	_ground_items_root.name = "GroundItems"
 	add_child(_ground_items_root)
@@ -182,6 +194,7 @@ func _ready() -> void:
 	run_progression.level_gained.connect(_on_level_gained)
 
 	player.health_changed.connect(_on_health_changed)
+	player.mana_changed.connect(_on_mana_changed)
 	player.died.connect(_on_player_died)
 	attack.form_changed.connect(_on_form_changed)
 
@@ -286,6 +299,14 @@ func _enter_sanctuary_lobby() -> void:
 		xp_hud.visible = false
 	if skill_bar_hud != null:
 		skill_bar_hud.visible = false
+	if health_globe_hud != null:
+		health_globe_hud.visible = false
+	if mana_globe_hud != null:
+		mana_globe_hud.visible = false
+	if health_globe_hud != null:
+		health_globe_hud.visible = false
+	if mana_globe_hud != null:
+		mana_globe_hud.visible = false
 	if player != null and player.skill_controller != null:
 		player.skill_controller.set_enabled(false)
 	if lobby_hud != null:
@@ -324,6 +345,10 @@ func _enter_sanctuary_lobby() -> void:
 		player.skill_controller.set_enabled(false)
 	if skill_bar_hud != null:
 		skill_bar_hud.visible = false
+	if health_globe_hud != null:
+		health_globe_hud.visible = false
+	if mana_globe_hud != null:
+		mana_globe_hud.visible = false
 	if lobby_hud != null:
 		lobby_hud.refresh_lobby()
 
@@ -423,6 +448,12 @@ func _start_new_run() -> void:
 	if skill_bar_hud != null:
 		skill_bar_hud.visible = true
 		skill_bar_hud.refresh_slots()
+	if health_globe_hud != null:
+		health_globe_hud.visible = true
+		health_globe_hud.set_values_immediate(player.health, player.max_health)
+	if mana_globe_hud != null:
+		mana_globe_hud.visible = true
+		mana_globe_hud.set_values_immediate(player.mana, player.max_mana)
 
 	_on_health_changed(player.health, player.max_health)
 	_on_form_changed(attack.form_label())
@@ -729,6 +760,12 @@ func _start_campaign_mode() -> void:
 	if skill_bar_hud != null:
 		skill_bar_hud.visible = true
 		skill_bar_hud.refresh_slots()
+	if health_globe_hud != null:
+		health_globe_hud.visible = true
+		health_globe_hud.set_values_immediate(player.health, player.max_health)
+	if mana_globe_hud != null:
+		mana_globe_hud.visible = true
+		mana_globe_hud.set_values_immediate(player.mana, player.max_mana)
 	_on_health_changed(player.health, player.max_health)
 	_on_form_changed(attack.form_label())
 
@@ -918,6 +955,12 @@ func _on_town_respec_build_requested() -> void:
 	if skill_bar_hud != null:
 		skill_bar_hud.visible = true
 		skill_bar_hud.refresh_slots()
+	if health_globe_hud != null:
+		health_globe_hud.visible = true
+		health_globe_hud.set_values_immediate(player.health, player.max_health)
+	if mana_globe_hud != null:
+		mana_globe_hud.visible = true
+		mana_globe_hud.set_values_immediate(player.mana, player.max_mana)
 	player.health = player.max_health
 	_on_health_changed(player.health, player.max_health)
 	_on_form_changed(attack.form_label())
@@ -1002,6 +1045,10 @@ func _on_player_died() -> void:
 		player.skill_controller.set_enabled(false)
 	if skill_bar_hud != null:
 		skill_bar_hud.visible = false
+	if health_globe_hud != null:
+		health_globe_hud.visible = false
+	if mana_globe_hud != null:
+		mana_globe_hud.visible = false
 	if level_up_modal != null:
 		level_up_modal.hide_modal()
 
@@ -1051,6 +1098,15 @@ func _build_run_summary(is_victory: bool) -> RunSummaryState:
 
 func _on_health_changed(current: int, maximum: int) -> void:
 	health_label.text = "Vida: %d / %d" % [current, maximum]
+	if health_globe_hud != null:
+		health_globe_hud.update_health(current, maximum)
+
+
+func _on_mana_changed(current: int, maximum: int) -> void:
+	if mana_globe_hud != null:
+		mana_globe_hud.update_mana(current, maximum)
+	if skill_bar_hud != null:
+		skill_bar_hud.refresh_mana_availability(current)
 
 
 func _on_form_changed(value: String) -> void:

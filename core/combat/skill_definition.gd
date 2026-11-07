@@ -23,6 +23,7 @@ enum Shape { CONE = 0, CIRCLE = 1, LINE = 2 }
 @export var damage_multiplier: float = 1.0
 @export var base_cooldown: float = 0.62     ## Escala com Velocidade de Ataque e Redução de Recarga
 @export var cast_lock: float = 0.34         ## Tempo em que o personagem fica "preso" executando o golpe
+@export var mana_cost: int = 0              ## Custo de mana para conjurar
 
 ## Efeitos extras
 @export var burn_dps: float = 0.0
@@ -63,6 +64,7 @@ static func build_warrior_skills() -> Dictionary:
 	stab.description = "Ataque básico. Golpe frontal rápido que perfura o inimigo à frente."
 	stab.icon_path = "res://game/ui/icons/stab.png"
 	stab.is_basic_attack = true
+	stab.mana_cost = 0
 	stab.shape = Shape.CONE
 	stab.hit_range = 2.55
 	stab.half_angle_deg = 26.0
@@ -80,6 +82,7 @@ static func build_warrior_skills() -> Dictionary:
 	arc.display_name = "Corte em Meia-Lua"
 	arc.description = "Golpe pesado em arco amplo que atinge todos os inimigos à sua frente."
 	arc.icon_path = "res://game/ui/icons/arc.png"
+	arc.mana_cost = 6
 	arc.shape = Shape.CONE
 	arc.hit_range = 2.65
 	arc.half_angle_deg = 82.0
@@ -97,6 +100,7 @@ static func build_warrior_skills() -> Dictionary:
 	spin.display_name = "Redemoinho de Aço"
 	spin.description = "Giro de 360° que retalha todos os inimigos ao redor."
 	spin.icon_path = "res://game/ui/icons/spin.png"
+	spin.mana_cost = 14
 	spin.shape = Shape.CIRCLE
 	spin.hit_range = 2.45
 	spin.max_targets = 12
@@ -113,6 +117,7 @@ static func build_warrior_skills() -> Dictionary:
 	pierce.display_name = "Lança Empaladora"
 	pierce.description = "Investida perfurante de longo alcance que atravessa inimigos em linha reta."
 	pierce.icon_path = "res://game/ui/icons/stab.png"
+	pierce.mana_cost = 10
 	pierce.shape = Shape.LINE
 	pierce.hit_range = 4.8
 	pierce.line_width = 1.15
@@ -130,6 +135,7 @@ static func build_warrior_skills() -> Dictionary:
 	ember.display_name = "Golpe Incandescente"
 	ember.description = "Estocada imbuída em brasas: explode no impacto e aplica Queimadura."
 	ember.icon_path = "res://game/ui/icons/stab.png"
+	ember.mana_cost = 12
 	ember.shape = Shape.CONE
 	ember.hit_range = 2.75
 	ember.half_angle_deg = 40.0

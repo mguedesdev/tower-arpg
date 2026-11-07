@@ -2,6 +2,7 @@ extends CharacterBody3D
 class_name TowerPlayer
 
 signal health_changed(current: int, maximum: int)
+signal mana_changed(current: int, maximum: int)
 signal died
 
 @export var move_speed: float = 6.2
@@ -41,6 +42,8 @@ var belt_lantern: BeltLantern3D = null
 
 var stats: CharacterStats = CharacterStats.new()
 var health: int = 100
+var mana: int = 60
+var max_mana: int = 60
 var alive: bool = true
 var animation_player: AnimationPlayer
 var animation_tree: AnimationTree
@@ -145,6 +148,8 @@ func _initialize_stats() -> void:
 		stats.stats_changed.connect(_on_stats_changed)
 	if not stats.health_changed.is_connected(_on_internal_health_changed):
 		stats.health_changed.connect(_on_internal_health_changed)
+	if not stats.mana_changed.is_connected(_on_internal_mana_changed):
+		stats.mana_changed.connect(_on_internal_mana_changed)
 	if character_definition != null:
 		stats.configure_from_definition(character_definition)
 	else:
@@ -166,6 +171,8 @@ func _sync_from_stats() -> void:
 	move_speed = stats.get_move_speed()
 	max_health = stats.get_max_health()
 	health = stats.current_health
+	max_mana = stats.get_max_mana()
+	mana = stats.current_mana
 
 
 func bind_equipment(p_equipment: CharacterEquipment) -> void:
@@ -181,6 +188,23 @@ func _on_internal_health_changed(current_hp: int, maximum_hp: int) -> void:
 	health = current_hp
 	max_health = maximum_hp
 	health_changed.emit(health, max_health)
+
+
+func _on_internal_mana_changed(current_mp: int, maximum_mp: int) -> void:
+	mana = current_mp
+	max_mana = maximum_mp
+	mana_changed.emit(mana, max_mana)
+
+
+func spend_mana(amount: int) -> bool:
+	if stats == null:
+		return true
+	return stats.apply_mana_cost(amount)
+
+
+func restore_mana(amount: int) -> void:
+	if stats != null:
+		stats.restore_mana(amount)
 
 func _load_real_knight_if_available() -> void:
 	if not ResourceLoader.exists(KNIGHT_MODEL_PATH):
@@ -262,6 +286,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if stats != null:
 		stats.tick_temporary_modifiers(delta)
+		stats.regenerate_mana(delta)
 
 	# Input.get_vector ja limita as diagonais e respeita a intensidade do analogico.
 	# Nao normalizar o resultado: isso faria um toque leve no controle virar 100%.

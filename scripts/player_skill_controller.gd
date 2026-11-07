@@ -11,6 +11,7 @@ class_name PlayerSkillController
 
 signal slots_changed
 signal skill_cast(skill_id: String)
+signal insufficient_mana(slot_index: int, cost: int)
 
 const VFX = preload("res://scripts/vfx/tower_vfx_spawner.gd")
 const SkillDefScript = preload("res://core/combat/skill_definition.gd")
@@ -225,6 +226,9 @@ func _begin_action(slot_idx: int) -> void:
 	var def: SkillDefinition = get_slot_skill(slot_idx)
 	if def == null:
 		return
+	if def.mana_cost > 0 and character != null and character.mana < def.mana_cost:
+		insufficient_mana.emit(slot_idx, def.mana_cost)
+		return
 	_pending_slot = slot_idx
 	_pending_target = pick_enemy_under_cursor()
 	_has_ground_point = false
@@ -365,6 +369,10 @@ func cast_skill_now(skill_id: String, aim_direction: Vector3) -> int:
 
 
 func _cast(def: SkillDefinition, aim_direction: Vector3) -> int:
+	if def.mana_cost > 0 and character != null:
+		if not character.spend_mana(def.mana_cost):
+			return 0
+
 	var forward: Vector3 = Vector3(aim_direction.x, 0.0, aim_direction.z)
 	if forward.length_squared() < 0.0001:
 		forward = character.visual.global_basis.z if character.visual != null else Vector3.BACK
