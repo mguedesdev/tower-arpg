@@ -53,7 +53,7 @@ var town_npc_modal: TownNpcModal
 var inventory_modal: InventoryEquipmentModal
 var boss_health_bar_hud: Control = null
 
-var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 5)
+var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var equipment: CharacterEquipment = CharacterEquipment.new()
 

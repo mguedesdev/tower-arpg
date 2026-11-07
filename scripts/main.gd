@@ -62,7 +62,7 @@ var lobby_hud: SanctuaryLobbyHUD
 var town_npc_modal: TownNpcModal
 var skill_bar_hud: SkillBarHUD
 var inventory_modal: InventoryEquipmentModal
-var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 5)
+var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var equipment: CharacterEquipment = CharacterEquipment.new()
 var _ground_items_root: Node3D

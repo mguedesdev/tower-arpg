@@ -150,7 +150,7 @@ func _test_main_scene_inventory_integration() -> void:
 	var main_node = MAIN_SCENE.instantiate()
 	root.add_child(main_node)
 
-	_check(main_node.backpack != null and main_node.backpack.columns == 10 and main_node.backpack.rows == 5, "15. Mochila espacial (backpack 10x5) inicializada na Main")
+	_check(main_node.backpack != null and main_node.backpack.columns == 10 and main_node.backpack.rows == 6, "15. Mochila espacial (backpack 10x6) inicializada na Main")
 	_check(main_node.equipment != null, "16. Gerenciador de Equipamento (Paperdoll) inicializado")
 	_check(main_node.inventory_modal != null, "17. Modal de Inventário & Paperdoll adicionado ao HUD")
 	_check(main_node.backpack.items.size() >= 5, "18. Itens de partida foram distribuídos na mochila para teste imediato")

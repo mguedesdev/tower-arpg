@@ -1,7 +1,8 @@
 extends Control
 class_name InventoryEquipmentModal
-## Modal Unificado de Inventário Espacial em Grid (Diablo 2 / PoE) + Paperdoll + Status do Personagem.
-## • Centralizado quando aberto sozinho; posicionado lado a lado (direita) quando aberto junto com NPC/Baú.
+## Modal Unificado de Inventário Espacial em Grid (10x6) + Paperdoll em Cruz + Status Básico.
+## • Layout fiel à referência visual Dark-Fantasy Dourada.
+## • Centralizado quando aberto sozinho; lado a lado (direita) quando aberto junto com NPC/Baú.
 ## • Tooltip com comparação linha a linha (▲ verde / ▼ vermelho) e área dedicada de Ganhos e Perdas.
 ## • Atalho: [I] ou [B].
 
@@ -10,12 +11,15 @@ signal closed()
 signal item_context_action_requested(item: ItemInstance)
 signal potion_consumed(heal_amount: int)
 
-const BG_COLOR := Color(0.045, 0.04, 0.045, 0.97)
-const BORDER_COLOR := Color(0.55, 0.43, 0.24, 0.96)
-const GOLD_COLOR := Color(0.94, 0.78, 0.38)
-const TEXT_COLOR := Color(0.92, 0.89, 0.82)
-const RED_ALERT := Color(1.0, 0.35, 0.35)
-const CELL_SIZE := 36
+const BG_COLOR := Color(0.055, 0.048, 0.058, 0.98)
+const PANEL_INNER_BG := Color(0.075, 0.065, 0.08, 0.96)
+const BORDER_COLOR := Color(0.68, 0.52, 0.26, 0.96)
+const BORDER_SUBTLE := Color(0.42, 0.33, 0.19, 0.85)
+const GOLD_COLOR := Color(0.94, 0.79, 0.44)
+const TEXT_COLOR := Color(0.93, 0.89, 0.82)
+const MUTED_LABEL := Color(0.68, 0.60, 0.50)
+const RED_ALERT := Color(0.95, 0.28, 0.28)
+const CELL_SIZE := 39
 
 var inventory: SpatialInventoryGrid
 var equipment: CharacterEquipment
@@ -27,6 +31,7 @@ var active_partner_station: String = ""
 var _window_panel: PanelContainer
 var _header_bar: HBoxContainer
 var _gold_header_label: Label
+var _mochila_title_label: Label
 var _hint_label: Label
 var _is_dragging_window: bool = false
 var _drag_start_mouse: Vector2 = Vector2.ZERO
@@ -40,7 +45,18 @@ var _held_preview: TextureRect
 # Componentes da UI
 var _grid_container: Control
 var _paperdoll_slots: Dictionary = {}    ## EquipmentSlot -> Panel
-var _stats_label: RichTextLabel
+var _silhouette_cache: Dictionary = {}   ## EquipmentSlot -> Texture2D
+
+# Labels de Status Básico (Tabela 2 colunas fiel à referência)
+var _stat_val_hp: Label
+var _stat_val_dmg: Label
+var _stat_val_crit: Label
+var _stat_val_mana: Label
+var _stat_val_armor: Label
+var _stat_val_speed: Label
+var _stat_attributes_footer: Label
+
+# Tooltip flutuante
 var _tooltip_panel: PanelContainer
 var _tooltip_text: RichTextLabel
 
@@ -77,7 +93,7 @@ func bind_context(inv: SpatialInventoryGrid, eq: CharacterEquipment, p_stats: Ch
 func set_gold(gold_val: int) -> void:
 	current_gold = maxi(0, gold_val)
 	if _gold_header_label != null:
-		_gold_header_label.text = "🪙 %d Ouro" % current_gold
+		_gold_header_label.text = "🪙 %d" % current_gold
 	if visible:
 		_refresh_stats_view()
 
@@ -90,7 +106,7 @@ func set_partner_station(station_id: String) -> void:
 
 func get_window_size() -> Vector2:
 	if _window_panel == null:
-		return Vector2(648, 520)
+		return Vector2(690, 540)
 	_window_panel.reset_size()
 	var sz: Vector2 = _window_panel.size
 	if sz.x < 100.0:
@@ -120,7 +136,6 @@ func open_inventory() -> void:
 
 func close_inventory() -> void:
 	if _held_item != null and inventory != null:
-		# Devolve item seguro à mochila se estava na mão
 		inventory.auto_add_item(_held_item)
 		_set_held_item(null)
 	visible = false
@@ -184,18 +199,18 @@ func _center_window_on_screen() -> void:
 
 
 func _build_ui() -> void:
-	# Janela principal arrastável
+	# Moldura Principal Dourada Gótica
 	_window_panel = PanelContainer.new()
 	_window_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var root_style := StyleBoxFlat.new()
 	root_style.bg_color = BG_COLOR
 	root_style.border_color = BORDER_COLOR
 	root_style.set_border_width_all(3)
-	root_style.set_corner_radius_all(6)
-	root_style.shadow_color = Color(0, 0, 0, 0.78)
-	root_style.shadow_size = 14
-	root_style.content_margin_left = 16
-	root_style.content_margin_right = 16
+	root_style.set_corner_radius_all(8)
+	root_style.shadow_color = Color(0, 0, 0, 0.82)
+	root_style.shadow_size = 16
+	root_style.content_margin_left = 18
+	root_style.content_margin_right = 18
 	root_style.content_margin_top = 12
 	root_style.content_margin_bottom = 14
 	_window_panel.add_theme_stylebox_override("panel", root_style)
@@ -205,107 +220,105 @@ func _build_ui() -> void:
 	main_vbox.add_theme_constant_override("separation", 8)
 	_window_panel.add_child(main_vbox)
 
-	# Cabeçalho arrastável
+	# 1. CABEÇALHO SUPERIOR CENTRALIZADO: "────── ❖ INVENTÁRIO ❖ ──────" + [X]
 	_header_bar = HBoxContainer.new()
 	_header_bar.mouse_filter = Control.MOUSE_FILTER_STOP
 	_header_bar.gui_input.connect(_on_header_gui_input)
 
-	var title := Label.new()
-	title.text = "⚔ EQUIPAMENTO & MOCHILA [I]"
-	title.add_theme_font_size_override("font_size", 14)
-	title.add_theme_color_override("font_color", GOLD_COLOR)
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_header_bar.add_child(title)
-	_header_bar.add_spacer(false)
-
 	_gold_header_label = Label.new()
-	_gold_header_label.text = "🪙 %d Ouro" % current_gold
+	_gold_header_label.text = "🪙 %d" % current_gold
+	_gold_header_label.custom_minimum_size = Vector2(72, 0)
 	_gold_header_label.add_theme_font_size_override("font_size", 14)
-	_gold_header_label.add_theme_color_override("font_color", Color(0.98, 0.85, 0.38))
+	_gold_header_label.add_theme_color_override("font_color", Color(0.98, 0.84, 0.36))
 	_gold_header_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_header_bar.add_child(_gold_header_label)
 
-	var spacer_small := Control.new()
-	spacer_small.custom_minimum_size = Vector2(10, 0)
-	spacer_small.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_header_bar.add_child(spacer_small)
+	var title := Label.new()
+	title.text = "──────────  ❖   INVENTÁRIO   ❖  ──────────"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 17)
+	title.add_theme_color_override("font_color", GOLD_COLOR)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_header_bar.add_child(title)
 
 	var close_btn := Button.new()
-	close_btn.text = " [X] "
-	close_btn.add_theme_font_size_override("font_size", 13)
+	close_btn.text = "✕"
+	close_btn.custom_minimum_size = Vector2(30, 28)
+	close_btn.add_theme_font_size_override("font_size", 14)
 	close_btn.add_theme_color_override("font_color", GOLD_COLOR)
 	close_btn.focus_mode = Control.FOCUS_NONE
+	var x_style := _slot_style(Color(0.12, 0.10, 0.13, 0.95), BORDER_COLOR, 1)
+	x_style.set_corner_radius_all(4)
+	var x_hov := x_style.duplicate() as StyleBoxFlat
+	x_hov.bg_color = Color(0.35, 0.12, 0.12, 0.95)
+	close_btn.add_theme_stylebox_override("normal", x_style)
+	close_btn.add_theme_stylebox_override("hover", x_hov)
+	close_btn.add_theme_stylebox_override("pressed", x_hov)
 	close_btn.pressed.connect(close_inventory)
 	_header_bar.add_child(close_btn)
 	main_vbox.add_child(_header_bar)
 
-	# Separador de cabeçalho
 	var h_sep := HSeparator.new()
+	h_sep.add_theme_color_override("separator", BORDER_SUBTLE)
 	main_vbox.add_child(h_sep)
 
-	# Corpo dividido: Esquerda = Paperdoll + Status | Direita = Grid da Mochila
+	# 2. CORPO DIVIDIDO: ESQUERDA (EQUIPAMENTO + STATUS BÁSICO) | DIREITA (MOCHILA 10 x 6)
 	var body_hbox := HBoxContainer.new()
 	body_hbox.add_theme_constant_override("separation", 16)
 	main_vbox.add_child(body_hbox)
 
-	# --- PAINEL ESQUERDO: PAPERDOLL + STATUS DO PERSONAGEM ---
+	# ================= COLUNA ESQUERDA =================
 	var left_vbox := VBoxContainer.new()
+	left_vbox.custom_minimum_size = Vector2(252, 0)
 	left_vbox.add_theme_constant_override("separation", 6)
 	body_hbox.add_child(left_vbox)
 
 	var doll_title := Label.new()
-	doll_title.text = "SLOTS DE EQUIPAMENTO"
-	doll_title.add_theme_font_size_override("font_size", 12)
+	doll_title.text = "────  ❖  EQUIPAMENTO  ❖  ────"
+	doll_title.add_theme_font_size_override("font_size", 13)
 	doll_title.add_theme_color_override("font_color", GOLD_COLOR)
 	doll_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	left_vbox.add_child(doll_title)
 
 	var doll_root := Control.new()
-	doll_root.custom_minimum_size = Vector2(246, 354)
+	doll_root.custom_minimum_size = Vector2(252, 298)
 	left_vbox.add_child(doll_root)
 	_build_paperdoll(doll_root)
 
-	# Painel de Status do Personagem
-	var stats_card := PanelContainer.new()
-	var sc_style := StyleBoxFlat.new()
-	sc_style.bg_color = Color(0.06, 0.05, 0.07, 0.92)
-	sc_style.border_color = Color(0.35, 0.28, 0.18, 0.85)
-	sc_style.set_border_width_all(1)
-	sc_style.set_corner_radius_all(3)
-	sc_style.content_margin_left = 10
-	sc_style.content_margin_right = 10
-	sc_style.content_margin_top = 6
-	sc_style.content_margin_bottom = 6
-	stats_card.add_theme_stylebox_override("panel", sc_style)
+	# Card de STATUS BÁSICO (Fiel à imagem de referência: placa superior + 2 colunas com divisórias)
+	_build_basic_status_card(left_vbox)
 
-	_stats_label = RichTextLabel.new()
-	_stats_label.bbcode_enabled = true
-	_stats_label.fit_content = true
-	_stats_label.custom_minimum_size = Vector2(236, 104)
-	_stats_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stats_card.add_child(_stats_label)
-	left_vbox.add_child(stats_card)
-
-	# Separador vertical elegante
+	# Divisor Vertical Dourado
 	var v_sep := VSeparator.new()
 	body_hbox.add_child(v_sep)
 
-	# --- PAINEL DIREITO: MOCHILA (GRID 10x5) ---
+	# ================= COLUNA DIREITA: MOCHILA (10 x 6) =================
 	var right_vbox := VBoxContainer.new()
 	right_vbox.add_theme_constant_override("separation", 8)
 	body_hbox.add_child(right_vbox)
 
-	var grid_title := Label.new()
-	grid_title.text = "MOCHILA ESPACIAL (10 x 5 ESPAÇOS)"
-	grid_title.add_theme_font_size_override("font_size", 12)
-	grid_title.add_theme_color_override("font_color", GOLD_COLOR)
-	right_vbox.add_child(grid_title)
+	_mochila_title_label = Label.new()
+	_mochila_title_label.text = "🎒  MOCHILA (10 x 6)"
+	_mochila_title_label.add_theme_font_size_override("font_size", 14)
+	_mochila_title_label.add_theme_color_override("font_color", GOLD_COLOR)
+	right_vbox.add_child(_mochila_title_label)
+
+	var grid_frame := PanelContainer.new()
+	var gf_style := _slot_style(Color(0.04, 0.035, 0.045, 0.98), BORDER_COLOR, 2)
+	gf_style.set_corner_radius_all(4)
+	gf_style.content_margin_left = 4
+	gf_style.content_margin_right = 4
+	gf_style.content_margin_top = 4
+	gf_style.content_margin_bottom = 4
+	grid_frame.add_theme_stylebox_override("panel", gf_style)
+	right_vbox.add_child(grid_frame)
 
 	_grid_container = Control.new()
-	_grid_container.custom_minimum_size = Vector2(10 * CELL_SIZE, 5 * CELL_SIZE)
+	_grid_container.custom_minimum_size = Vector2(10 * CELL_SIZE, 6 * CELL_SIZE)
 	_grid_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	_grid_container.gui_input.connect(_on_grid_gui_input)
-	right_vbox.add_child(_grid_container)
+	grid_frame.add_child(_grid_container)
 
 	_hint_label = Label.new()
 	_hint_label.add_theme_font_size_override("font_size", 11)
@@ -320,7 +333,7 @@ func _build_ui() -> void:
 	_held_preview.visible = false
 	_held_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_held_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_held_preview.modulate = Color(1, 1, 1, 0.88)
+	_held_preview.modulate = Color(1, 1, 1, 0.90)
 	add_child(_held_preview)
 
 	# Tooltip flutuante com comparação (top_level = true)
@@ -350,18 +363,133 @@ func _build_ui() -> void:
 	add_child(_tooltip_panel)
 
 
+func _build_basic_status_card(parent_vbox: VBoxContainer) -> void:
+	# Placa de título "STATUS BÁSICO" emoldurada
+	var header_badge := PanelContainer.new()
+	var hb_style := StyleBoxFlat.new()
+	hb_style.bg_color = Color(0.09, 0.075, 0.09, 0.98)
+	hb_style.border_color = BORDER_COLOR
+	hb_style.set_border_width_all(1)
+	hb_style.set_corner_radius_all(4)
+	hb_style.content_margin_left = 12
+	hb_style.content_margin_right = 12
+	hb_style.content_margin_top = 3
+	hb_style.content_margin_bottom = 3
+	header_badge.add_theme_stylebox_override("panel", hb_style)
+
+	var badge_lbl := Label.new()
+	badge_lbl.text = "❖   STATUS BÁSICO   ❖"
+	badge_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge_lbl.add_theme_font_size_override("font_size", 12)
+	badge_lbl.add_theme_color_override("font_color", GOLD_COLOR)
+	header_badge.add_child(badge_lbl)
+	parent_vbox.add_child(header_badge)
+
+	# Quadro de Status em 2 Colunas (Vida/Dano/Crítico | Mana/Armadura/Velocidade)
+	var stats_card := PanelContainer.new()
+	var sc_style := StyleBoxFlat.new()
+	sc_style.bg_color = PANEL_INNER_BG
+	sc_style.border_color = BORDER_COLOR
+	sc_style.set_border_width_all(1)
+	sc_style.set_corner_radius_all(5)
+	sc_style.content_margin_left = 10
+	sc_style.content_margin_right = 10
+	sc_style.content_margin_top = 8
+	sc_style.content_margin_bottom = 8
+	stats_card.add_theme_stylebox_override("panel", sc_style)
+	parent_vbox.add_child(stats_card)
+
+	var card_vbox := VBoxContainer.new()
+	card_vbox.add_theme_constant_override("separation", 6)
+	stats_card.add_child(card_vbox)
+
+	var cols_hbox := HBoxContainer.new()
+	cols_hbox.add_theme_constant_override("separation", 8)
+	card_vbox.add_child(cols_hbox)
+
+	# Coluna Esquerda: Vida, Dano, Crítico
+	var col_left := VBoxContainer.new()
+	col_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col_left.add_theme_constant_override("separation", 4)
+	cols_hbox.add_child(col_left)
+
+	_stat_val_hp = _add_stat_row(col_left, "❤️", "Vida", "100")
+	col_left.add_child(_make_thin_sep())
+	_stat_val_dmg = _add_stat_row(col_left, "⚔️", "Dano", "14")
+	col_left.add_child(_make_thin_sep())
+	_stat_val_crit = _add_stat_row(col_left, "💥", "Crítico", "5%")
+
+	# Divisor central vertical
+	var mid_sep := VSeparator.new()
+	cols_hbox.add_child(mid_sep)
+
+	# Coluna Direita: Mana, Armadura, Velocidade
+	var col_right := VBoxContainer.new()
+	col_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col_right.add_theme_constant_override("separation", 4)
+	cols_hbox.add_child(col_right)
+
+	_stat_val_mana = _add_stat_row(col_right, "💧", "Mana", "50")
+	col_right.add_child(_make_thin_sep())
+	_stat_val_armor = _add_stat_row(col_right, "🛡️", "Armadura", "12")
+	col_right.add_child(_make_thin_sep())
+	_stat_val_speed = _add_stat_row(col_right, "👟", "Velocidade", "6.2 m/s")
+
+	card_vbox.add_child(_make_thin_sep())
+
+	# Linha compacta de Atributos (Força / Agilidade / Inteligência)
+	_stat_attributes_footer = Label.new()
+	_stat_attributes_footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_stat_attributes_footer.add_theme_font_size_override("font_size", 11)
+	_stat_attributes_footer.add_theme_color_override("font_color", Color(0.84, 0.76, 0.62))
+	card_vbox.add_child(_stat_attributes_footer)
+
+
+func _add_stat_row(parent_col: VBoxContainer, icon_str: String, label_str: String, default_val: String) -> Label:
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 4)
+
+	var ic := Label.new()
+	ic.text = icon_str
+	ic.add_theme_font_size_override("font_size", 11)
+	hb.add_child(ic)
+
+	var nm := Label.new()
+	nm.text = label_str
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.add_theme_font_size_override("font_size", 11)
+	nm.add_theme_color_override("font_color", Color(0.80, 0.76, 0.68))
+	hb.add_child(nm)
+
+	var val := Label.new()
+	val.text = default_val
+	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	val.add_theme_font_size_override("font_size", 12)
+	val.add_theme_color_override("font_color", Color(0.98, 0.96, 0.92))
+	hb.add_child(val)
+
+	parent_col.add_child(hb)
+	return val
+
+
+func _make_thin_sep() -> HSeparator:
+	var s := HSeparator.new()
+	s.add_theme_constant_override("separation", 2)
+	return s
+
+
 func _update_hint_label() -> void:
 	if _hint_label == null:
 		return
 	match active_partner_station:
 		"stash":
-			_hint_label.text = "• [Clique Direito na Mochila]: Guardar no Baú Pessoal\n• [Clique Esquerdo]: Arrastar para Equipar ou Organizar\n• Passe o mouse sobre um item para comparar (▲ verde / ▼ vermelho)"
+			_hint_label.text = "• [Clique Direito na Mochila]: Guardar no Baú  |  [Clique Esquerdo]: Arrastar para Equipar\n• Passe o mouse para comparar atributos com o item equipado (▲ verde / ▼ vermelho)"
 			_hint_label.add_theme_color_override("font_color", Color(0.68, 0.92, 0.72))
 		"vendor_physical", "vendor_magic":
-			_hint_label.text = "• [Clique Direito na Mochila]: Vender Item por 🪙 Ouro\n• [Clique Esquerdo]: Arrastar para Equipar ou Organizar\n• Passe o mouse para comparar com seu equipamento atual"
+			_hint_label.text = "• [Clique Direito na Mochila]: Vender por 🪙 Ouro (vai para a aba Recomprar)\n• Passe o mouse sobre um item para comparar com seu equipamento atual"
 			_hint_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.48))
 		_:
-			_hint_label.text = "• [Clique Esquerdo]: Pegar/Mover  |  [Clique Direito]: Equipar / Usar Poção\n• Passe o mouse para comparar atributos (▲ ganha / ▼ perde)\n• Arraste o cabeçalho superior para mover a janela."
+			_hint_label.text = "• [Clique Esquerdo]: Mover/Equipar  |  [Clique Direito]: Equipar Rápido / Beber Poção\n• Passe o mouse para comparar atributos (▲ ganha em verde / ▼ perde em vermelho)"
 			_hint_label.add_theme_color_override("font_color", Color(0.72, 0.68, 0.60))
 
 
@@ -375,49 +503,192 @@ func _on_header_gui_input(event: InputEvent) -> void:
 			_is_dragging_window = false
 
 
+# ===============================================================
+# PAPERDOLL EM CRUZ FIEL À IMAGEM DE REFERÊNCIA + SILHUETAS
+# ===============================================================
 func _build_paperdoll(root: Control) -> void:
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.HELMET, "Elmo", Vector2(92, 4), Vector2(2, 2))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.AMULET, "Amul.", Vector2(170, 18), Vector2(1, 1))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.CHEST, "Peitoral", Vector2(92, 82), Vector2(2, 4))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.MAIN_HAND, "Arma 1H/2H", Vector2(12, 82), Vector2(2, 4))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.OFF_HAND, "Escudo", Vector2(170, 82), Vector2(2, 4))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.GLOVES, "Luvas", Vector2(12, 232), Vector2(2, 2))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BELT, "Cinto", Vector2(92, 232), Vector2(2, 1))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BOOTS, "Botas", Vector2(92, 274), Vector2(2, 2))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_1, "Anel 1", Vector2(170, 232), Vector2(1, 1))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_2, "Anel 2", Vector2(208, 232), Vector2(1, 1))
+	# Coluna Central: Elmo -> Peitoral -> Cinto -> Botas
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.HELMET, "Elmo", Vector2(88, 2), Vector2(76, 68))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.CHEST, "Peitoral", Vector2(88, 76), Vector2(76, 94))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BELT, "Cinto", Vector2(88, 176), Vector2(76, 48))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BOOTS, "Botas", Vector2(88, 230), Vector2(76, 66))
+
+	# Ala Esquerda: Luvas -> Mão Principal -> Anel 1
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.GLOVES, "Luvas", Vector2(16, 12), Vector2(64, 58))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.MAIN_HAND, "Mão\nPrincipal", Vector2(6, 76), Vector2(74, 94))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_1, "Anel 1", Vector2(20, 176), Vector2(60, 48))
+
+	# Ala Direita: Colar -> Mão Secundária -> Anel 2
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.AMULET, "Colar", Vector2(172, 12), Vector2(64, 58))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.OFF_HAND, "Mão\nSecundária", Vector2(172, 76), Vector2(74, 94))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_2, "Anel 2", Vector2(172, 176), Vector2(60, 48))
 
 
-func _create_doll_slot(parent: Control, slot: ItemDefinition.EquipmentSlot, label_txt: String, pos: Vector2, size_cells: Vector2) -> void:
+func _create_doll_slot(parent: Control, slot: ItemDefinition.EquipmentSlot, label_txt: String, pos: Vector2, sz_px: Vector2) -> void:
 	var slot_panel := Panel.new()
 	slot_panel.position = pos
-	slot_panel.size = size_cells * float(CELL_SIZE)
-	slot_panel.add_theme_stylebox_override("panel", _slot_style(Color(0.08, 0.07, 0.09, 0.9), BORDER_COLOR))
+	slot_panel.size = sz_px
+	var st := _slot_style(Color(0.095, 0.082, 0.10, 0.96), BORDER_COLOR, 1)
+	st.set_corner_radius_all(5)
+	slot_panel.add_theme_stylebox_override("panel", st)
 	slot_panel.gui_input.connect(func(ev: InputEvent) -> void: _on_doll_slot_input(slot, ev))
 	slot_panel.mouse_entered.connect(func() -> void: _on_doll_slot_hover(slot, true))
 	slot_panel.mouse_exited.connect(func() -> void: _on_doll_slot_hover(slot, false))
 	parent.add_child(slot_panel)
 
+	# Silhueta procedural do slot quando vazio
+	var sil := TextureRect.new()
+	sil.name = "Silhouette"
+	sil.texture = _get_or_build_silhouette(slot)
+	sil.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	sil.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	sil.position = Vector2(6, 4)
+	sil.size = Vector2(sz_px.x - 12.0, maxf(18.0, sz_px.y - 22.0))
+	sil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot_panel.add_child(sil)
+
+	# Texto da base do slot ("Elmo", "Colar", "Mão Principal", etc.)
+	var lbl := Label.new()
+	lbl.name = "Placeholder"
+	lbl.text = label_txt
+	lbl.add_theme_font_size_override("font_size", 10)
+	lbl.add_theme_color_override("font_color", MUTED_LABEL)
+	lbl.position = Vector2(2, sz_px.y - (26.0 if label_txt.contains("\n") else 17.0))
+	lbl.size = Vector2(sz_px.x - 4.0, 26.0 if label_txt.contains("\n") else 16.0)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	lbl.add_theme_constant_override("line_spacing", -3)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot_panel.add_child(lbl)
+
+	# Ícone do item equipado
 	var icon := TextureRect.new()
 	icon.name = "Icon"
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	icon.position = Vector2(4, 4)
+	icon.size = Vector2(sz_px.x - 8.0, sz_px.y - 8.0)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.visible = false
 	slot_panel.add_child(icon)
 
-	var lbl := Label.new()
-	lbl.name = "Placeholder"
-	lbl.text = label_txt
-	lbl.add_theme_font_size_override("font_size", 9)
-	lbl.add_theme_color_override("font_color", Color(0.5, 0.45, 0.40))
-	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot_panel.add_child(lbl)
-
 	_paperdoll_slots[slot] = slot_panel
+
+
+func _get_or_build_silhouette(slot: ItemDefinition.EquipmentSlot) -> Texture2D:
+	if _silhouette_cache.has(slot):
+		return _silhouette_cache[slot] as Texture2D
+
+	var img := Image.create(48, 48, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var col := Color(0.42, 0.35, 0.29, 0.82)
+	var dark := Color(0.08, 0.07, 0.08, 0.95)
+
+	match slot:
+		ItemDefinition.EquipmentSlot.HELMET:
+			# Elmo medieval com abertura em T
+			for y in range(8, 38):
+				for x in range(12, 36):
+					var dx: float = float(x - 24)
+					var dy: float = float(y - 20)
+					if y < 22 and (dx * dx + dy * dy) > 144.0:
+						continue
+					img.set_pixel(x, y, col)
+			for x in range(16, 32):
+				for y in range(20, 24):
+					img.set_pixel(x, y, dark)
+			for y in range(20, 35):
+				for x in range(22, 26):
+					img.set_pixel(x, y, dark)
+
+		ItemDefinition.EquipmentSlot.AMULET:
+			# Corrente em V + medalhão redondo
+			for i in range(16):
+				img.set_pixel(11 + i, 8 + i, col)
+				img.set_pixel(12 + i, 8 + i, col)
+				img.set_pixel(36 - i, 8 + i, col)
+				img.set_pixel(35 - i, 8 + i, col)
+			for y in range(22, 38):
+				for x in range(16, 32):
+					var d: float = Vector2(x - 24, y - 30).length()
+					if d <= 6.5:
+						img.set_pixel(x, y, col)
+
+		ItemDefinition.EquipmentSlot.MAIN_HAND:
+			# Espada inclinada na diagonal
+			for i in range(28):
+				var bx: int = 12 + i
+				var by: int = 36 - i
+				for ox in range(-2, 3):
+					for oy in range(-2, 3):
+						if abs(ox + oy) <= 2:
+							img.set_pixel(clampi(bx + ox, 0, 47), clampi(by + oy, 0, 47), col)
+			# Guarda (crossguard)
+			for g in range(-7, 8):
+				img.set_pixel(clampi(17 + g, 0, 47), clampi(31 + g, 0, 47), col)
+				img.set_pixel(clampi(18 + g, 0, 47), clampi(31 + g, 0, 47), col)
+
+		ItemDefinition.EquipmentSlot.CHEST:
+			# Couraça / Peitoral com ombreiras
+			for y in range(8, 40):
+				var half_w: int = 16 if y < 18 else (12 if y < 30 else 10)
+				for x in range(24 - half_w, 24 + half_w):
+					if y < 14 and abs(x - 24) < 5:
+						continue
+					img.set_pixel(x, y, col)
+
+		ItemDefinition.EquipmentSlot.OFF_HAND:
+			# Escudo Heater clássico
+			for y in range(8, 40):
+				var t_prog: float = float(y - 8) / 32.0
+				var half_w: int = int(roundi(13.0 * (1.0 - t_prog * t_prog * 0.85)))
+				for x in range(24 - half_w, 24 + half_w):
+					img.set_pixel(x, y, col)
+
+		ItemDefinition.EquipmentSlot.RING_1, ItemDefinition.EquipmentSlot.RING_2:
+			# Anel circular com pedra no topo
+			for y in range(10, 40):
+				for x in range(10, 38):
+					var d: float = Vector2(x - 24, y - 26).length()
+					if d >= 7.5 and d <= 11.5:
+						img.set_pixel(x, y, col)
+			for y in range(10, 17):
+				for x in range(20, 28):
+					img.set_pixel(x, y, col.lightened(0.15))
+
+		ItemDefinition.EquipmentSlot.BELT:
+			# Cinto horizontal com fivela central
+			for y in range(19, 29):
+				for x in range(6, 42):
+					img.set_pixel(x, y, col)
+			for y in range(16, 32):
+				for x in range(18, 30):
+					if x < 21 or x > 27 or y < 19 or y > 29:
+						img.set_pixel(x, y, col.lightened(0.18))
+					else:
+						img.set_pixel(x, y, dark)
+
+		ItemDefinition.EquipmentSlot.BOOTS:
+			# Par de botas lado a lado
+			for y in range(8, 38):
+				for x in range(10, 21):
+					if y > 28 or x >= 13:
+						img.set_pixel(x, y, col)
+				for x in range(27, 38):
+					if y > 28 or x <= 34:
+						img.set_pixel(x, y, col)
+
+		ItemDefinition.EquipmentSlot.GLOVES:
+			# Par de manoplas
+			for y in range(12, 36):
+				for x in range(10, 22):
+					img.set_pixel(x, y, col)
+				for x in range(26, 38):
+					img.set_pixel(x, y, col)
+
+	var tex := ImageTexture.create_from_image(img)
+	_silhouette_cache[slot] = tex
+	return tex
 
 
 func _process(_delta: float) -> void:
@@ -438,9 +709,24 @@ func _refresh_all() -> void:
 	_refresh_stats_view()
 
 
+func _get_item_slot_bg_color(item: ItemInstance) -> Color:
+	match item.rarity:
+		ItemInstance.ItemRarity.MAGIC:
+			return Color(0.13, 0.14, 0.25, 0.96)
+		ItemInstance.ItemRarity.RARE:
+			return Color(0.24, 0.18, 0.10, 0.96)
+		ItemInstance.ItemRarity.UNIQUE:
+			return Color(0.26, 0.11, 0.11, 0.96)
+		_:
+			return Color(0.17, 0.12, 0.22, 0.95)
+
+
 func _refresh_grid_view(force: bool = false) -> void:
 	if _grid_container == null or inventory == null:
 		return
+	if _mochila_title_label != null:
+		_mochila_title_label.text = "🎒  MOCHILA (%d x %d)" % [inventory.columns, inventory.rows]
+	_grid_container.custom_minimum_size = Vector2(inventory.columns * CELL_SIZE, inventory.rows * CELL_SIZE)
 	if not visible and not force:
 		_grid_dirty = true
 		return
@@ -448,17 +734,17 @@ func _refresh_grid_view(force: bool = false) -> void:
 	for child in _grid_container.get_children():
 		child.queue_free()
 
-	# 1. Desenha as células de fundo (10 colunas x 5 linhas)
+	# 1. Desenha as células de fundo (10 colunas x 6 linhas)
 	for y in range(inventory.rows):
 		for x in range(inventory.columns):
 			var cell := Panel.new()
 			cell.position = Vector2(x * CELL_SIZE, y * CELL_SIZE)
 			cell.size = Vector2(CELL_SIZE, CELL_SIZE)
-			cell.add_theme_stylebox_override("panel", _slot_style(Color(0.06, 0.05, 0.07, 0.8), Color(0.25, 0.22, 0.18, 0.6)))
+			cell.add_theme_stylebox_override("panel", _slot_style(Color(0.06, 0.052, 0.068, 0.92), Color(0.28, 0.22, 0.15, 0.72), 1))
 			cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			_grid_container.add_child(cell)
 
-	# 2. Desenha os itens ocupando suas dimensões (W x H)
+	# 2. Desenha os itens ocupando suas dimensões (W x H) com fundo colorido rico igual à referência
 	for item in inventory.items:
 		if item == null or item.definition == null:
 			continue
@@ -466,12 +752,16 @@ func _refresh_grid_view(force: bool = false) -> void:
 		var size_px: Vector2 = Vector2(item.definition.grid_size.x * CELL_SIZE, item.definition.grid_size.y * CELL_SIZE)
 
 		var item_panel := Panel.new()
-		item_panel.position = pos_px
-		item_panel.size = size_px
+		item_panel.position = pos_px + Vector2(1, 1)
+		item_panel.size = size_px - Vector2(2, 2)
 		var border_col: Color = item.get_rarity_color()
+		var bg_col: Color = _get_item_slot_bg_color(item)
 		if stats != null and not item.meets_requirements(stats):
 			border_col = RED_ALERT
-		item_panel.add_theme_stylebox_override("panel", _slot_style(Color(0.12, 0.10, 0.14, 0.95), border_col, 2))
+			bg_col = Color(0.25, 0.08, 0.09, 0.96)
+		var item_st := _slot_style(bg_col, border_col, 2)
+		item_st.set_corner_radius_all(4)
+		item_panel.add_theme_stylebox_override("panel", item_st)
 		item_panel.gui_input.connect(func(ev: InputEvent) -> void: _on_item_panel_input(item, ev))
 		item_panel.mouse_entered.connect(func() -> void: _show_item_tooltip(item, false))
 		item_panel.mouse_exited.connect(_hide_tooltip)
@@ -481,7 +771,8 @@ func _refresh_grid_view(force: bool = false) -> void:
 		icon.texture = ItemIconFactory.get_icon(item.definition)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		icon.position = Vector2(3, 3)
+		icon.size = item_panel.size - Vector2(6, 6)
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		item_panel.add_child(icon)
 
@@ -494,42 +785,58 @@ func _refresh_paperdoll_view() -> void:
 		var item: ItemInstance = equipment.get_equipped_item(slot_key)
 		var icon: TextureRect = slot_panel.get_node("Icon") as TextureRect
 		var lbl: Label = slot_panel.get_node("Placeholder") as Label
+		var sil: TextureRect = slot_panel.get_node("Silhouette") as TextureRect
 		if item != null and item.definition != null:
 			icon.texture = ItemIconFactory.get_icon(item.definition)
 			icon.visible = true
 			lbl.visible = false
+			sil.visible = false
 			var border_col: Color = item.get_rarity_color()
+			var bg_col: Color = _get_item_slot_bg_color(item)
 			if stats != null and not item.meets_requirements(stats):
 				border_col = RED_ALERT
-			slot_panel.add_theme_stylebox_override("panel", _slot_style(Color(0.12, 0.10, 0.14, 0.95), border_col, 2))
+			var eq_st := _slot_style(bg_col, border_col, 2)
+			eq_st.set_corner_radius_all(5)
+			slot_panel.add_theme_stylebox_override("panel", eq_st)
 		else:
 			icon.texture = null
 			icon.visible = false
 			lbl.visible = true
-			slot_panel.add_theme_stylebox_override("panel", _slot_style(Color(0.08, 0.07, 0.09, 0.9), BORDER_COLOR))
+			sil.visible = true
+			var empty_st := _slot_style(Color(0.095, 0.082, 0.10, 0.96), BORDER_COLOR, 1)
+			empty_st.set_corner_radius_all(5)
+			slot_panel.add_theme_stylebox_override("panel", empty_st)
 
 
 func _refresh_stats_view() -> void:
 	if _gold_header_label != null:
-		_gold_header_label.text = "🪙 %d Ouro" % current_gold
-	if stats == null or _stats_label == null:
+		_gold_header_label.text = "🪙 %d" % current_gold
+	if stats == null:
 		return
 	var hp: int = stats.get_max_health()
 	var dmg: int = stats.get_damage()
 	var armor: int = int(roundi(stats.get_stat(&"armor")))
-	var atk_spd: float = stats.get_stat(&"attack_speed")
 	var mov_spd: float = stats.get_stat(&"move_speed")
-	var crit_c: float = stats.get_stat(&"crit_chance") * 100.0
+	var crit_c: int = int(roundi(stats.get_stat(&"crit_chance") * 100.0))
 	var str_val: int = int(roundi(stats.get_stat(&"strength")))
 	var agi_val: int = int(roundi(stats.get_stat(&"agility")))
 	var int_val: int = int(roundi(stats.get_stat(&"intelligence")))
+	var mana_val: int = 30 + int_val * 2
 
-	_stats_label.text = "[color=#f2cb6f][b]✦ STATUS DO GUERREIRO[/b][/color]  [color=#f8d858](🪙 %d)[/color]\n" % current_gold + \
-		"♥ Vida: [color=#ffffff]%d[/color]   |   🛡️ Armadura: [color=#ffffff]%d[/color]\n" % [hp, armor] + \
-		"⚔ Dano: [color=#ffffff]%d[/color]   |   ⚡ Cadência: [color=#ffffff]%.2fx[/color]\n" % [dmg, atk_spd] + \
-		"👟 Desloc.: [color=#ffffff]%.1fm/s[/color] |  🎯 Crítico: [color=#ffffff]%d%%[/color]\n" % [mov_spd, int(roundi(crit_c))] + \
-		"[color=#98a3b3]────────────────────────────[/color]\n" + \
-		"🏋 Força: [color=#e8b356]%d[/color] | 🏹 Agil.: [color=#6cc8e8]%d[/color] | 🔮 Int.: [color=#b58ce8]%d[/color]" % [str_val, agi_val, int_val]
+	if _stat_val_hp != null:
+		_stat_val_hp.text = "%d" % hp
+	if _stat_val_dmg != null:
+		_stat_val_dmg.text = "%d" % dmg
+	if _stat_val_crit != null:
+		_stat_val_crit.text = "%d%%" % crit_c
+	if _stat_val_mana != null:
+		_stat_val_mana.text = "%d" % mana_val
+	if _stat_val_armor != null:
+		_stat_val_armor.text = "%d" % armor
+	if _stat_val_speed != null:
+		_stat_val_speed.text = "%.1f m/s" % mov_spd
+	if _stat_attributes_footer != null:
+		_stat_attributes_footer.text = "Força: %d   •   Agil.: %d   •   Int.: %d" % [str_val, agi_val, int_val]
 
 
 # --- INTERAÇÃO COM O MOUSE ---
@@ -566,12 +873,10 @@ func _on_item_panel_input(item: ItemInstance, event: InputEvent) -> void:
 					inventory.place_item(item, item.grid_position)
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			_hide_tooltip()
-			# Se estiver com Baú ou Mercador aberto ao lado, executa a ação de contexto rápida (Guardar no Baú / Vender por Ouro)
 			if active_partner_station == "stash" or active_partner_station == "vendor_physical" or active_partner_station == "vendor_magic":
 				item_context_action_requested.emit(item)
 				return
 
-			# Se for Poção de Vida consumível, bebe a poção!
 			if item.definition.category == ItemDefinition.ItemCategory.CONSUMABLE:
 				var heal_val: int = maxi(25, item.definition.base_health)
 				inventory.remove_item(item)
@@ -579,7 +884,6 @@ func _on_item_panel_input(item: ItemInstance, event: InputEvent) -> void:
 				_refresh_all()
 				return
 
-			# Clique direito padrão: equipa direto no slot correspondente!
 			if item.definition.is_equippable():
 				var target_slot: ItemDefinition.EquipmentSlot = item.definition.equip_slot
 				if target_slot == ItemDefinition.EquipmentSlot.RING_1 and equipment.get_equipped_item(ItemDefinition.EquipmentSlot.RING_1) != null:
