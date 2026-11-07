@@ -1,9 +1,9 @@
 extends SceneTree
 
 const MonsterDifficultyService = preload("res://core/combat/monster_difficulty_service.gd")
-const MonsterModifierDefinition = preload("res://core/combat/monster_modifier_definition.gd")
+# MonsterModifierDefinition é class_name global
 const LootBalanceConfig = preload("res://core/items/loot_balance_config.gd")
-const LootGenerationService = preload("res://core/items/loot_generation_service.gd")
+# LootGenerationService é class_name global
 const EnemyDefScript = preload("res://core/combat/enemy_definition.gd")
 
 var total_tests: int = 0

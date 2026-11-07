@@ -1763,8 +1763,8 @@ func select_crafting_item(item: ItemInstance) -> void:
 		return
 	if item.definition != null and item.definition.is_equippable():
 		_selected_craft_target = item
-	elif item.definition != null and ItemDatabase.is_crafting_consumable(item.definition.id):
-		_selected_craft_consumable = item.definition.id
+	elif item.definition != null and ItemDatabase.is_crafting_consumable(item.definition.base_id):
+		_selected_craft_consumable = item.definition.base_id
 	if visible and current_station_id == "scribe_crafting":
 		_refresh_current_station_content()
 
@@ -1777,11 +1777,11 @@ func _count_crafting_consumable(consumable_id: String) -> int:
 	var total: int = 0
 	if backpack != null:
 		for it in backpack.items:
-			if it != null and it.definition != null and it.definition.id == consumable_id:
+			if it != null and it.definition != null and it.definition.base_id == consumable_id:
 				total += 1
 	if stash != null:
 		for it in stash.items:
-			if it != null and it.definition != null and it.definition.id == consumable_id:
+			if it != null and it.definition != null and it.definition.base_id == consumable_id:
 				total += 1
 	return total
 
@@ -1789,12 +1789,12 @@ func _count_crafting_consumable(consumable_id: String) -> int:
 func _consume_crafting_material(consumable_id: String) -> bool:
 	if backpack != null:
 		for it in backpack.items:
-			if it != null and it.definition != null and it.definition.id == consumable_id:
+			if it != null and it.definition != null and it.definition.base_id == consumable_id:
 				backpack.remove_item(it)
 				return true
 	if stash != null:
 		for it in stash.items:
-			if it != null and it.definition != null and it.definition.id == consumable_id:
+			if it != null and it.definition != null and it.definition.base_id == consumable_id:
 				stash.remove_item(it)
 				return true
 	return false
@@ -2344,6 +2344,8 @@ func _on_execute_scribe_craft(options: Dictionary) -> void:
 		_last_craft_feedback = "✦ %s concluída com sucesso em %s!" % [act_name, _selected_craft_target.get_display_name()]
 
 	show_feedback(_last_craft_feedback, false)
+	if backpack != null and backpack.has_signal("grid_changed"):
+		backpack.grid_changed.emit()
 	_refresh_current_station_content()
 
 

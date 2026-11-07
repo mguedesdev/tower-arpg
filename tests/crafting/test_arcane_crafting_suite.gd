@@ -5,7 +5,7 @@ const ItemInstance = preload("res://core/items/item_instance.gd")
 const ItemAffix = preload("res://core/items/item_affix.gd")
 const ItemDatabase = preload("res://core/items/item_database.gd")
 const LootBalanceConfig = preload("res://core/items/loot_balance_config.gd")
-const LootGenerationService = preload("res://core/items/loot_generation_service.gd")
+# LootGenerationService é class_name global
 const CraftingEligibilityService = preload("res://core/items/crafting_eligibility_service.gd")
 const ItemCraftingService = preload("res://core/items/item_crafting_service.gd")
 const TownNpcModal = preload("res://game/ui/campaign/town_npc_modal.gd")
@@ -49,6 +49,7 @@ func _run_all_tests() -> void:
 	test_persistence_and_serialization()
 	test_monte_carlo_crafting_simulation()
 	test_town_npc_modal_scribe_crafting_ui()
+	test_crafting_consumable_tooltips_and_inventory_interaction()
 
 ## ----------------------------------------------------------------------------
 ## 1. REGISTRO OFICIAL DOS 5 CONSUMÍVEIS DE CRAFTING
@@ -429,3 +430,48 @@ func test_town_npc_modal_scribe_crafting_ui() -> void:
 	modal.close_modal()
 	assert_test(not modal.visible, "Modal fechou com sucesso")
 	modal.queue_free()
+
+
+## ----------------------------------------------------------------------------
+## 10. TOOLTIP, CATEGORIA E AÇÃO DE CONTEXTO DOS CONSUMÍVEIS DE CRAFTING
+## ----------------------------------------------------------------------------
+func test_crafting_consumable_tooltips_and_inventory_interaction() -> void:
+	print("\n--- 10. TOOLTIPS E INTERAÇÕES DOS CONSUMÍVEIS DE CRAFTING ---")
+	var ids: Array[String] = ItemDatabase.get_crafting_consumable_ids()
+
+	for cid in ids:
+		var inst: ItemInstance = ItemDatabase.instantiate_act1_catalog_example(cid)
+		assert_test(inst != null, "Instância de '%s' gerada com sucesso" % cid)
+		assert_test(inst.get_base_id() == cid, "get_base_id() retorna '%s'" % cid)
+		assert_test(inst.definition.id == cid, "definition.id alias retorna '%s'" % cid)
+		assert_test(inst.definition.base_id == cid, "definition.base_id retorna '%s'" % cid)
+		assert_test(ItemDatabase.is_crafting_consumable(inst.definition.id), "'%s' reconhecido como consumível de crafting" % cid)
+
+		# Validação da classificação de slot
+		assert_test(inst.get_slot_display_name() == "Escritura Arcana", "'%s' exibe 'Escritura Arcana' como categoria" % cid)
+
+		# Validação da tooltip: NUNCA deve conter "Restaura Vida" e DEVE destacar Material de Forja Arcana
+		var tip: String = inst.format_tooltip_bbcode()
+		assert_test(not tip.contains("Restaura"), "Tooltip de '%s' NÃO contém 'Restaura'" % cid)
+		assert_test(not tip.contains("Vida") or inst.definition.base_health == 0, "Tooltip de '%s' não exibe regeneração de vida incorreta" % cid)
+		assert_test(tip.contains("✦ Material de Forja Arcana (Mesa do Escriba)"), "Tooltip de '%s' destaca Material de Forja Arcana" % cid)
+
+	# Validação da Mochila e Ação de Contexto
+	var inv_modal = preload("res://game/ui/items/inventory_equipment_modal.gd").new()
+	root.add_child(inv_modal)
+
+	var scroll_inst: ItemInstance = ItemDatabase.instantiate_act1_catalog_example("scroll_first_mark")
+	var received_box: Array[ItemInstance] = []
+	inv_modal.item_context_action_requested.connect(func(it: ItemInstance) -> void:
+		received_box.append(it)
+	)
+
+	# Simula clique direito no painel do item quando a estação ativa é "" (fora da bancada)
+	# Deve emitir item_context_action_requested sem crashar nem beber poção!
+	var mb := InputEventMouseButton.new()
+	mb.button_index = MOUSE_BUTTON_RIGHT
+	mb.pressed = true
+	inv_modal._on_item_panel_input(scroll_inst, mb)
+	assert_test(not received_box.is_empty() and received_box[0] == scroll_inst, "Clique direito no pergaminho emite item_context_action_requested com o item correto")
+
+	inv_modal.queue_free()

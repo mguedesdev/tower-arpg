@@ -35,6 +35,13 @@ enum EquipmentSlot {
 const BODY_ARMOR = EquipmentSlot.CHEST
 
 @export var base_id: String = ""
+## Propriedade calculada / alias de compatibilidade para base_id (evita crash em acessos .id)
+var id: String:
+	get:
+		return base_id
+	set(val):
+		base_id = val
+
 @export var display_name: String = ""
 @export var category: ItemCategory = ItemCategory.WEAPON_1H
 @export var equip_slot: EquipmentSlot = EquipmentSlot.MAIN_HAND

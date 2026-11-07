@@ -13,7 +13,7 @@ class_name ItemCraftingService
 ##                         e lacre permanente (VERDICT_SEALED) em 100% dos resultados.
 
 const Eligibility = preload("res://core/items/crafting_eligibility_service.gd")
-const LootGenerationService = preload("res://core/items/loot_generation_service.gd")
+# LootGenerationService é class_name global
 
 
 static func apply_craft(

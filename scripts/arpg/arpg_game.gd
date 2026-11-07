@@ -532,10 +532,12 @@ func _on_town_station_interacted(station_id: String, _station_title: String) -> 
 		return
 	town_npc_modal.set_gold(gold)
 	town_npc_modal.open_station(station_id, unlocked_zones, current_zone_id, area_level)
-	# No Baú Pessoal (stash) ou Mesa do Escriba (scribe_crafting), abre a Mochila automaticamente ao lado; nas lojas, abre centralizada!
-	if (station_id == "stash" or station_id == "scribe_crafting") and inventory_modal != null and not inventory_modal.visible:
-		inventory_modal.set_gold(gold)
-		inventory_modal.open_inventory()
+	if inventory_modal != null:
+		inventory_modal.set_partner_station(station_id)
+		# No Baú Pessoal (stash) ou Mesa do Escriba (scribe_crafting), abre a Mochila automaticamente ao lado; nas lojas, abre centralizada!
+		if (station_id == "stash" or station_id == "scribe_crafting") and not inventory_modal.visible:
+			inventory_modal.set_gold(gold)
+			inventory_modal.open_inventory()
 	call_deferred("_relayout_open_modals")
 
 
@@ -588,7 +590,7 @@ func _on_inventory_context_action(item: ItemInstance) -> void:
 	if item == null or backpack == null:
 		return
 	if town_npc_modal == null or not town_npc_modal.visible:
-		if item.definition != null and ItemDatabase.is_crafting_consumable(item.definition.id):
+		if item.definition != null and ItemDatabase.is_crafting_consumable(item.definition.base_id):
 			_on_town_station_interacted("scribe_crafting", "Mesa do Escriba")
 			town_npc_modal.select_crafting_item(item)
 		return

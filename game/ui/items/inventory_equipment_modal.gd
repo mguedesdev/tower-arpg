@@ -971,7 +971,7 @@ func _on_item_panel_input(item: ItemInstance, event: InputEvent) -> void:
 				return
 
 			if item.definition.category == ItemDefinition.ItemCategory.CONSUMABLE:
-				if ItemDatabase.is_crafting_consumable(item.definition.id):
+				if ItemDatabase.is_crafting_consumable(item.definition.base_id):
 					# Consumível de fabricação arcana (Pergaminhos / Pedras) — emite ação de contexto ou abre mesa
 					item_context_action_requested.emit(item)
 					return
@@ -1090,9 +1090,17 @@ func _show_item_tooltip(item: ItemInstance, is_on_paperdoll: bool = false) -> vo
 				action_hint = "[Clique Direito: Guardar no Baú Pessoal]"
 			"vendor_physical", "vendor_magic":
 				action_hint = "[Clique Direito: Vender por %d Ouro]" % item.get_sell_value()
+			"scribe_crafting":
+				if ItemDatabase.is_crafting_consumable(item.definition.base_id):
+					action_hint = "[Clique Direito: Selecionar Consumível de Escrita]"
+				elif item.definition.is_equippable():
+					action_hint = "[Clique Direito: Colocar na Mesa do Escriba]"
 			_:
 				if item.definition.category == ItemDefinition.ItemCategory.CONSUMABLE:
-					action_hint = "[Clique Direito: Beber Poção (+%d Vida)]" % maxi(25, item.definition.base_health)
+					if ItemDatabase.is_crafting_consumable(item.definition.base_id):
+						action_hint = "[Clique Direito: Usar na Mesa do Escriba]"
+					else:
+						action_hint = "[Clique Direito: Beber Poção (+%d Vida)]" % maxi(25, item.definition.base_health)
 				elif item.definition.is_equippable():
 					action_hint = "[Clique Direito: Equipar Item]"
 		if item.can_rotate():

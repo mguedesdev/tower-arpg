@@ -1,7 +1,7 @@
 extends RefCounted
 class_name CraftingEligibilityService
 
-const LootGenerationService = preload("res://core/items/loot_generation_service.gd")
+# LootGenerationService é class_name global
 
 ## ===========================================================================
 ## SERVIÇO DE ELEGIBILIDADE E AUDITORIA DE CRAFTING (ESCRITURAS ARCANAS)

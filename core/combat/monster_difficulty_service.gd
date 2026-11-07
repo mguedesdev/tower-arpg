@@ -12,7 +12,7 @@ class_name MonsterDifficultyService
 ## • Orçamento de Encontros e limites de densidade.
 
 const Rank = LootBalanceConfig.MonsterClass
-const MonsterModifierDefinition = preload("res://core/combat/monster_modifier_definition.gd")
+# MonsterModifierDefinition é class_name global
 
 ## ----------------------------------------------------------------------------
 ## 1. TABELAS DE MULTIPLICADORES POR CLASSE / RANK (Seção 5.2)
@@ -487,7 +487,7 @@ static func roll_modifiers(
 ## ----------------------------------------------------------------------------
 static func build_monster_title(
 	base_display_name: String,
-	monster_rank: int,
+	_monster_rank: int,
 	active_modifiers: Array = []
 ) -> String:
 	if active_modifiers.is_empty():

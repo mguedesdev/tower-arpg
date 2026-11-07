@@ -352,8 +352,14 @@ func get_slot_display_name() -> String:
 		ItemDefinition.ItemCategory.RING:
 			return "Anel"
 		ItemDefinition.ItemCategory.CONSUMABLE:
+			if definition != null and ItemDatabase.is_crafting_consumable(definition.base_id):
+				return "Escritura Arcana"
 			return "Consumível"
 	return "Equipamento"
+
+
+func get_base_id() -> String:
+	return definition.base_id if definition != null else ""
 
 
 func get_lore_description() -> String:
@@ -385,6 +391,8 @@ func get_lore_description() -> String:
 		ItemDefinition.ItemCategory.AMULET:
 			return "Um talismã usado pelos batedores de Velen."
 		ItemDefinition.ItemCategory.CONSUMABLE:
+			if definition != null and ItemDatabase.is_crafting_consumable(definition.base_id):
+				return "Pergaminho arcano infundido com o poder de moldar os afixos do equipamento."
 			return "Elixir alquímico puro que restaura o vigor vital instantaneamente."
 	return "Equipamento temperado para enfrentar os horrores do Primeiro Ato."
 
@@ -453,13 +461,17 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 
 	if definition.base_health > 0:
 		if definition.category == ItemDefinition.ItemCategory.CONSUMABLE:
-			t += "♥ Uso Imediato: [color=#4dff6b]Restaura +%d de Vida[/color]\n" % definition.base_health
+			if not ItemDatabase.is_crafting_consumable(definition.base_id):
+				t += "♥ Uso Imediato: [color=#4dff6b]Restaura +%d de Vida[/color]\n" % definition.base_health
 		else:
 			var line_hp: String = "♥ Vida Base: [color=#ffffff]+%d[/color]" % definition.base_health
 			if do_compare:
 				var eq_bhp: float = float(eq_item.definition.base_health) if (eq_item != null and eq_item.definition != null) else 0.0
 				line_hp += _format_inline_diff(float(definition.base_health) - eq_bhp, false, false)
 			t += line_hp + "\n"
+
+	if definition.category == ItemDefinition.ItemCategory.CONSUMABLE and ItemDatabase.is_crafting_consumable(definition.base_id):
+		t += "[color=#c084fc]✦ Material de Forja Arcana (Mesa do Escriba)[/color]\n"
 
 	if definition.base_move_speed_pct > 0.0:
 		var ms_pct: int = int(roundi(definition.base_move_speed_pct * 100.0))
