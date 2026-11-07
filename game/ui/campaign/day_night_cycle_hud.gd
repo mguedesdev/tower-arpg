@@ -77,11 +77,15 @@ func bind_world(sun: DirectionalLight3D, world_env: WorldEnvironment) -> void:
 	_world_env = world_env
 	if _sun_light != null:
 		_sun_light.shadow_enabled = true
-		_sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-		_sun_light.directional_shadow_max_distance = 28.0
-		_sun_light.shadow_bias = 0.005
-		_sun_light.shadow_normal_bias = 0.35
-		_sun_light.shadow_blur = 0.75
+		_sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		_sun_light.directional_shadow_max_distance = 64.0
+		_sun_light.directional_shadow_blend_splits = true
+		_sun_light.shadow_bias = 0.02
+		_sun_light.shadow_normal_bias = 1.6
+		_sun_light.shadow_blur = 1.2
+		_sun_light.directional_shadow_split_1 = 0.12
+		_sun_light.directional_shadow_split_2 = 0.28
+		_sun_light.directional_shadow_split_3 = 0.55
 	if _world_env != null and _world_env.environment != null:
 		_env_instance = _world_env.environment.duplicate() as Environment
 		_world_env.environment = _env_instance
@@ -202,62 +206,65 @@ func _apply_world_lighting(_delta: float) -> void:
 
 
 func _evaluate_lighting_state(t: float) -> Dictionary:
-	# 5 Keyframes com platô amplo de Dia Claro Natural (t = 0.32 .. 0.66) em luz branca/neutra (sem amarelado!)
-	# e alto contraste entre luz solar e ambiente para sombras 3D escuras e nítidas no terreno.
+	# 5 Keyframes balanceados para ARPG Dark Fantasy Low-Poly:
+	# • Manhã: iluminação suavemente quente, sombras longas e expressivas.
+	# • Meio-dia: luz clara e neutra/branca (Color(0.98, 0.99, 1.0)), cores naturais das texturas, sombras curtas e nítidas.
+	# • Tarde: tonalidade dourada/âmbar moderada, sombras alongadas de entardecer.
+	# • Noite: ambiente azul escuro (dark fantasy), excelente contraste e legibilidade, fogueiras brilhando.
 	var kf_night := {
-		"sun_color": Color(0.52, 0.66, 0.96),
-		"sun_energy": 0.60,
+		"sun_color": Color(0.46, 0.60, 0.90),
+		"sun_energy": 0.58,
 		"shadow_opacity": 0.78,
-		"ambient_color": Color(0.18, 0.23, 0.38),
-		"ambient_energy": 0.25,
-		"bg_color": Color(0.02, 0.025, 0.05),
-		"pitch": -0.76,
+		"ambient_color": Color(0.12, 0.16, 0.28),
+		"ambient_energy": 0.24,
+		"bg_color": Color(0.015, 0.018, 0.038),
+		"pitch": -0.78,
 		"yaw": 0.45,
-		"torch_multiplier": 1.25,
+		"torch_multiplier": 1.30,
 	}
 	var kf_dawn := {
-		"sun_color": Color(0.98, 0.88, 0.80),
-		"sun_energy": 1.06,
-		"shadow_opacity": 0.86,
-		"ambient_color": Color(0.52, 0.56, 0.66),
-		"ambient_energy": 0.30,
-		"bg_color": Color(0.08, 0.09, 0.14),
-		"pitch": -0.62,
-		"yaw": 0.82,
-		"torch_multiplier": 0.42,
+		"sun_color": Color(0.98, 0.92, 0.85),
+		"sun_energy": 1.15,
+		"shadow_opacity": 0.88,
+		"ambient_color": Color(0.52, 0.58, 0.68),
+		"ambient_energy": 0.28,
+		"bg_color": Color(0.06, 0.07, 0.12),
+		"pitch": -0.52,
+		"yaw": 0.85,
+		"torch_multiplier": 0.35,
 	}
 	var kf_morning := {
-		"sun_color": Color(0.97, 0.98, 1.0),
-		"sun_energy": 1.24,
-		"shadow_opacity": 0.90,
-		"ambient_color": Color(0.60, 0.67, 0.78),
-		"ambient_energy": 0.32,
-		"bg_color": Color(0.10, 0.14, 0.20),
-		"pitch": -0.76,
-		"yaw": 0.52,
-		"torch_multiplier": 0.12,
+		"sun_color": Color(0.98, 0.99, 1.0),
+		"sun_energy": 1.28,
+		"shadow_opacity": 0.92,
+		"ambient_color": Color(0.58, 0.64, 0.74),
+		"ambient_energy": 0.30,
+		"bg_color": Color(0.08, 0.12, 0.18),
+		"pitch": -0.88,
+		"yaw": 0.40,
+		"torch_multiplier": 0.04,
 	}
 	var kf_afternoon := {
-		"sun_color": Color(0.97, 0.98, 1.0),
-		"sun_energy": 1.24,
-		"shadow_opacity": 0.90,
-		"ambient_color": Color(0.60, 0.67, 0.78),
-		"ambient_energy": 0.32,
-		"bg_color": Color(0.10, 0.14, 0.20),
-		"pitch": -0.78,
-		"yaw": -0.42,
-		"torch_multiplier": 0.12,
+		"sun_color": Color(0.98, 0.99, 1.0),
+		"sun_energy": 1.28,
+		"shadow_opacity": 0.92,
+		"ambient_color": Color(0.58, 0.64, 0.74),
+		"ambient_energy": 0.30,
+		"bg_color": Color(0.08, 0.12, 0.18),
+		"pitch": -0.88,
+		"yaw": -0.40,
+		"torch_multiplier": 0.04,
 	}
 	var kf_dusk := {
-		"sun_color": Color(0.98, 0.78, 0.64),
-		"sun_energy": 1.02,
-		"shadow_opacity": 0.86,
-		"ambient_color": Color(0.48, 0.46, 0.58),
-		"ambient_energy": 0.28,
-		"bg_color": Color(0.08, 0.06, 0.11),
-		"pitch": -0.60,
-		"yaw": -0.82,
-		"torch_multiplier": 0.62,
+		"sun_color": Color(0.98, 0.82, 0.68),
+		"sun_energy": 1.08,
+		"shadow_opacity": 0.88,
+		"ambient_color": Color(0.44, 0.42, 0.56),
+		"ambient_energy": 0.26,
+		"bg_color": Color(0.06, 0.05, 0.09),
+		"pitch": -0.50,
+		"yaw": -0.85,
+		"torch_multiplier": 0.65,
 	}
 
 	var a: Dictionary

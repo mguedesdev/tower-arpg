@@ -244,8 +244,9 @@ func _build_ground(noise_seed: int = 90420) -> void:
 			var gradient_z: float = (heights[down_z * side + xi] - heights[up_z * side + xi]) / (maxi(up_z - down_z, 1) * spacing)
 			normals.append(Vector3(gradient_x, 1.0, gradient_z).normalized())
 
-	# Indices com winding frontal (CW no ArrayMesh do Godot 4) voltado para cima (+Y),
-	# garantindo que o terreno receba luz direcional e sombras 3D perfeitamente.
+	# Indices com winding frontal CCW (Counter-Clockwise) voltado para cima (+Y),
+	# garantindo que as normais geométricas apontem para o sol e o terreno receba
+	# luz direcional e sombras 3D perfeitamente com cull_back padrão do Godot 4.
 	for zi in range(TERRAIN_STEPS):
 		for xi in range(TERRAIN_STEPS):
 			var a: int = zi * side + xi
@@ -253,11 +254,11 @@ func _build_ground(noise_seed: int = 90420) -> void:
 			var c: int = a + side
 			var d: int = c + 1
 			indices.append(a)
-			indices.append(b)
 			indices.append(c)
 			indices.append(b)
+			indices.append(c)
 			indices.append(d)
-			indices.append(c)
+			indices.append(b)
 
 	var arrays: Array = []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -304,10 +305,11 @@ func _build_altar() -> void:
 	var shrine_light := OmniLight3D.new()
 	shrine_light.name = "ShrineFireLight"
 	shrine_light.position = Vector3(0.0, 2.25, 0.0)
-	shrine_light.light_color = Color(1.0, 0.58, 0.24)
-	shrine_light.light_energy = 1.55
-	shrine_light.omni_range = 9.0
+	shrine_light.light_color = Color(1.0, 0.62, 0.28)
+	shrine_light.light_energy = 0.75
+	shrine_light.omni_range = 8.0
 	shrine_light.omni_attenuation = 1.35
+	shrine_light.shadow_enabled = true
 	shrine_light.add_to_group("day_night_torch_light")
 	add_child(shrine_light)
 
