@@ -80,9 +80,10 @@ func bind_world(sun: DirectionalLight3D, world_env: WorldEnvironment) -> void:
 		_sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 		_sun_light.directional_shadow_max_distance = 64.0
 		_sun_light.directional_shadow_blend_splits = true
-		_sun_light.shadow_bias = 0.02
-		_sun_light.shadow_normal_bias = 1.6
-		_sun_light.shadow_blur = 1.2
+		_sun_light.light_angular_distance = 0.0
+		_sun_light.shadow_bias = 0.012
+		_sun_light.shadow_normal_bias = 1.2
+		_sun_light.shadow_blur = 0.25
 		_sun_light.directional_shadow_split_1 = 0.12
 		_sun_light.directional_shadow_split_2 = 0.28
 		_sun_light.directional_shadow_split_3 = 0.55

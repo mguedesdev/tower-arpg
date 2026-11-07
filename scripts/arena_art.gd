@@ -148,18 +148,24 @@ func _build_ground(noise_seed: int = 90420) -> void:
 	soil_base.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 	var terrain_shader: Shader = load("res://assets/materials/terrain_ground.gdshader") as Shader
-	var grass_texture: Texture2D = load("res://assets/textures/grass_dark_tile.png") as Texture2D
+	var grass_light_texture: Texture2D = load("res://assets/textures/grass_light_tile.png") as Texture2D
+	var grass_dark_texture: Texture2D = load("res://assets/textures/grass_dark_tile.png") as Texture2D
 	var dirt_texture: Texture2D = load("res://assets/textures/soil_moist_tile.png") as Texture2D
 	var blend_texture: Texture2D = load("res://assets/textures/terrain_blend_noise.png") as Texture2D
-	if terrain_shader == null or grass_texture == null or dirt_texture == null or blend_texture == null:
+	if terrain_shader == null or grass_dark_texture == null or dirt_texture == null or blend_texture == null:
 		push_error("Terreno v0.16: shader ou texturas ausentes em res://assets/.")
 		var fallback := _box(Vector3(0.0, -0.055, 0.0), Vector3(ARENA_SIZE, 0.08, ARENA_SIZE), COLOR_GRASS_B)
 		fallback.name = "Ground_Fallback_Assets_Missing"
 		return
 
+	if grass_light_texture == null:
+		grass_light_texture = grass_dark_texture
+
 	var material := ShaderMaterial.new()
 	material.shader = terrain_shader
-	material.set_shader_parameter("grass_tex", grass_texture)
+	material.set_shader_parameter("grass_light_tex", grass_light_texture)
+	material.set_shader_parameter("grass_dark_tex", grass_dark_texture)
+	material.set_shader_parameter("grass_tex", grass_light_texture)
 	material.set_shader_parameter("dirt_tex", dirt_texture)
 	material.set_shader_parameter("blend_noise_tex", blend_texture)
 
