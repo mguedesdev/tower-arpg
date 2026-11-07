@@ -285,9 +285,10 @@ func _test_main_scene_inventory_integration() -> void:
 	_check(wm.visible and wm._feedback_panel.visible and main_node.current_zone_id == "town", "19k. Clicar em um destino no modo [M] fora do Waypoint bloqueia o teleporte e exibe aviso")
 	wm.close_map()
 	_check(not wm.visible and not paused, "19l. Fechar o mapa despausa o jogo imediatamente")
+	main_node.unlocked_zones.append("zone_4_mines")
 	wm.open_map(true, "town", main_node.unlocked_zones)
 	wm._on_location_clicked(wm.ACT1_LOCATIONS[3]) # 4. Minas de Karpon (zone_4_mines)
-	_check(not wm.visible and not paused and main_node.current_zone_id == "zone_4_mines", "19m. Abrir mapa pelo Waypoint permite clicar em qualquer local do Ato 1 e teleportar instantaneamente")
+	_check(not wm.visible and not paused and main_node.current_zone_id == "zone_4_mines", "19m. Abrir mapa pelo Waypoint permite clicar em qualquer local do Ato 1 desbloqueado e teleportar instantaneamente")
 
 	main_node.queue_free()
 

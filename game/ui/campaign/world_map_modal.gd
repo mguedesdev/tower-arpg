@@ -1,32 +1,50 @@
 extends Control
 class_name WorldMapModal
-## Mapa de Tela Cheia do Ato 1 ("ATO 1 — AS TERRAS DE VELEN") & Sistema de Teleporte via Waypoint:
-## • Ocupa 100% da tela (PRESET_FULL_RECT) e pausa o jogo (get_tree().paused = true) enquanto aberto.
-## • Quando aberto em um Waypoint (can_teleport = true): clicar em qualquer um dos 8 locais teleporta o herói.
-## • Quando aberto pela tecla [M] fora de um Waypoint (can_teleport = false): permite consultar o mapa, mas bloqueia o teleporte com aviso.
-## • Fecha com [ESC], [M], botão [✕] no topo direito ou botão "FECHAR MAPA (ESC / M)" no rodapé.
-## • Inclui animação viva leve (água ondulando, árvores com brisa, pássaros voando e partículas de luz).
+## ============================================================================
+## MAPA DO ATO 1 — AS TERRAS DE VELEN & SISTEMA DE WAYPOINTS E VIAGEM RÁPIDA
+## ============================================================================
+## Arquitetura Visual em Camadas Compartilhando o Mesmo Sistema de Coordenadas:
+## • WaypointMapOverlay / FullscreenRoot (Control tela cheia com fundo dimerizado)
+##   • DimBackdrop (ColorRect, impede cliques atravessando para o 3D)
+##   • MapAspect (AspectRatioContainer 16:9 / 1672x941 fit-center)
+##     • MapCanvas (Control compartilhando resolução exata do mapa)
+##       • MapBackground (TextureRect com arte original limpa)
+##       • RouteOverlay (Control com estrada dourada luminosa e nós ◆)
+##       • RegionCards (Control com os 8 cards interativos)
+##         • WaypointCard01 .. WaypointCard08 (TextureButtons reais)
+##   • MapStatus (Banner superior informando Modo Consulta [M] vs Waypoint)
+##   • CloseButton (Botão [✕] no topo direito e botão no rodapé)
+##   • FeedbackToast (Painel flutuante com mensagens contextuais)
+##
+## Dois Modos de Operação:
+## • Modo A (Tecla M / Consulta): Permite inspecionar o mapa; NÃO teleporta.
+## • Modo B (Waypoint Ancestral): Permite viajar para waypoints desbloqueados.
 
 signal closed()
+signal opened()
 signal waypoint_travel_requested(zone_id: String)
 
 const BG_TEX_PATH: String = "res://assets/ui/world_map/act1_velen_map_bg.png"
-const LIVING_SHADER_PATH: String = "res://assets/materials/world_map_living.gdshader"
+const MAP_ORIGINAL_SIZE := Vector2(1672.0, 941.0)
+const MAP_ASPECT_RATIO: float = 1672.0 / 941.0
 
 const COLOR_GOLD_BRIGHT := Color(1.0, 0.88, 0.45, 1.0)
-const COLOR_GOLD_TITLE := Color(0.96, 0.82, 0.44, 1.0)
+const COLOR_GOLD_TITLE := Color(0.96, 0.84, 0.48, 1.0)
 const COLOR_BRONZE_BORDER := Color(0.72, 0.54, 0.24, 0.96)
-const COLOR_DARK_BANNER := Color(0.06, 0.05, 0.07, 0.94)
+const COLOR_CURRENT_LOCATION := Color(0.35, 0.95, 0.55, 1.0)
 
-## Configuração dos 8 Locais do Ato 1 (coordenadas normalizadas 0..1 fiéis à imagem de referência 1024x576)
+## Configuração dos 8 Locais do Ato 1 (calibrados com precisão subpixel na imagem de referência)
 const ACT1_LOCATIONS: Array[Dictionary] = [
 	{
 		"index": 1,
 		"zone_id": "town",
 		"title": "1. Vila de Velen",
 		"level_text": "Nível 1 – 3",
+		"tex_path": "res://assets/ui/world_map/01_vila_de_velen.png",
 		"marker_tex": "res://assets/ui/world_map/01_vila_de_velen.png",
-		"badge_uv": Vector2(0.151, 0.747),
+		"center_uv": Vector2(0.1732, 0.7657),
+		"badge_uv": Vector2(0.1732, 0.7657),
+		"size_uv": Vector2(0.1801, 0.1073),
 		"node_uv": Vector2(0.153, 0.837),
 	},
 	{
@@ -34,8 +52,11 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"zone_id": "zone_1_road",
 		"title": "2. Floresta de Arath",
 		"level_text": "Nível 3 – 6",
+		"tex_path": "res://assets/ui/world_map/02_floresta_de_arath.png",
 		"marker_tex": "res://assets/ui/world_map/02_floresta_de_arath.png",
-		"badge_uv": Vector2(0.312, 0.564),
+		"center_uv": Vector2(0.3079, 0.5770),
+		"badge_uv": Vector2(0.3079, 0.5770),
+		"size_uv": Vector2(0.1849, 0.1063),
 		"node_uv": Vector2(0.309, 0.653),
 	},
 	{
@@ -43,8 +64,11 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"zone_id": "zone_2_woods",
 		"title": "3. Ruínas Antigas",
 		"level_text": "Nível 6 – 9",
+		"tex_path": "res://assets/ui/world_map/03_ruinas_antigas.png",
 		"marker_tex": "res://assets/ui/world_map/03_ruinas_antigas.png",
-		"badge_uv": Vector2(0.542, 0.668),
+		"center_uv": Vector2(0.5548, 0.6865),
+		"badge_uv": Vector2(0.5548, 0.6865),
+		"size_uv": Vector2(0.1903, 0.1063),
 		"node_uv": Vector2(0.533, 0.750),
 	},
 	{
@@ -52,8 +76,11 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"zone_id": "zone_4_mines",
 		"title": "4. Minas de Karpon",
 		"level_text": "Nível 9 – 12",
+		"tex_path": "res://assets/ui/world_map/04_minas_de_karpon.png",
 		"marker_tex": "res://assets/ui/world_map/04_minas_de_karpon.png",
-		"badge_uv": Vector2(0.806, 0.651),
+		"center_uv": Vector2(0.8196, 0.6658),
+		"badge_uv": Vector2(0.8196, 0.6658),
+		"size_uv": Vector2(0.1885, 0.1073),
 		"node_uv": Vector2(0.775, 0.729),
 	},
 	{
@@ -61,8 +88,11 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"zone_id": "zone_3_crypt",
 		"title": "5. Cripta do Carrasco",
 		"level_text": "Nível 12 – 15",
+		"tex_path": "res://assets/ui/world_map/05_cripta_do_carrasco.png",
 		"marker_tex": "res://assets/ui/world_map/05_cripta_do_carrasco.png",
-		"badge_uv": Vector2(0.864, 0.382),
+		"center_uv": Vector2(0.8848, 0.3900),
+		"badge_uv": Vector2(0.8848, 0.3900),
+		"size_uv": Vector2(0.1825, 0.1041),
 		"node_uv": Vector2(0.859, 0.538),
 	},
 	{
@@ -70,8 +100,11 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"zone_id": "zone_6_hills",
 		"title": "6. Colinas Sombrias",
 		"level_text": "Nível 15 – 18",
+		"tex_path": "res://assets/ui/world_map/06_colinas_sombrias.png",
 		"marker_tex": "res://assets/ui/world_map/06_colinas_sombrias.png",
-		"badge_uv": Vector2(0.547, 0.434),
+		"center_uv": Vector2(0.5527, 0.4394),
+		"badge_uv": Vector2(0.5527, 0.4394),
+		"size_uv": Vector2(0.1741, 0.0946),
 		"node_uv": Vector2(0.560, 0.510),
 	},
 	{
@@ -79,8 +112,11 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"zone_id": "zone_7_plateau",
 		"title": "7. Planalto Esquecido",
 		"level_text": "Nível 18 – 21",
+		"tex_path": "res://assets/ui/world_map/07_planalto_esquecido.png",
 		"marker_tex": "res://assets/ui/world_map/07_planalto_esquecido.png",
-		"badge_uv": Vector2(0.654, 0.208),
+		"center_uv": Vector2(0.6586, 0.2163),
+		"badge_uv": Vector2(0.6586, 0.2163),
+		"size_uv": Vector2(0.1753, 0.0988),
 		"node_uv": Vector2(0.624, 0.295),
 	},
 	{
@@ -88,27 +124,23 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"zone_id": "zone_8_rift",
 		"title": "8. Fenda Abissal",
 		"level_text": "Nível 21 – 25",
+		"tex_path": "res://assets/ui/world_map/08_fenda_abissal.png",
 		"marker_tex": "res://assets/ui/world_map/08_fenda_abissal.png",
-		"badge_uv": Vector2(0.449, 0.174),
+		"center_uv": Vector2(0.4476, 0.1690),
+		"badge_uv": Vector2(0.4476, 0.1690),
+		"size_uv": Vector2(0.1855, 0.1084),
 		"node_uv": Vector2(0.426, 0.233),
 	},
 ]
 
-## Pontos intermediários normalizados da estrada dourada entre os 8 locais (fiel à curva da imagem de referência)
+## Segmentos da estrada dourada conectando os waypoints
 const PATH_SEGMENTS_UV: Array[Array] = [
-	# 1 (Vila) -> 2 (Floresta)
 	[Vector2(0.153, 0.837), Vector2(0.225, 0.785), Vector2(0.278, 0.735), Vector2(0.285, 0.678), Vector2(0.309, 0.653)],
-	# 2 (Floresta) -> 3 (Ruínas)
 	[Vector2(0.309, 0.653), Vector2(0.365, 0.668), Vector2(0.415, 0.698), Vector2(0.455, 0.738), Vector2(0.500, 0.748), Vector2(0.533, 0.750)],
-	# 3 (Ruínas) -> 4 (Minas)
 	[Vector2(0.533, 0.750), Vector2(0.595, 0.768), Vector2(0.655, 0.778), Vector2(0.708, 0.732), Vector2(0.775, 0.729)],
-	# 4 (Minas) -> 5 (Cripta)
 	[Vector2(0.775, 0.729), Vector2(0.842, 0.695), Vector2(0.885, 0.628), Vector2(0.878, 0.572), Vector2(0.859, 0.538)],
-	# 5 (Cripta) -> 6 (Colinas)
 	[Vector2(0.425, 0.635), Vector2(0.435, 0.565), Vector2(0.432, 0.518), Vector2(0.495, 0.512), Vector2(0.560, 0.510)],
-	# 6 (Colinas) -> 7 (Planalto)
 	[Vector2(0.560, 0.510), Vector2(0.618, 0.492), Vector2(0.655, 0.438), Vector2(0.722, 0.382), Vector2(0.742, 0.348), Vector2(0.685, 0.312), Vector2(0.624, 0.295)],
-	# 7 (Planalto) -> 8 (Fenda Abissal)
 	[Vector2(0.624, 0.295), Vector2(0.548, 0.295), Vector2(0.502, 0.292), Vector2(0.462, 0.262), Vector2(0.426, 0.233)],
 ]
 
@@ -116,25 +148,31 @@ var can_teleport: bool = false
 var current_zone_id: String = "town"
 var unlocked_zones: Array[String] = []
 
-var _bg_rect: TextureRect
-var _bg_shader_mat: ShaderMaterial
-var _canvas_overlay: Control
+# Referências da Hierarquia de UI
+var _dim_backdrop: ColorRect
+var _map_aspect: AspectRatioContainer
+var _map_canvas: Control
+var _map_background: TextureRect
+var _route_overlay: Control
+var _region_cards_root: Control
+
+var _card_roots: Array[Control] = []
+var _card_buttons: Array[TextureButton] = []
+var _card_lock_badges: Array[PanelContainer] = []
+var _card_current_badges: Array[PanelContainer] = []
+
+var _mode_banner_panel: PanelContainer
+var _mode_banner_title: Label
+var _mode_banner_sub: Label
 var _close_top_btn: Button
 var _close_bottom_btn: Button
-var _mode_banner_panel: PanelContainer
-var _mode_banner_label: Label
 var _feedback_panel: PanelContainer
 var _feedback_label: Label
-var _feedback_timer: float = 0.0
 
-var _marker_textures: Dictionary = {}
-var _hovered_index: int = -1
+var _feedback_timer: float = 0.0
 var _anim_time: float = 0.0
 var _was_paused_before_open: bool = false
-
-# Pássaros animados e partículas mágicas no mapa
-var _birds: Array[Dictionary] = []
-var _light_motes: Array[Dictionary] = []
+var _hidden_hud_elements: Array[CanvasItem] = []
 
 
 func _ready() -> void:
@@ -142,158 +180,261 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	z_index = 140
+	z_as_relative = false
+	z_index = 120
 	visible = false
 
-	_load_assets()
-	_init_ambient_life()
-	_build_ui()
+	_build_ui_hierarchy()
 
 
-func _load_assets() -> void:
-	for loc in ACT1_LOCATIONS:
-		var path: String = String(loc["marker_tex"])
-		if ResourceLoader.exists(path):
-			_marker_textures[int(loc["index"])] = load(path) as Texture2D
+func _build_ui_hierarchy() -> void:
+	# 1. DimBackdrop — escurece o jogo e impede cliques no mundo 3D
+	_dim_backdrop = ColorRect.new()
+	_dim_backdrop.name = "DimBackdrop"
+	_dim_backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dim_backdrop.color = Color(0.015, 0.012, 0.025, 0.94)
+	_dim_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_dim_backdrop)
 
+	# 2. MapAspect — AspectRatioContainer que preserva a proporção 16:9
+	_map_aspect = AspectRatioContainer.new()
+	_map_aspect.name = "MapAspect"
+	_map_aspect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_map_aspect.ratio = MAP_ASPECT_RATIO
+	_map_aspect.alignment_horizontal = AspectRatioContainer.ALIGNMENT_CENTER
+	_map_aspect.alignment_vertical = AspectRatioContainer.ALIGNMENT_CENTER
+	_map_aspect.mouse_filter = Control.MOUSE_FILTER_PASS
+	add_child(_map_aspect)
 
-func _init_ambient_life() -> void:
-	_birds.clear()
-	# Bandos de pássaros voando suavemente pelas montanhas, floresta e costa
-	var bird_seeds := [
-		{"uv": Vector2(0.18, 0.28), "speed": Vector2(0.022, -0.003), "wing_speed": 6.5, "scale": 1.0, "phase": 0.0},
-		{"uv": Vector2(0.165, 0.295), "speed": Vector2(0.022, -0.003), "wing_speed": 6.8, "scale": 0.85, "phase": 1.2},
-		{"uv": Vector2(0.192, 0.292), "speed": Vector2(0.022, -0.003), "wing_speed": 6.2, "scale": 0.78, "phase": 2.4},
-		{"uv": Vector2(0.55, 0.14), "speed": Vector2(0.018, 0.002), "wing_speed": 5.8, "scale": 0.92, "phase": 0.7},
-		{"uv": Vector2(0.535, 0.152), "speed": Vector2(0.018, 0.002), "wing_speed": 6.1, "scale": 0.80, "phase": 2.1},
-		{"uv": Vector2(0.32, 0.48), "speed": Vector2(0.025, -0.004), "wing_speed": 7.2, "scale": 0.88, "phase": 3.5},
-		{"uv": Vector2(0.305, 0.492), "speed": Vector2(0.025, -0.004), "wing_speed": 7.5, "scale": 0.75, "phase": 4.8},
-	]
-	for b in bird_seeds:
-		_birds.append(b.duplicate())
+	# 3. MapCanvas — Contêiner de coordenadas unificadas para fundo, caminhos e cards
+	_map_canvas = Control.new()
+	_map_canvas.name = "MapCanvas"
+	_map_canvas.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_map_canvas.mouse_filter = Control.MOUSE_FILTER_PASS
+	_map_canvas.resized.connect(_on_map_canvas_resized)
+	_map_aspect.add_child(_map_canvas)
 
-	_light_motes.clear()
-	# Vagalumes dourados na floresta/ruínas, fagulhas roxas nas Minas/Cripta e brasas rubras na Fenda Abissal
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 4012026
-	for i in range(42):
-		var kind: int = i % 3 # 0 = dourado (floresta/vila), 1 = roxo (minas/cripta), 2 = rubro (fenda)
-		var base_uv := Vector2(0.45, 0.65)
-		var col := Color(1.0, 0.88, 0.42, 0.85)
-		if kind == 0:
-			base_uv = Vector2(rng.randf_range(0.14, 0.68), rng.randf_range(0.42, 0.84))
-			col = Color(1.0, 0.90, 0.46, 0.80)
-		elif kind == 1:
-			base_uv = Vector2(rng.randf_range(0.74, 0.92), rng.randf_range(0.44, 0.78))
-			col = Color(0.84, 0.42, 1.0, 0.85)
-		else:
-			base_uv = Vector2(rng.randf_range(0.34, 0.48), rng.randf_range(0.14, 0.28))
-			col = Color(1.0, 0.32, 0.24, 0.88)
-		_light_motes.append({
-			"origin_uv": base_uv,
-			"radius": rng.randf_range(2.2, 4.2),
-			"speed": rng.randf_range(1.2, 2.6),
-			"phase": rng.randf_range(0.0, TAU),
-			"color": col,
-		})
-
-
-func _build_ui() -> void:
-	# 1. Fundo escuro de segurança
-	var bg_color_rect := ColorRect.new()
-	bg_color_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg_color_rect.color = Color(0.02, 0.015, 0.03, 1.0)
-	bg_color_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bg_color_rect)
-
-	# 2. Imagem do Mapa do Ato 1 em Tela Cheia com Shader de Água/Vento/Luzes
-	_bg_rect = TextureRect.new()
-	_bg_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_bg_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_bg_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	_bg_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 4. MapBackground — Imagem do mapa sem os cards
+	_map_background = TextureRect.new()
+	_map_background.name = "MapBackground"
+	_map_background.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_map_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_map_background.stretch_mode = TextureRect.STRETCH_SCALE
+	_map_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if ResourceLoader.exists(BG_TEX_PATH):
-		_bg_rect.texture = load(BG_TEX_PATH) as Texture2D
-	if ResourceLoader.exists(LIVING_SHADER_PATH):
-		var sh := load(LIVING_SHADER_PATH) as Shader
-		if sh != null:
-			_bg_shader_mat = ShaderMaterial.new()
-			_bg_shader_mat.shader = sh
-			_bg_rect.material = _bg_shader_mat
-	add_child(_bg_rect)
+		_map_background.texture = load(BG_TEX_PATH) as Texture2D
+	_map_canvas.add_child(_map_background)
 
-	# 3. Camada Interativa de Desenho (Estrada Dourada, Nodos ◆, 8 Marcações PNG, Pássaros, Luzes e Brasão)
-	_canvas_overlay = Control.new()
-	_canvas_overlay.name = "MapInteractiveCanvas"
-	_canvas_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_canvas_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	_canvas_overlay.draw.connect(_on_canvas_draw)
-	_canvas_overlay.gui_input.connect(_on_canvas_gui_input)
-	add_child(_canvas_overlay)
+	# 5. RouteOverlay — Estradas douradas luminosas e nós ◆ (puramente decorativo)
+	_route_overlay = Control.new()
+	_route_overlay.name = "RouteOverlay"
+	_route_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_route_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_route_overlay.draw.connect(_on_route_overlay_draw)
+	_map_canvas.add_child(_route_overlay)
 
-	# 4. Banner de Status do Modo (Waypoint vs Tecla M) no Topo Central/Direito
+	# 6. RegionCards — Raiz dos 8 cards interativos
+	_region_cards_root = Control.new()
+	_region_cards_root.name = "RegionCards"
+	_region_cards_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_region_cards_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_map_canvas.add_child(_region_cards_root)
+
+	_build_region_cards()
+
+	# 7. MapStatus — Banner do topo informando o modo ativo
+	_build_status_banner()
+
+	# 8. Botões de Fechar
+	_build_close_buttons()
+
+	# 9. FeedbackToast — Mensagens flutuantes
+	_build_feedback_toast()
+
+
+func _build_region_cards() -> void:
+	_card_roots.clear()
+	_card_buttons.clear()
+	_card_lock_badges.clear()
+	_card_current_badges.clear()
+
+	for loc_idx in range(ACT1_LOCATIONS.size()):
+		var loc: Dictionary = ACT1_LOCATIONS[loc_idx]
+		var card_root := Control.new()
+		card_root.name = "WaypointCard%02d" % int(loc["index"])
+		card_root.mouse_filter = Control.MOUSE_FILTER_PASS
+
+		# Botão real com a textura oficial do card
+		var btn := TextureButton.new()
+		btn.name = "CardButton"
+		btn.set_anchors_preset(Control.PRESET_FULL_RECT)
+		btn.ignore_texture_size = true
+		btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+		btn.mouse_filter = Control.MOUSE_FILTER_STOP
+		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		btn.focus_mode = Control.FOCUS_ALL
+
+		var tex_path: String = String(loc["tex_path"])
+		if ResourceLoader.exists(tex_path):
+			btn.texture_normal = load(tex_path) as Texture2D
+
+		# Conexões de eventos reais do botão
+		var idx_capture: int = loc_idx
+		btn.mouse_entered.connect(func(): _on_card_mouse_entered(idx_capture))
+		btn.mouse_exited.connect(func(): _on_card_mouse_exited(idx_capture))
+		btn.pressed.connect(func(): _on_card_pressed(idx_capture))
+		btn.focus_entered.connect(func(): _on_card_mouse_entered(idx_capture))
+		btn.focus_exited.connect(func(): _on_card_mouse_exited(idx_capture))
+		card_root.add_child(btn)
+
+		# Badge de Bloqueio (Cadeado sobreposto sem alterar o PNG original)
+		var lock_panel := PanelContainer.new()
+		lock_panel.name = "LockBadge"
+		lock_panel.anchor_left = 1.0
+		lock_panel.anchor_right = 1.0
+		lock_panel.anchor_top = 0.0
+		lock_panel.anchor_bottom = 0.0
+		lock_panel.offset_left = -38.0
+		lock_panel.offset_right = -8.0
+		lock_panel.offset_top = 8.0
+		lock_panel.offset_bottom = 38.0
+		lock_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var lock_st := StyleBoxFlat.new()
+		lock_st.bg_color = Color(0.08, 0.06, 0.09, 0.92)
+		lock_st.border_color = Color(0.72, 0.45, 0.22, 0.95)
+		lock_st.set_border_width_all(2)
+		lock_st.set_corner_radius_all(15)
+		lock_panel.add_theme_stylebox_override("panel", lock_st)
+
+		var lock_lbl := Label.new()
+		lock_lbl.text = "🔒"
+		lock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lock_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lock_lbl.add_theme_font_size_override("font_size", 14)
+		lock_panel.add_child(lock_lbl)
+		card_root.add_child(lock_panel)
+
+		# Badge de Local Atual (Estandarte luminoso)
+		var cur_panel := PanelContainer.new()
+		cur_panel.name = "CurrentBadge"
+		cur_panel.anchor_left = 0.5
+		cur_panel.anchor_right = 0.5
+		cur_panel.anchor_top = 0.0
+		cur_panel.anchor_bottom = 0.0
+		cur_panel.offset_left = -64.0
+		cur_panel.offset_right = 64.0
+		cur_panel.offset_top = -14.0
+		cur_panel.offset_bottom = 12.0
+		cur_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var cur_st := StyleBoxFlat.new()
+		cur_st.bg_color = Color(0.10, 0.08, 0.04, 0.95)
+		cur_st.border_color = COLOR_GOLD_BRIGHT
+		cur_st.set_border_width_all(2)
+		cur_st.set_corner_radius_all(4)
+		cur_st.content_margin_left = 8
+		cur_st.content_margin_right = 8
+		cur_panel.add_theme_stylebox_override("panel", cur_st)
+
+		var cur_lbl := Label.new()
+		cur_lbl.text = "★ LOCAL ATUAL"
+		cur_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cur_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cur_lbl.add_theme_font_size_override("font_size", 11)
+		cur_lbl.add_theme_color_override("font_color", COLOR_GOLD_BRIGHT)
+		cur_panel.add_child(cur_lbl)
+		card_root.add_child(cur_panel)
+
+		_region_cards_root.add_child(card_root)
+		_card_roots.append(card_root)
+		_card_buttons.append(btn)
+		_card_lock_badges.append(lock_panel)
+		_card_current_badges.append(cur_panel)
+
+
+func _build_status_banner() -> void:
 	_mode_banner_panel = PanelContainer.new()
+	_mode_banner_panel.name = "MapStatus"
 	_mode_banner_panel.anchor_left = 0.5
 	_mode_banner_panel.anchor_right = 0.5
 	_mode_banner_panel.anchor_top = 0.0
 	_mode_banner_panel.anchor_bottom = 0.0
-	_mode_banner_panel.offset_left = -250.0
-	_mode_banner_panel.offset_right = 250.0
-	_mode_banner_panel.offset_top = 16.0
-	_mode_banner_panel.offset_bottom = 54.0
+	_mode_banner_panel.offset_left = -320.0
+	_mode_banner_panel.offset_right = 320.0
+	_mode_banner_panel.offset_top = 14.0
+	_mode_banner_panel.offset_bottom = 64.0
 	_mode_banner_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
 	var mb_style := StyleBoxFlat.new()
-	mb_style.bg_color = Color(0.05, 0.045, 0.065, 0.92)
+	mb_style.bg_color = Color(0.06, 0.05, 0.08, 0.94)
 	mb_style.border_color = COLOR_BRONZE_BORDER
 	mb_style.set_border_width_all(2)
 	mb_style.set_corner_radius_all(6)
-	mb_style.content_margin_left = 16
-	mb_style.content_margin_right = 16
-	mb_style.content_margin_top = 6
-	mb_style.content_margin_bottom = 6
+	mb_style.content_margin_left = 18
+	mb_style.content_margin_right = 18
+	mb_style.content_margin_top = 5
+	mb_style.content_margin_bottom = 5
+	mb_style.shadow_color = Color(0, 0, 0, 0.8)
+	mb_style.shadow_size = 10
 	_mode_banner_panel.add_theme_stylebox_override("panel", mb_style)
 	add_child(_mode_banner_panel)
 
-	_mode_banner_label = Label.new()
-	_mode_banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_mode_banner_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_mode_banner_label.add_theme_font_size_override("font_size", 14)
-	_mode_banner_label.add_theme_color_override("font_color", COLOR_GOLD_BRIGHT)
-	_mode_banner_panel.add_child(_mode_banner_label)
+	var vb := VBoxContainer.new()
+	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_theme_constant_override("separation", 2)
+	_mode_banner_panel.add_child(vb)
 
-	# 5. Botão [✕] no Canto Superior Direito para Fechar
+	_mode_banner_title = Label.new()
+	_mode_banner_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mode_banner_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_mode_banner_title.add_theme_font_size_override("font_size", 15)
+	_mode_banner_title.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	vb.add_child(_mode_banner_title)
+
+	_mode_banner_sub = Label.new()
+	_mode_banner_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mode_banner_sub.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_mode_banner_sub.add_theme_font_size_override("font_size", 12)
+	_mode_banner_sub.add_theme_color_override("font_color", Color(0.85, 0.82, 0.88, 0.85))
+	vb.add_child(_mode_banner_sub)
+
+
+func _build_close_buttons() -> void:
+	# Botão [✕] superior direito
 	_close_top_btn = Button.new()
-	_close_top_btn.name = "CloseTopRightBtn"
+	_close_top_btn.name = "CloseTopBtn"
 	_close_top_btn.text = "✕"
 	_close_top_btn.anchor_left = 1.0
 	_close_top_btn.anchor_right = 1.0
 	_close_top_btn.anchor_top = 0.0
 	_close_top_btn.anchor_bottom = 0.0
-	_close_top_btn.offset_left = -62.0
+	_close_top_btn.offset_left = -58.0
 	_close_top_btn.offset_right = -18.0
 	_close_top_btn.offset_top = 16.0
-	_close_top_btn.offset_bottom = 60.0
+	_close_top_btn.offset_bottom = 56.0
 	_close_top_btn.focus_mode = Control.FOCUS_NONE
 	_close_top_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_close_top_btn.add_theme_font_size_override("font_size", 20)
 	_close_top_btn.add_theme_color_override("font_color", Color(1.0, 0.95, 0.90))
+
 	var x_norm := StyleBoxFlat.new()
-	x_norm.bg_color = Color(0.52, 0.12, 0.12, 0.96)
+	x_norm.bg_color = Color(0.48, 0.12, 0.12, 0.94)
 	x_norm.border_color = COLOR_BRONZE_BORDER
 	x_norm.set_border_width_all(2)
 	x_norm.set_corner_radius_all(6)
 	x_norm.shadow_color = Color(0, 0, 0, 0.75)
-	x_norm.shadow_size = 8
+	x_norm.shadow_size = 6
+
 	var x_hov := x_norm.duplicate() as StyleBoxFlat
 	x_hov.bg_color = Color(0.72, 0.18, 0.18, 0.99)
 	x_hov.border_color = COLOR_GOLD_BRIGHT
+
 	_close_top_btn.add_theme_stylebox_override("normal", x_norm)
 	_close_top_btn.add_theme_stylebox_override("hover", x_hov)
 	_close_top_btn.add_theme_stylebox_override("pressed", x_hov)
 	_close_top_btn.pressed.connect(close_map)
 	add_child(_close_top_btn)
 
-	# 6. Botão "FECHAR MAPA (ESC / M)" no Rodapé Direito
+	# Botão inferior "FECHAR MAPA (ESC / M)"
 	_close_bottom_btn = Button.new()
 	_close_bottom_btn.name = "CloseBottomBtn"
 	_close_bottom_btn.text = "FECHAR MAPA (ESC / M)"
@@ -301,51 +442,55 @@ func _build_ui() -> void:
 	_close_bottom_btn.anchor_right = 1.0
 	_close_bottom_btn.anchor_top = 1.0
 	_close_bottom_btn.anchor_bottom = 1.0
-	_close_bottom_btn.offset_left = -246.0
+	_close_bottom_btn.offset_left = -220.0
 	_close_bottom_btn.offset_right = -20.0
-	_close_bottom_btn.offset_top = -54.0
+	_close_bottom_btn.offset_top = -52.0
 	_close_bottom_btn.offset_bottom = -16.0
 	_close_bottom_btn.focus_mode = Control.FOCUS_NONE
 	_close_bottom_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_close_bottom_btn.add_theme_font_size_override("font_size", 14)
-	_close_bottom_btn.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	_close_bottom_btn.add_theme_font_size_override("font_size", 13)
+	_close_bottom_btn.add_theme_color_override("font_color", COLOR_GOLD_BRIGHT)
+
 	var b_norm := StyleBoxFlat.new()
-	b_norm.bg_color = Color(0.07, 0.06, 0.09, 0.95)
+	b_norm.bg_color = Color(0.08, 0.07, 0.10, 0.92)
 	b_norm.border_color = COLOR_BRONZE_BORDER
 	b_norm.set_border_width_all(2)
 	b_norm.set_corner_radius_all(6)
-	b_norm.shadow_color = Color(0, 0, 0, 0.8)
-	b_norm.shadow_size = 8
+	b_norm.content_margin_left = 12
+	b_norm.content_margin_right = 12
+
 	var b_hov := b_norm.duplicate() as StyleBoxFlat
-	b_hov.bg_color = Color(0.14, 0.11, 0.16, 0.98)
+	b_hov.bg_color = Color(0.18, 0.15, 0.22, 0.96)
 	b_hov.border_color = COLOR_GOLD_BRIGHT
+
 	_close_bottom_btn.add_theme_stylebox_override("normal", b_norm)
 	_close_bottom_btn.add_theme_stylebox_override("hover", b_hov)
 	_close_bottom_btn.add_theme_stylebox_override("pressed", b_hov)
 	_close_bottom_btn.pressed.connect(close_map)
 	add_child(_close_bottom_btn)
 
-	# 7. Aviso flutuante no rodapé central quando tenta teleportar fora de um Waypoint
+
+func _build_feedback_toast() -> void:
 	_feedback_panel = PanelContainer.new()
-	_feedback_panel.visible = false
+	_feedback_panel.name = "FeedbackToast"
 	_feedback_panel.anchor_left = 0.5
 	_feedback_panel.anchor_right = 0.5
 	_feedback_panel.anchor_top = 1.0
 	_feedback_panel.anchor_bottom = 1.0
-	_feedback_panel.offset_left = -310.0
-	_feedback_panel.offset_right = 310.0
-	_feedback_panel.offset_top = -64.0
-	_feedback_panel.offset_bottom = -20.0
+	_feedback_panel.offset_left = -340.0
+	_feedback_panel.offset_right = 340.0
+	_feedback_panel.offset_top = -68.0
+	_feedback_panel.offset_bottom = -22.0
 	_feedback_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_feedback_panel.visible = false
+
 	var fb_style := StyleBoxFlat.new()
-	fb_style.bg_color = Color(0.18, 0.05, 0.06, 0.96)
-	fb_style.border_color = Color(1.0, 0.42, 0.38, 0.98)
+	fb_style.bg_color = Color(0.10, 0.05, 0.07, 0.96)
+	fb_style.border_color = Color(0.95, 0.35, 0.25, 0.95)
 	fb_style.set_border_width_all(2)
 	fb_style.set_corner_radius_all(6)
 	fb_style.content_margin_left = 16
 	fb_style.content_margin_right = 16
-	fb_style.content_margin_top = 8
-	fb_style.content_margin_bottom = 8
 	_feedback_panel.add_theme_stylebox_override("panel", fb_style)
 	add_child(_feedback_panel)
 
@@ -353,52 +498,206 @@ func _build_ui() -> void:
 	_feedback_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_feedback_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_feedback_label.add_theme_font_size_override("font_size", 14)
-	_feedback_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.86))
+	_feedback_label.add_theme_color_override("font_color", Color(1.0, 0.90, 0.88))
 	_feedback_panel.add_child(_feedback_label)
 
 
+# ============================================================================
+# GERENCIAMENTO E SINCRONIZAÇÃO ESPACIAL DOS CARDS
+# ============================================================================
+func _on_map_canvas_resized() -> void:
+	_layout_region_cards()
+	if _route_overlay != null:
+		_route_overlay.queue_redraw()
+
+
+func _layout_region_cards() -> void:
+	if _map_canvas == null or _region_cards_root == null:
+		return
+	var canvas_sz: Vector2 = _map_canvas.size
+	if canvas_sz.x < 10.0 or canvas_sz.y < 10.0:
+		if _map_aspect != null and _map_aspect.size.x >= 10.0:
+			var asp_w: float = _map_aspect.size.x
+			var asp_h: float = _map_aspect.size.y
+			if asp_w / asp_h > MAP_ASPECT_RATIO:
+				canvas_sz = Vector2(asp_h * MAP_ASPECT_RATIO, asp_h)
+			else:
+				canvas_sz = Vector2(asp_w, asp_w / MAP_ASPECT_RATIO)
+		elif size.x >= 10.0:
+			canvas_sz = size
+		else:
+			canvas_sz = Vector2(1280.0, 720.0)
+
+	for i in range(ACT1_LOCATIONS.size()):
+		if i >= _card_roots.size():
+			continue
+		var loc: Dictionary = ACT1_LOCATIONS[i]
+		var card_root: Control = _card_roots[i]
+		var center_uv: Vector2 = loc["center_uv"] as Vector2
+		var size_uv: Vector2 = loc["size_uv"] as Vector2
+
+		var card_size: Vector2 = canvas_sz * size_uv
+		var card_pos: Vector2 = canvas_sz * center_uv - card_size * 0.5
+
+		card_root.size = card_size
+		card_root.position = card_pos
+		card_root.pivot_offset = card_size * 0.5
+
+
+func _refresh_cards_visual_states() -> void:
+	for i in range(ACT1_LOCATIONS.size()):
+		if i >= _card_roots.size():
+			continue
+		var loc: Dictionary = ACT1_LOCATIONS[i]
+		var zid: String = String(loc["zone_id"])
+		var btn: TextureButton = _card_buttons[i]
+		var lock_b: Control = _card_lock_badges[i]
+		var cur_b: Control = _card_current_badges[i]
+
+		var is_unlocked: bool = unlocked_zones.is_empty() or unlocked_zones.has(zid)
+		var is_current: bool = (zid == current_zone_id)
+
+		lock_b.visible = not is_unlocked
+		cur_b.visible = is_current
+
+		if not is_unlocked:
+			btn.self_modulate = Color(0.38, 0.38, 0.44, 0.82)
+			btn.tooltip_text = "%s (%s)\n🔒 Waypoint Bloqueado: Descubra o marco nesta região para viajar." % [loc["title"], loc["level_text"]]
+		elif is_current:
+			btn.self_modulate = Color(1.05, 1.02, 0.95, 1.0)
+			btn.tooltip_text = "%s (%s)\n★ Local Atual: Você já se encontra nesta região." % [loc["title"], loc["level_text"]]
+		else:
+			btn.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
+			if can_teleport:
+				btn.tooltip_text = "%s (%s)\n✦ Clique para viajar imediatamente." % [loc["title"], loc["level_text"]]
+			else:
+				btn.tooltip_text = "%s (%s)\n🗺 Modo Consulta (M): Teleporte indisponível fora de Waypoints." % [loc["title"], loc["level_text"]]
+
+
+func _on_card_mouse_entered(idx: int) -> void:
+	if idx < 0 or idx >= _card_roots.size():
+		return
+	var card_root: Control = _card_roots[idx]
+	var btn: TextureButton = _card_buttons[idx]
+	var loc: Dictionary = ACT1_LOCATIONS[idx]
+	var zid: String = String(loc["zone_id"])
+	var is_unlocked: bool = unlocked_zones.is_empty() or unlocked_zones.has(zid)
+
+	var target_scale: Vector2 = Vector2(1.05, 1.05) if is_unlocked else Vector2(1.02, 1.02)
+	var target_mod: Color = Color(1.2, 1.2, 1.2, 1.0) if is_unlocked else Color(0.55, 0.55, 0.62, 0.90)
+
+	var tw := create_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(card_root, "scale", target_scale, 0.12)
+	tw.tween_property(btn, "self_modulate", target_mod, 0.12)
+
+
+func _on_card_mouse_exited(idx: int) -> void:
+	if idx < 0 or idx >= _card_roots.size():
+		return
+	var card_root: Control = _card_roots[idx]
+	var btn: TextureButton = _card_buttons[idx]
+	var loc: Dictionary = ACT1_LOCATIONS[idx]
+	var zid: String = String(loc["zone_id"])
+	var is_unlocked: bool = unlocked_zones.is_empty() or unlocked_zones.has(zid)
+	var is_current: bool = (zid == current_zone_id)
+
+	var base_mod: Color
+	if not is_unlocked:
+		base_mod = Color(0.38, 0.38, 0.44, 0.82)
+	elif is_current:
+		base_mod = Color(1.05, 1.02, 0.95, 1.0)
+	else:
+		base_mod = Color(1.0, 1.0, 1.0, 1.0)
+
+	var tw := create_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(card_root, "scale", Vector2.ONE, 0.14)
+	tw.tween_property(btn, "self_modulate", base_mod, 0.14)
+
+
+func _on_card_pressed(idx: int) -> void:
+	if idx < 0 or idx >= ACT1_LOCATIONS.size():
+		return
+	_on_location_clicked(ACT1_LOCATIONS[idx])
+
+
+func _on_location_clicked(loc: Dictionary) -> void:
+	var target_zone: String = String(loc["zone_id"])
+	var title_str: String = String(loc["title"])
+
+	# 1. Checa se o mapa foi aberto pelo Waypoint
+	if not can_teleport:
+		show_map_feedback("⚠ Teleporte indisponível no Modo Consulta! Encontre um Waypoint no mundo para viajar.")
+		return
+
+	# 2. Checa se a região está desbloqueada
+	var is_unlocked: bool = unlocked_zones.is_empty() or unlocked_zones.has(target_zone)
+	if not is_unlocked:
+		show_map_feedback("🔒 Waypoint Bloqueado! Você precisa descobrir e ativar o marco desta região primeiro.")
+		return
+
+	# 3. Checa se já está na região presente
+	if target_zone == current_zone_id:
+		show_map_feedback("✦ Você já está em %s!" % title_str)
+		return
+
+	# 4. Teleporte autorizado!
+	close_map()
+	waypoint_travel_requested.emit(target_zone)
+
+
+# ============================================================================
+# CICLO DE VIDA DO MODAL: ABERTURA, FECHAMENTO E PAUSA
+# ============================================================================
 func open_map(p_can_teleport: bool, p_current_zone: String, p_unlocked_zones: Array[String] = []) -> void:
 	can_teleport = p_can_teleport
 	current_zone_id = p_current_zone
 	unlocked_zones = p_unlocked_zones.duplicate()
-	_hovered_index = -1
+
 	_feedback_timer = 0.0
 	if _feedback_panel != null:
 		_feedback_panel.visible = false
 
 	_update_mode_banner()
+	_refresh_cards_visual_states()
+	_layout_region_cards()
 
 	if not visible:
+		_hide_combat_hud_elements()
 		_was_paused_before_open = get_tree().paused if get_tree() != null else false
 		visible = true
 		if get_tree() != null:
 			get_tree().paused = true
-	if _canvas_overlay != null:
-		_canvas_overlay.queue_redraw()
+		opened.emit()
+
+	call_deferred("_layout_region_cards")
 
 
 func close_map() -> void:
 	if not visible:
 		return
 	visible = false
-	_hovered_index = -1
-	if get_tree() != null:
+	if _feedback_panel != null:
+		_feedback_panel.visible = false
+	_restore_combat_hud_elements()
+	if get_tree() != null and not _was_paused_before_open:
 		get_tree().paused = false
 	closed.emit()
 
 
 func _update_mode_banner() -> void:
-	if _mode_banner_label == null or _mode_banner_panel == null:
+	if _mode_banner_panel == null or _mode_banner_title == null or _mode_banner_sub == null:
 		return
 	var st := _mode_banner_panel.get_theme_stylebox("panel") as StyleBoxFlat
 	if can_teleport:
-		_mode_banner_label.text = "✦ WAYPOINT ANCESTRAL — Clique em qualquer local do Ato 1 para se teleportar"
-		_mode_banner_label.add_theme_color_override("font_color", Color(0.55, 0.96, 1.0))
+		_mode_banner_title.text = "✦ WAYPOINT ANCESTRAL — SELEÇÃO DE DESTINO"
+		_mode_banner_title.add_theme_color_override("font_color", Color(0.55, 0.96, 1.0))
+		_mode_banner_sub.text = "Clique em uma região desbloqueada para se teleportar imediatamente."
 		if st != null:
 			st.border_color = Color(0.38, 0.84, 1.0, 0.96)
 	else:
-		_mode_banner_label.text = "🗺 MAPA DO ATO 1 [M] — Apenas consulta (use um Waypoint para se teleportar)"
-		_mode_banner_label.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+		_mode_banner_title.text = "🗺 MAPA DO ATO 1 — AS TERRAS DE VELEN [MODO CONSULTA]"
+		_mode_banner_title.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+		_mode_banner_sub.text = "Pressione [M] ou [ESC] para fechar. Para viajar, interaja com um Waypoint no mundo."
 		if st != null:
 			st.border_color = COLOR_BRONZE_BORDER
 
@@ -411,13 +710,24 @@ func show_map_feedback(msg: String) -> void:
 	_feedback_timer = 3.2
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not visible:
-		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE or event.keycode == KEY_M or event.keycode == KEY_E:
-			close_map()
-			get_viewport().set_input_as_handled()
+func _hide_combat_hud_elements() -> void:
+	_hidden_hud_elements.clear()
+	var p := get_parent()
+	if p != null:
+		for child in p.get_children():
+			if child != self and child is CanvasItem:
+				var ci := child as CanvasItem
+				var n: String = ci.name
+				if (n.contains("Health") or n.contains("Mana") or n.contains("Skill") or n.contains("Controls") or n.contains("Info") or n.contains("TitlePlate")) and ci.visible:
+					_hidden_hud_elements.append(ci)
+					ci.visible = false
+
+
+func _restore_combat_hud_elements() -> void:
+	for el in _hidden_hud_elements:
+		if is_instance_valid(el):
+			el.visible = true
+	_hidden_hud_elements.clear()
 
 
 func _input(event: InputEvent) -> void:
@@ -433,353 +743,50 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	_anim_time += delta
-	if _bg_shader_mat != null:
-		_bg_shader_mat.set_shader_parameter("anim_time", _anim_time)
-
-	for b in _birds:
-		var uv: Vector2 = b["uv"] as Vector2
-		var spd: Vector2 = b["speed"] as Vector2
-		uv += spd * delta
-		if uv.x > 1.06:
-			uv.x = -0.06
-		if uv.y < 0.05:
-			uv.y = 0.55
-		elif uv.y > 0.75:
-			uv.y = 0.18
-		b["uv"] = uv
-
 	if _feedback_timer > 0.0:
 		_feedback_timer -= delta
 		if _feedback_timer <= 0.0 and _feedback_panel != null:
 			_feedback_panel.visible = false
-
-	if _canvas_overlay != null:
-		_canvas_overlay.queue_redraw()
-
-
-func _get_marker_rect(loc: Dictionary, vp_size: Vector2) -> Rect2:
-	var scale_f: float = clampf(minf(vp_size.x / 1280.0, vp_size.y / 720.0), 0.65, 1.45)
-	var idx: int = int(loc["index"])
-	var tex: Texture2D = _marker_textures.get(idx, null) as Texture2D
-	var base_w: float = 216.0 * scale_f
-	var base_h: float = 72.0 * scale_f
-	if tex != null and tex.get_height() > 0:
-		var aspect: float = float(tex.get_width()) / float(tex.get_height())
-		base_h = 70.0 * scale_f
-		base_w = base_h * aspect
-	var center: Vector2 = (loc["badge_uv"] as Vector2) * vp_size
-	return Rect2(center - Vector2(base_w * 0.5, base_h * 0.5), Vector2(base_w, base_h))
-
-
-func _get_node_screen_pos(loc: Dictionary, vp_size: Vector2) -> Vector2:
-	return (loc["node_uv"] as Vector2) * vp_size
-
-
-func _find_location_at_point(pt: Vector2, vp_size: Vector2) -> int:
-	# Verifica clique/hover na placa PNG ou no losango dourado do Waypoint (◆)
-	for i in range(ACT1_LOCATIONS.size() - 1, -1, -1):
-		var loc: Dictionary = ACT1_LOCATIONS[i]
-		var rect: Rect2 = _get_marker_rect(loc, vp_size).grow(4.0)
-		var node_pos: Vector2 = _get_node_screen_pos(loc, vp_size)
-		if rect.has_point(pt) or pt.distance_to(node_pos) <= 22.0:
-			return i
-	return -1
-
-
-func _on_canvas_gui_input(event: InputEvent) -> void:
-	if not visible or _canvas_overlay == null:
-		return
-	var vp_size: Vector2 = _canvas_overlay.size
-	if vp_size.x < 10.0:
-		vp_size = get_viewport_rect().size
-
-	if event is InputEventMouseMotion:
-		var mm := event as InputEventMouseMotion
-		var new_hov: int = _find_location_at_point(mm.position, vp_size)
-		if new_hov != _hovered_index:
-			_hovered_index = new_hov
-			_canvas_overlay.mouse_default_cursor_shape = (
-				Control.CURSOR_POINTING_HAND if _hovered_index >= 0 else Control.CURSOR_ARROW
-			)
-			_canvas_overlay.queue_redraw()
-
-	elif event is InputEventMouseButton and event.pressed:
-		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT:
-			var clicked_idx: int = _find_location_at_point(mb.position, vp_size)
-			if clicked_idx >= 0:
-				_on_location_clicked(ACT1_LOCATIONS[clicked_idx])
-				accept_event()
-
-
-func _on_location_clicked(loc: Dictionary) -> void:
-	var target_zone: String = String(loc["zone_id"])
-	var title_str: String = String(loc["title"])
-
-	if not can_teleport:
-		show_map_feedback("⚠ Teleporte indisponível fora dos Waypoints! Aproxime-se de um Waypoint Ancestral para viajar.")
-		return
-
-	if target_zone == current_zone_id:
-		show_map_feedback("✦ Você já está em %s!" % title_str)
-		return
-
-	close_map()
-	waypoint_travel_requested.emit(target_zone)
+	if _route_overlay != null:
+		_route_overlay.queue_redraw()
 
 
 # ============================================================================
-# RENDERIZAÇÃO DO MAPA VIVO (ESTRADA DOURADA, PÁSSAROS, LUZES, 8 MARCAÇÕES E BRASÃO)
+# DESENHO DO CAMINHO LUMINOSO (ESTRADA DOURADA E NÓS ◆)
 # ============================================================================
-func _on_canvas_draw() -> void:
-	var vp: Vector2 = _canvas_overlay.size
-	if vp.x < 10.0:
-		vp = Vector2(1280.0, 720.0)
+func _on_route_overlay_draw() -> void:
+	if _map_canvas == null:
+		return
+	var canvas_sz: Vector2 = _map_canvas.size
+	if canvas_sz.x < 10.0 or canvas_sz.y < 10.0:
+		return
 
-	# 1. Partículas de Luz Flutuantes (Vagalumes, Cristais Roxos e Brasas da Fenda)
-	_draw_ambient_light_motes(vp)
+	var pulse: float = 0.5 + 0.5 * sin(_anim_time * 2.8)
+	var glow_color := Color(1.0, 0.86, 0.40, 0.22 + 0.12 * pulse)
+	var line_color := Color(1.0, 0.94, 0.65, 0.70 + 0.20 * pulse)
 
-	# 2. Pássaros Voando pelas Montanhas e Floresta
-	_draw_flying_birds(vp)
-
-	# 3. Trilha Dourada Brilhante conectando os 8 Locais do Ato 1
-	_draw_golden_waypoint_paths(vp)
-
-	# 4. Nodos de Waypoint Dourados (Círculo + Losango ◆)
-	_draw_waypoint_diamond_nodes(vp)
-
-	# 5. As 8 Placas Oficiais em PNG Transparente (01_vila_de_velen .. 08_fenda_abissal)
-	_draw_location_markers(vp)
-
-	# 6. Brasão e Estandarte Superior Esquerdo: "ATO 1 — AS TERRAS DE VELEN"
-	_draw_act1_top_left_banner()
-
-
-func _draw_ambient_light_motes(vp: Vector2) -> void:
-	for mote in _light_motes:
-		var orig: Vector2 = mote["origin_uv"] as Vector2
-		var spd: float = float(mote["speed"])
-		var ph: float = float(mote["phase"])
-		var rad: float = float(mote["radius"])
-		var col: Color = mote["color"] as Color
-
-		var offset := Vector2(
-			sin(_anim_time * spd + ph) * 0.012,
-			-fposmod(_anim_time * 0.014 * spd + ph * 0.1, 0.045)
-		)
-		var pos: Vector2 = (orig + offset) * vp
-		var alpha_Wave: float = 0.35 + 0.65 * (0.5 + 0.5 * sin(_anim_time * spd * 2.2 + ph))
-		var glow_col := Color(col.r, col.g, col.b, col.a * alpha_Wave * 0.32)
-		var core_col := Color(1.0, 0.96, 0.86, col.a * alpha_Wave)
-		_canvas_overlay.draw_circle(pos, rad * 2.4, glow_col)
-		_canvas_overlay.draw_circle(pos, rad * 0.85, core_col)
-
-
-func _draw_flying_birds(vp: Vector2) -> void:
-	for b in _birds:
-		var pos: Vector2 = (b["uv"] as Vector2) * vp
-		var w_spd: float = float(b["wing_speed"])
-		var sc: float = float(b["scale"])
-		var ph: float = float(b["phase"])
-		var flap: float = sin(_anim_time * w_spd + ph)
-		var wing_y: float = flap * 4.5 * sc
-		var span: float = 7.5 * sc
-
-		var bird_col := Color(0.14, 0.10, 0.18, 0.78)
-		var left_tip := pos + Vector2(-span, -wing_y)
-		var mid_left := pos + Vector2(-span * 0.45, -wing_y * 0.55 - 1.5 * sc)
-		var right_tip := pos + Vector2(span, -wing_y)
-		var mid_right := pos + Vector2(span * 0.45, -wing_y * 0.55 - 1.5 * sc)
-
-		_canvas_overlay.draw_line(left_tip, mid_left, bird_col, 1.8 * sc, true)
-		_canvas_overlay.draw_line(mid_left, pos, bird_col, 2.0 * sc, true)
-		_canvas_overlay.draw_line(pos, mid_right, bird_col, 2.0 * sc, true)
-		_canvas_overlay.draw_line(mid_right, right_tip, bird_col, 1.8 * sc, true)
-
-
-func _draw_golden_waypoint_paths(vp: Vector2) -> void:
-	var pulse: float = 0.82 + 0.18 * sin(_anim_time * 3.0)
-	var outer_glow := Color(1.0, 0.62, 0.12, 0.28 * pulse)
-	var mid_glow := Color(1.0, 0.78, 0.22, 0.62 * pulse)
-	var core_line := Color(1.0, 0.95, 0.68, 0.95)
-
-	for seg in PATH_SEGMENTS_UV:
+	# 1. Traçado da estrada dourada
+	for segment in PATH_SEGMENTS_UV:
 		var pts := PackedVector2Array()
-		for i in range(seg.size() - 1):
-			var p0: Vector2 = (seg[i] as Vector2) * vp
-			var p1: Vector2 = (seg[i + 1] as Vector2) * vp
-			var steps: int = 8
-			for s in range(steps):
-				var t: float = float(s) / float(steps)
-				pts.append(p0.lerp(p1, t))
-		pts.append((seg[seg.size() - 1] as Vector2) * vp)
-
+		for uv_v in segment:
+			pts.append((uv_v as Vector2) * canvas_sz)
 		if pts.size() >= 2:
-			_canvas_overlay.draw_polyline(pts, outer_glow, 11.0, true)
-			_canvas_overlay.draw_polyline(pts, mid_glow, 5.5, true)
-			_canvas_overlay.draw_polyline(pts, core_line, 2.5, true)
+			_route_overlay.draw_polyline(pts, glow_color, 6.0, true)
+			_route_overlay.draw_polyline(pts, line_color, 2.2, true)
 
-			# Partícula viajante de luz dourada percorrendo a estrada
-			var travel_idx: float = fposmod(_anim_time * 6.5, float(pts.size() - 1))
-			var i0: int = int(floorf(travel_idx))
-			var i1: int = mini(i0 + 1, pts.size() - 1)
-			var spark_pos: Vector2 = pts[i0].lerp(pts[i1], travel_idx - float(i0))
-			_canvas_overlay.draw_circle(spark_pos, 6.5, Color(1.0, 0.85, 0.32, 0.45))
-			_canvas_overlay.draw_circle(spark_pos, 3.0, Color(1.0, 0.98, 0.85, 0.95))
+	# 2. Nós dourados dos waypoints (◆)
+	for loc in ACT1_LOCATIONS:
+		var node_pos: Vector2 = (loc["node_uv"] as Vector2) * canvas_sz
+		var zid: String = String(loc["zone_id"])
+		var is_unlocked: bool = unlocked_zones.is_empty() or unlocked_zones.has(zid)
+		var is_current: bool = (zid == current_zone_id)
 
+		var node_color: Color = COLOR_GOLD_BRIGHT
+		if is_current:
+			node_color = COLOR_CURRENT_LOCATION
+		elif not is_unlocked:
+			node_color = Color(0.45, 0.42, 0.50, 0.65)
 
-func _draw_waypoint_diamond_nodes(vp: Vector2) -> void:
-	for i in range(ACT1_LOCATIONS.size()):
-		var loc: Dictionary = ACT1_LOCATIONS[i]
-		var z_id: String = String(loc["zone_id"])
-		var is_current: bool = (z_id == current_zone_id)
-		var is_hovered: bool = (i == _hovered_index)
-		var pos: Vector2 = _get_node_screen_pos(loc, vp)
-
-		var pulse: float = 1.0 + 0.14 * sin(_anim_time * 4.2 + float(i))
-		var r: float = (13.5 if (is_hovered or is_current) else 11.0) * pulse
-
-		# Halo externo
-		var halo_col := Color(0.35, 0.88, 1.0, 0.48) if is_current else Color(1.0, 0.78, 0.24, 0.42 if is_hovered else 0.26)
-		_canvas_overlay.draw_circle(pos, r * 1.65, halo_col)
-
-		# Anel escuro e borda dourada
-		_canvas_overlay.draw_circle(pos, r, Color(0.10, 0.07, 0.05, 0.96))
-		var ring_col := Color(0.55, 0.95, 1.0, 1.0) if is_current else Color(1.0, 0.86, 0.38, 1.0)
-		_canvas_overlay.draw_arc(pos, r, 0.0, TAU, 24, ring_col, 2.4, true)
-
-		# Losango central (◆)
-		var d_r: float = r * 0.52
-		var diamond := PackedVector2Array([
-			pos + Vector2(0.0, -d_r),
-			pos + Vector2(d_r, 0.0),
-			pos + Vector2(0.0, d_r),
-			pos + Vector2(-d_r, 0.0),
-		])
-		var d_col := Color(0.68, 0.98, 1.0, 1.0) if is_current else Color(1.0, 0.92, 0.55, 1.0)
-		_canvas_overlay.draw_colored_polygon(diamond, d_col)
-
-
-func _draw_location_markers(vp: Vector2) -> void:
-	var font: Font = ThemeDB.fallback_font
-	for i in range(ACT1_LOCATIONS.size()):
-		var loc: Dictionary = ACT1_LOCATIONS[i]
-		var idx: int = int(loc["index"])
-		var z_id: String = String(loc["zone_id"])
-		var is_current: bool = (z_id == current_zone_id)
-		var is_hovered: bool = (i == _hovered_index)
-
-		var rect: Rect2 = _get_marker_rect(loc, vp)
-		if is_hovered:
-			var grow_px: float = 5.0 + 1.5 * sin(_anim_time * 6.0)
-			rect = rect.grow(grow_px)
-			rect.position.y -= 2.5
-
-		# Brilho atrás da placa quando sob o mouse ou na zona atual
-		if is_hovered or is_current:
-			var glow_style := StyleBoxFlat.new()
-			glow_style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
-			glow_style.border_color = Color(0.45, 0.92, 1.0, 0.85) if is_current else Color(1.0, 0.86, 0.36, 0.90)
-			glow_style.set_border_width_all(3)
-			glow_style.set_corner_radius_all(8)
-			glow_style.shadow_color = glow_style.border_color
-			glow_style.shadow_size = 12 if is_hovered else 8
-			_canvas_overlay.draw_style_box(glow_style, rect.grow(2.0))
-
-		var tex: Texture2D = _marker_textures.get(idx, null) as Texture2D
-		if tex != null:
-			var modulate_col := Color(1.12, 1.10, 1.06, 1.0) if is_hovered else Color.WHITE
-			_canvas_overlay.draw_texture_rect(tex, rect, false, modulate_col)
-		else:
-			# Fallback caso rode sem textura
-			var fb_st := StyleBoxFlat.new()
-			fb_st.bg_color = COLOR_DARK_BANNER
-			fb_st.border_color = COLOR_BRONZE_BORDER
-			fb_st.set_border_width_all(2)
-			_canvas_overlay.draw_style_box(fb_st, rect)
-			if font != null:
-				_canvas_overlay.draw_string(font, rect.position + Vector2(16, 32), String(loc["title"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, COLOR_GOLD_BRIGHT)
-
-		# Tag "✦ VOCÊ ESTÁ AQUI" ou "✦ CLIQUE PARA TELEPORTAR"
-		if font != null and (is_current or (is_hovered and can_teleport)):
-			var tag_txt: String = "✦ VOCÊ ESTÁ AQUI" if is_current else "⚡ CLIQUE PARA TELEPORTAR"
-			var tag_col: Color = Color(0.48, 0.95, 1.0) if is_current else Color(0.52, 1.0, 0.64)
-			var tag_w: float = 162.0
-			var tag_h: float = 20.0
-			var tag_rect := Rect2(
-				Vector2(rect.get_center().x - tag_w * 0.5, rect.position.y - tag_h - 3.0),
-				Vector2(tag_w, tag_h)
-			)
-			var tag_st := StyleBoxFlat.new()
-			tag_st.bg_color = Color(0.04, 0.05, 0.08, 0.94)
-			tag_st.border_color = tag_col
-			tag_st.set_border_width_all(1)
-			tag_st.set_corner_radius_all(4)
-			_canvas_overlay.draw_style_box(tag_st, tag_rect)
-			_canvas_overlay.draw_string(
-				font,
-				Vector2(tag_rect.position.x, tag_rect.position.y + 14.0),
-				tag_txt,
-				HORIZONTAL_ALIGNMENT_CENTER,
-				tag_w,
-				11,
-				tag_col
-			)
-
-
-func _draw_act1_top_left_banner() -> void:
-	var font: Font = ThemeDB.fallback_font
-	# Placa horizontal escura com moldura dourada: "ATO 1 — AS TERRAS DE VELEN"
-	var bar_rect := Rect2(Vector2(66.0, 14.0), Vector2(368.0, 44.0))
-	var bar_style := StyleBoxFlat.new()
-	bar_style.bg_color = Color(0.06, 0.045, 0.055, 0.96)
-	bar_style.border_color = Color(0.82, 0.62, 0.26, 0.98)
-	bar_style.set_border_width_all(2)
-	bar_style.set_corner_radius_all(4)
-	bar_style.shadow_color = Color(0, 0, 0, 0.78)
-	bar_style.shadow_size = 10
-	_canvas_overlay.draw_style_box(bar_style, bar_rect)
-
-	# Ponta triangular dourada à direita da placa
-	var tip_pts := PackedVector2Array([
-		Vector2(bar_rect.end.x, bar_rect.position.y + 4.0),
-		Vector2(bar_rect.end.x + 22.0, bar_rect.get_center().y),
-		Vector2(bar_rect.end.x, bar_rect.end.y - 4.0),
-	])
-	_canvas_overlay.draw_colored_polygon(tip_pts, Color(0.78, 0.58, 0.24, 0.98))
-
-	# Estandarte Carmesim e Ouro à esquerda (Brasão de Velen)
-	var banner_pts := PackedVector2Array([
-		Vector2(18.0, 6.0),
-		Vector2(74.0, 6.0),
-		Vector2(74.0, 64.0),
-		Vector2(46.0, 86.0),
-		Vector2(18.0, 64.0),
-	])
-	_canvas_overlay.draw_colored_polygon(banner_pts, Color(0.56, 0.09, 0.09, 0.98))
-	var banner_border := PackedVector2Array([
-		Vector2(18.0, 6.0),
-		Vector2(74.0, 6.0),
-		Vector2(74.0, 64.0),
-		Vector2(46.0, 86.0),
-		Vector2(18.0, 64.0),
-		Vector2(18.0, 6.0),
-	])
-	_canvas_overlay.draw_polyline(banner_border, Color(0.92, 0.72, 0.30, 1.0), 2.5, true)
-
-	# Emblema da Cruz Solar dentro do Estandarte Carmesim
-	var crest_c := Vector2(46.0, 40.0)
-	_canvas_overlay.draw_arc(crest_c, 13.0, 0.0, TAU, 24, Color(0.96, 0.78, 0.34, 1.0), 2.2, true)
-	_canvas_overlay.draw_line(crest_c + Vector2(0.0, -19.0), crest_c + Vector2(0.0, 19.0), Color(0.98, 0.82, 0.38, 1.0), 2.2, true)
-	_canvas_overlay.draw_line(crest_c + Vector2(-17.0, 0.0), crest_c + Vector2(17.0, 0.0), Color(0.98, 0.82, 0.38, 1.0), 2.2, true)
-
-	if font != null:
-		_canvas_overlay.draw_string(
-			font,
-			Vector2(bar_rect.position.x + 18.0, bar_rect.position.y + 29.0),
-			"ATO 1 — AS TERRAS DE VELEN",
-			HORIZONTAL_ALIGNMENT_CENTER,
-			bar_rect.size.x - 24.0,
-			18,
-			Color(0.98, 0.84, 0.46, 1.0)
-		)
+		_route_overlay.draw_circle(node_pos, 8.0, Color(0.04, 0.03, 0.06, 0.95))
+		_route_overlay.draw_circle(node_pos, 6.0, node_color)
+		_route_overlay.draw_circle(node_pos, 2.5, Color(1.0, 1.0, 1.0, 0.9))
