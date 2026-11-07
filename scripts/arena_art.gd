@@ -168,6 +168,10 @@ func _build_ground(noise_seed: int = 90420) -> void:
 	material.set_shader_parameter("grass_tex", grass_light_texture)
 	material.set_shader_parameter("dirt_tex", dirt_texture)
 	material.set_shader_parameter("blend_noise_tex", blend_texture)
+	material.set_shader_parameter("color_boost", 1.08)
+	material.set_shader_parameter("ambient_fill", 0.015)
+	material.set_shader_parameter("dirt_mix_width", 0.28)
+	material.set_shader_parameter("grass_noise_scale", 0.16)
 
 	# Noise apenas na construcao, nao ha calculo procedural por frame.
 	var terrain_noise := FastNoiseLite.new()

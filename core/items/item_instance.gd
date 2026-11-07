@@ -46,6 +46,11 @@ var grid_position: Vector2i = Vector2i(-1, -1)
 var is_rotated: bool = false
 var equipped_slot: ItemDefinition.EquipmentSlot = ItemDefinition.EquipmentSlot.NONE
 
+## Propriedade calculada / alias de compatibilidade defensiva para afixos implícitos da base
+var implicit_modifiers: Array[ItemAffix]:
+	get:
+		return get_implicit_affixes()
+
 
 static func get_rarity_visual_order(r: ItemRarity) -> int:
 	## Ordem lógica/visual crescente de raridade (independente do índice interno da enum):

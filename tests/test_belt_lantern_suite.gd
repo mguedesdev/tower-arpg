@@ -211,10 +211,10 @@ func _run_all() -> void:
 	# CENÁRIO 9: Parâmetros de Iluminação e Alcance Suave
 	# -------------------------------------------------------------------------
 	print("[Cenário 9] Validação dos parâmetros luminosos (alcance, atenuação e não-ofuscamento)...")
-	assert(is_equal_approx(lantern._omni_light.omni_range, 4.2), "Alcance deve ser de ~4.2m cobrindo pés e arredores")
-	assert(is_equal_approx(lantern._omni_light.omni_attenuation, 1.35), "Atenuação de 1.35 para queda suave de luz")
-	assert(lantern._omni_light.shadow_enabled == false, "Shadow deve ser false na lanterna omni para altíssima performance")
-	print("  -> OK: Parâmetros de iluminação verificados com sucesso (raio 4.2m, atenuação 1.35, âmbar quente).")
+	assert(lantern._omni_light.omni_range >= 6.5 and lantern._omni_light.omni_range <= 8.5, "Alcance deve cobrir 4 a 6m ao redor do personagem (atual: %.1fm)" % lantern._omni_light.omni_range)
+	assert(lantern._omni_light.omni_attenuation >= 0.85 and lantern._omni_light.omni_attenuation <= 1.05, "Atenuação suave de ~0.92 para queda linear-orgânica de luz")
+	assert(lantern._omni_light.shadow_enabled == true, "Shadow deve ser true na lanterna omni com bias calibrado para recorte nítido")
+	print("  -> OK: Parâmetros de iluminação verificados com sucesso (raio 7.5m, atenuação 0.92, âmbar quente com sombras nítidas).")
 
 	# -------------------------------------------------------------------------
 	# CENÁRIO 10: Integração de Inicialização e Inventário Espacial

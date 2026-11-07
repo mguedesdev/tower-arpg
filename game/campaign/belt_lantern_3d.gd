@@ -9,10 +9,12 @@ class_name BeltLantern3D
 
 signal lantern_state_changed(is_lit: bool, has_belt: bool)
 
-const DEFAULT_AMBER_COLOR := Color(1.0, 0.74, 0.42, 1.0)
-const DEFAULT_LIGHT_RANGE := 4.2
-const DEFAULT_MAX_ENERGY := 0.85
-const DEFAULT_ATTENUATION := 1.35
+const DEFAULT_AMBER_COLOR := Color(1.0, 0.76, 0.44, 1.0)
+const DEFAULT_LIGHT_RANGE := 7.5
+const DEFAULT_MAX_ENERGY := 1.60
+const DEFAULT_ATTENUATION := 0.92
+
+@export var shadow_enabled: bool = true
 
 var has_belt_equipped: bool = false
 var is_dark_zone: bool = false
@@ -311,10 +313,13 @@ func _build_lantern_visual() -> void:
 	# 6. Luz Radial Dinâmica (OmniLight3D)
 	_omni_light = OmniLight3D.new()
 	_omni_light.name = "LanternLight"
-	_omni_light.position = Vector3(0.0, 0.01, 0.0)
+	_omni_light.position = Vector3(0.06, -0.02, 0.08)
 	_omni_light.light_color = DEFAULT_AMBER_COLOR
 	_omni_light.light_energy = 0.0
 	_omni_light.omni_range = DEFAULT_LIGHT_RANGE
 	_omni_light.omni_attenuation = DEFAULT_ATTENUATION
-	_omni_light.shadow_enabled = false
+	_omni_light.shadow_enabled = shadow_enabled
+	_omni_light.shadow_bias = 0.06
+	_omni_light.shadow_normal_bias = 1.2
+	_omni_light.shadow_blur = 0.12
 	_lantern_model_root.add_child(_omni_light)
