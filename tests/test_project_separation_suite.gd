@@ -68,8 +68,12 @@ func _test_arpg_game_isolation() -> void:
 	arpg._relayout_open_modals()
 	var prev_gold: int = arpg.gold
 	var sell_item = arpg.backpack.items[0]
+	var expected_sell_val: int = sell_item.get_sell_value()
 	arpg._on_inventory_context_action(sell_item)
-	_check(arpg.gold > prev_gold, "9c. Clique direito na Mochila com Mercador aberto vende o item por Ouro")
+	_check(arpg.gold == prev_gold + expected_sell_val, "9c. Clique direito na Mochila com Mercador aberto vende o item por Ouro")
+	_check(arpg.town_npc_modal._buyback_items.size() == 1 and arpg.town_npc_modal._buyback_items[0]["price"] == expected_sell_val, "9d. Item vendido aparece na aba Recomprar exatamente pelo mesmo valor da venda")
+	arpg.town_npc_modal._attempt_buyback_item(arpg.town_npc_modal._buyback_items[0])
+	_check(arpg.backpack.items.has(sell_item) and arpg.gold == prev_gold and arpg.town_npc_modal._buyback_items.is_empty(), "9e. Recomprar devolve o item à Mochila pelo exato valor de venda")
 
 	arpg.queue_free()
 

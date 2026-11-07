@@ -528,8 +528,9 @@ func _on_inventory_context_action(item: ItemInstance) -> void:
 		var sell_val: int = item.get_sell_value()
 		var name_str: String = item.get_display_name()
 		backpack.remove_item(item)
+		town_npc_modal.register_sold_item(item, sell_val)
 		_on_gold_changed(gold + sell_val)
-		town_npc_modal.show_feedback("✦ Vendido: %s por +%d Ouro!" % [name_str, sell_val], false)
+		town_npc_modal.show_feedback("✦ Vendido: %s por +%d Ouro! (Disponível na aba ↩ Recomprar)" % [name_str, sell_val], false)
 
 
 func _on_potion_consumed(heal_amount: int) -> void:

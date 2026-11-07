@@ -35,6 +35,8 @@ var _current_zone_id: String = "town"
 
 var _blacksmith_stock: Array[ItemInstance] = []
 var _arcanist_stock: Array[ItemInstance] = []
+var _buyback_items: Array[Dictionary] = []   ## Array de {"item": ItemInstance, "price": int}
+var _active_vendor_tab: int = 0              ## 0 = Comprar, 1 = Recomprar
 
 # Janela móvel / acoplável
 var _window_panel: PanelContainer
@@ -300,6 +302,7 @@ func open_station(station_id: String, unlocked_zones: Array[String], current_zon
 	_unlocked_zones = unlocked_zones
 	_current_zone_id = current_zone
 	area_level = maxi(1, p_area_level)
+	_active_vendor_tab = 0
 	_has_custom_window_pos = false
 	_ensure_vendor_stocks()
 	_feedback_label.text = ""
@@ -309,6 +312,19 @@ func open_station(station_id: String, unlocked_zones: Array[String], current_zon
 	_refresh_current_station_content()
 	visible = true
 	opened.emit(station_id)
+
+
+func register_sold_item(item: ItemInstance, sold_price: int) -> void:
+	if item == null:
+		return
+	_buyback_items.push_front({
+		"item": item,
+		"price": maxi(1, sold_price)
+	})
+	if _buyback_items.size() > 24:
+		_buyback_items.resize(24)
+	if visible and (current_station_id == "vendor_physical" or current_station_id == "vendor_magic"):
+		_refresh_current_station_content()
 
 
 func close_modal() -> void:
@@ -475,38 +491,62 @@ func _populate_vendor_magic() -> void:
 
 
 func _build_vendor_shop_ui(stock: Array[ItemInstance], is_blacksmith: bool) -> void:
-	var top_bar := HBoxContainer.new()
-	var sell_hint := Label.new()
-	sell_hint.text = "💡 Clique Direito em qualquer item da sua Mochila (à direita) para VENDER!"
-	sell_hint.add_theme_font_size_override("font_size", 11)
-	sell_hint.add_theme_color_override("font_color", Color(0.96, 0.85, 0.45))
-	top_bar.add_child(sell_hint)
-	top_bar.add_spacer(false)
+	# Barra de Abas: [🛒 Comprar] | [↩ Recomprar (N)] + [🔄 Novos Itens]
+	var tabs_bar := HBoxContainer.new()
+	tabs_bar.add_theme_constant_override("separation", 8)
 
-	var restock_cost: int = 15
-	var restock_btn := _make_gothic_button("🔄 Novos Itens (%d 🪙)" % restock_cost, false)
-	restock_btn.custom_minimum_size = Vector2(148, 28)
-	restock_btn.add_theme_font_size_override("font_size", 12)
-	restock_btn.disabled = current_gold < restock_cost
-	restock_btn.pressed.connect(func() -> void:
-		if current_gold < restock_cost:
-			show_feedback("⚠ Ouro insuficiente para renovar o estoque!", true)
-			return
-		current_gold -= restock_cost
-		gold_changed.emit(current_gold)
-		if is_blacksmith:
-			_blacksmith_stock = ItemDatabase.generate_blacksmith_stock(maxi(1, area_level))
-		else:
-			_arcanist_stock = ItemDatabase.generate_arcanist_stock(maxi(1, area_level))
+	var buy_tab_btn := _make_tab_button("🛒 COMPRAR ITENS (%d)" % stock.size(), _active_vendor_tab == 0, false)
+	buy_tab_btn.pressed.connect(func() -> void:
+		_active_vendor_tab = 0
 		_refresh_current_station_content()
-		show_feedback("✦ O mercador trouxe novas mercadorias para a bancada!", false)
 	)
-	top_bar.add_child(restock_btn)
-	_content_box.add_child(top_bar)
+	tabs_bar.add_child(buy_tab_btn)
+
+	var buyback_tab_btn := _make_tab_button("↩ RECOMPRAR (%d)" % _buyback_items.size(), _active_vendor_tab == 1, _buyback_items.size() > 0)
+	buyback_tab_btn.pressed.connect(func() -> void:
+		_active_vendor_tab = 1
+		_refresh_current_station_content()
+	)
+	tabs_bar.add_child(buyback_tab_btn)
+
+	tabs_bar.add_spacer(false)
+
+	if _active_vendor_tab == 0:
+		var restock_cost: int = 15
+		var restock_btn := _make_gothic_button("🔄 Novos (%d 🪙)" % restock_cost, false)
+		restock_btn.custom_minimum_size = Vector2(126, 30)
+		restock_btn.add_theme_font_size_override("font_size", 12)
+		restock_btn.disabled = current_gold < restock_cost
+		restock_btn.pressed.connect(func() -> void:
+			if current_gold < restock_cost:
+				show_feedback("⚠ Ouro insuficiente para renovar o estoque!", true)
+				return
+			current_gold -= restock_cost
+			gold_changed.emit(current_gold)
+			if is_blacksmith:
+				_blacksmith_stock = ItemDatabase.generate_blacksmith_stock(maxi(1, area_level))
+			else:
+				_arcanist_stock = ItemDatabase.generate_arcanist_stock(maxi(1, area_level))
+			_refresh_current_station_content()
+			show_feedback("✦ O mercador trouxe novas mercadorias para a bancada!", false)
+		)
+		tabs_bar.add_child(restock_btn)
+
+	_content_box.add_child(tabs_bar)
+
+	var sell_hint := Label.new()
+	if _active_vendor_tab == 0:
+		sell_hint.text = "💡 Clique Direito em qualquer item da sua Mochila (à direita) para VENDER (ele irá para a aba Recomprar)!"
+		sell_hint.add_theme_color_override("font_color", Color(0.96, 0.85, 0.45))
+	else:
+		sell_hint.text = "↩ Aba Recomprar: recupere qualquer item vendido pelo EXATO mesmo valor em Ouro que você recebeu!"
+		sell_hint.add_theme_color_override("font_color", Color(0.56, 0.92, 0.66))
+	sell_hint.add_theme_font_size_override("font_size", 11)
+	_content_box.add_child(sell_hint)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size = Vector2(0, 310)
+	scroll.custom_minimum_size = Vector2(0, 290)
 	_content_box.add_child(scroll)
 
 	var list_vbox := VBoxContainer.new()
@@ -514,10 +554,149 @@ func _build_vendor_shop_ui(stock: Array[ItemInstance], is_blacksmith: bool) -> v
 	list_vbox.add_theme_constant_override("separation", 6)
 	scroll.add_child(list_vbox)
 
-	for item in stock:
-		if item == null or item.definition == null:
-			continue
-		list_vbox.add_child(_make_vendor_item_row(item, stock))
+	if _active_vendor_tab == 0:
+		for item in stock:
+			if item == null or item.definition == null:
+				continue
+			list_vbox.add_child(_make_vendor_item_row(item, stock))
+	else:
+		if _buyback_items.is_empty():
+			var empty_lbl := Label.new()
+			empty_lbl.text = "\nNenhum item vendido ainda nesta sessão.\n\nQuando você vender um item clicando com o Botão Direito na sua Mochila,\nele ficará guardado aqui caso queira recomprá-lo pelo mesmo valor!"
+			empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			empty_lbl.add_theme_font_size_override("font_size", 13)
+			empty_lbl.add_theme_color_override("font_color", COLOR_MUTED)
+			list_vbox.add_child(empty_lbl)
+		else:
+			for entry in _buyback_items:
+				list_vbox.add_child(_make_buyback_item_row(entry))
+
+
+func _make_tab_button(text_val: String, is_active: bool, has_items_highlight: bool) -> Button:
+	var btn := Button.new()
+	btn.text = text_val
+	btn.custom_minimum_size = Vector2(172, 32)
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.add_theme_font_size_override("font_size", 12)
+	if is_active:
+		btn.add_theme_color_override("font_color", Color(1.0, 0.94, 0.72))
+	elif has_items_highlight:
+		btn.add_theme_color_override("font_color", Color(0.62, 0.95, 0.70))
+	else:
+		btn.add_theme_color_override("font_color", COLOR_MUTED)
+
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.18, 0.14, 0.08, 0.98) if is_active else Color(0.08, 0.075, 0.095, 0.92)
+	st.border_color = COLOR_GOLD_TITLE if is_active else (Color(0.38, 0.68, 0.44, 0.85) if has_items_highlight else Color(0.32, 0.28, 0.22, 0.75))
+	st.set_border_width_all(2 if is_active else 1)
+	st.set_corner_radius_all(4)
+	var hov := st.duplicate() as StyleBoxFlat
+	hov.bg_color = st.bg_color.lightened(0.12)
+	hov.border_color = COLOR_GOLD_TITLE
+	btn.add_theme_stylebox_override("normal", st)
+	btn.add_theme_stylebox_override("hover", hov)
+	btn.add_theme_stylebox_override("pressed", st)
+	return btn
+
+
+func _make_buyback_item_row(entry: Dictionary) -> PanelContainer:
+	var item: ItemInstance = entry.get("item", null) as ItemInstance
+	var sold_price: int = int(entry.get("price", 5))
+
+	var row := PanelContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_STOP
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.07, 0.095, 0.08, 0.95)
+	st.border_color = item.get_rarity_color().darkened(0.15)
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(3)
+	st.content_margin_left = 10
+	st.content_margin_right = 10
+	st.content_margin_top = 6
+	st.content_margin_bottom = 6
+	row.add_theme_stylebox_override("panel", st)
+
+	var price_line: String = "↩ Valor de Recompra: [color=#4dff6b]%d Ouro (Mesmo valor da venda)[/color]" % sold_price
+	row.mouse_entered.connect(func() -> void:
+		_show_item_tooltip(item, "[Clique em Recomprar pelo valor exato de venda]", price_line)
+	)
+	row.mouse_exited.connect(_hide_tooltip)
+
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 10)
+	hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(hb)
+
+	var icon_box := PanelContainer.new()
+	icon_box.custom_minimum_size = Vector2(44, 44)
+	icon_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_box.add_theme_stylebox_override("panel", _slot_style(Color(0.05, 0.04, 0.06, 0.95), item.get_rarity_color(), 1))
+	var icon_rect := TextureRect.new()
+	icon_rect.texture = ItemIconFactory.get_icon(item.definition)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_rect.custom_minimum_size = Vector2(38, 38)
+	icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon_box.add_child(icon_rect)
+	hb.add_child(icon_box)
+
+	var vb := VBoxContainer.new()
+	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.add_theme_constant_override("separation", 2)
+	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hb.add_child(vb)
+
+	var nl := Label.new()
+	nl.text = item.get_display_name()
+	nl.add_theme_font_size_override("font_size", 14)
+	nl.add_theme_color_override("font_color", item.get_rarity_color())
+	nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(nl)
+
+	var dl := Label.new()
+	dl.text = _build_short_item_summary(item)
+	dl.add_theme_font_size_override("font_size", 11)
+	dl.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	dl.clip_text = true
+	dl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(dl)
+
+	var can_afford: bool = current_gold >= sold_price
+	var buyback_btn := _make_gothic_button("🪙 %d Ouro\n[Recomprar]" % sold_price, not can_afford)
+	buyback_btn.custom_minimum_size = Vector2(110, 42)
+	buyback_btn.add_theme_font_size_override("font_size", 12)
+	buyback_btn.disabled = not can_afford
+	buyback_btn.mouse_entered.connect(func() -> void:
+		_show_item_tooltip(item, "[Clique para Recomprar por %d Ouro]" % sold_price, price_line)
+	)
+	buyback_btn.mouse_exited.connect(_hide_tooltip)
+	buyback_btn.pressed.connect(func() -> void:
+		_attempt_buyback_item(entry)
+	)
+	hb.add_child(buyback_btn)
+
+	return row
+
+
+func _attempt_buyback_item(entry: Dictionary) -> void:
+	var item: ItemInstance = entry.get("item", null) as ItemInstance
+	var sold_price: int = int(entry.get("price", 5))
+	if item == null or backpack == null:
+		return
+	if current_gold < sold_price:
+		show_feedback("⚠ Ouro insuficiente para recomprar! Você precisa de %d Ouro." % sold_price, true)
+		return
+	if backpack.find_free_spot_for(item).x < 0:
+		show_feedback("⚠ Sua Mochila não tem espaço livre (%dx%d) para recomprar este item!" % [item.definition.grid_size.x, item.definition.grid_size.y], true)
+		return
+
+	_hide_tooltip()
+	current_gold -= sold_price
+	_buyback_items.erase(entry)
+	backpack.auto_add_item(item)
+	gold_changed.emit(current_gold)
+	_refresh_current_station_content()
+	show_feedback("✦ Recomprado: %s pelo mesmo valor da venda (%d Ouro)!" % [item.get_display_name(), sold_price], false)
 
 
 func _make_vendor_item_row(item: ItemInstance, stock_array: Array[ItemInstance]) -> PanelContainer:
