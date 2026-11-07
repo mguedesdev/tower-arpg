@@ -26,8 +26,8 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"title": "1. Vila de Velen",
 		"level_text": "Nível 1 – 3",
 		"marker_tex": "res://assets/ui/world_map/01_vila_de_velen.png",
-		"badge_uv": Vector2(0.172, 0.760),
-		"node_uv": Vector2(0.155, 0.832),
+		"badge_uv": Vector2(0.151, 0.747),
+		"node_uv": Vector2(0.153, 0.837),
 	},
 	{
 		"index": 2,
@@ -35,8 +35,8 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"title": "2. Floresta de Arath",
 		"level_text": "Nível 3 – 6",
 		"marker_tex": "res://assets/ui/world_map/02_floresta_de_arath.png",
-		"badge_uv": Vector2(0.312, 0.568),
-		"node_uv": Vector2(0.309, 0.646),
+		"badge_uv": Vector2(0.312, 0.564),
+		"node_uv": Vector2(0.309, 0.653),
 	},
 	{
 		"index": 3,
@@ -44,8 +44,8 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"title": "3. Ruínas Antigas",
 		"level_text": "Nível 6 – 9",
 		"marker_tex": "res://assets/ui/world_map/03_ruinas_antigas.png",
-		"badge_uv": Vector2(0.550, 0.680),
-		"node_uv": Vector2(0.533, 0.745),
+		"badge_uv": Vector2(0.542, 0.668),
+		"node_uv": Vector2(0.533, 0.750),
 	},
 	{
 		"index": 4,
@@ -53,8 +53,8 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"title": "4. Minas de Karpon",
 		"level_text": "Nível 9 – 12",
 		"marker_tex": "res://assets/ui/world_map/04_minas_de_karpon.png",
-		"badge_uv": Vector2(0.822, 0.660),
-		"node_uv": Vector2(0.778, 0.728),
+		"badge_uv": Vector2(0.806, 0.651),
+		"node_uv": Vector2(0.775, 0.729),
 	},
 	{
 		"index": 5,
@@ -62,8 +62,8 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"title": "5. Cripta do Carrasco",
 		"level_text": "Nível 12 – 15",
 		"marker_tex": "res://assets/ui/world_map/05_cripta_do_carrasco.png",
-		"badge_uv": Vector2(0.884, 0.385),
-		"node_uv": Vector2(0.858, 0.533),
+		"badge_uv": Vector2(0.864, 0.382),
+		"node_uv": Vector2(0.859, 0.538),
 	},
 	{
 		"index": 6,
@@ -71,8 +71,8 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"title": "6. Colinas Sombrias",
 		"level_text": "Nível 15 – 18",
 		"marker_tex": "res://assets/ui/world_map/06_colinas_sombrias.png",
-		"badge_uv": Vector2(0.554, 0.438),
-		"node_uv": Vector2(0.559, 0.507),
+		"badge_uv": Vector2(0.547, 0.434),
+		"node_uv": Vector2(0.560, 0.510),
 	},
 	{
 		"index": 7,
@@ -80,8 +80,8 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"title": "7. Planalto Esquecido",
 		"level_text": "Nível 18 – 21",
 		"marker_tex": "res://assets/ui/world_map/07_planalto_esquecido.png",
-		"badge_uv": Vector2(0.660, 0.210),
-		"node_uv": Vector2(0.625, 0.295),
+		"badge_uv": Vector2(0.654, 0.208),
+		"node_uv": Vector2(0.624, 0.295),
 	},
 	{
 		"index": 8,
@@ -89,27 +89,27 @@ const ACT1_LOCATIONS: Array[Dictionary] = [
 		"title": "8. Fenda Abissal",
 		"level_text": "Nível 21 – 25",
 		"marker_tex": "res://assets/ui/world_map/08_fenda_abissal.png",
-		"badge_uv": Vector2(0.454, 0.165),
-		"node_uv": Vector2(0.425, 0.228),
+		"badge_uv": Vector2(0.449, 0.174),
+		"node_uv": Vector2(0.426, 0.233),
 	},
 ]
 
 ## Pontos intermediários normalizados da estrada dourada entre os 8 locais (fiel à curva da imagem de referência)
 const PATH_SEGMENTS_UV: Array[Array] = [
 	# 1 (Vila) -> 2 (Floresta)
-	[Vector2(0.155, 0.832), Vector2(0.225, 0.785), Vector2(0.278, 0.735), Vector2(0.285, 0.678), Vector2(0.309, 0.646)],
+	[Vector2(0.153, 0.837), Vector2(0.225, 0.785), Vector2(0.278, 0.735), Vector2(0.285, 0.678), Vector2(0.309, 0.653)],
 	# 2 (Floresta) -> 3 (Ruínas)
-	[Vector2(0.309, 0.646), Vector2(0.365, 0.668), Vector2(0.415, 0.698), Vector2(0.455, 0.738), Vector2(0.500, 0.748), Vector2(0.533, 0.745)],
+	[Vector2(0.309, 0.653), Vector2(0.365, 0.668), Vector2(0.415, 0.698), Vector2(0.455, 0.738), Vector2(0.500, 0.748), Vector2(0.533, 0.750)],
 	# 3 (Ruínas) -> 4 (Minas)
-	[Vector2(0.533, 0.745), Vector2(0.595, 0.768), Vector2(0.655, 0.778), Vector2(0.708, 0.732), Vector2(0.778, 0.728)],
+	[Vector2(0.533, 0.750), Vector2(0.595, 0.768), Vector2(0.655, 0.778), Vector2(0.708, 0.732), Vector2(0.775, 0.729)],
 	# 4 (Minas) -> 5 (Cripta)
-	[Vector2(0.778, 0.728), Vector2(0.842, 0.695), Vector2(0.885, 0.628), Vector2(0.878, 0.572), Vector2(0.858, 0.533)],
+	[Vector2(0.775, 0.729), Vector2(0.842, 0.695), Vector2(0.885, 0.628), Vector2(0.878, 0.572), Vector2(0.859, 0.538)],
 	# 5 (Cripta) -> 6 (Colinas)
-	[Vector2(0.420, 0.630), Vector2(0.435, 0.565), Vector2(0.432, 0.518), Vector2(0.495, 0.512), Vector2(0.559, 0.507)],
+	[Vector2(0.425, 0.635), Vector2(0.435, 0.565), Vector2(0.432, 0.518), Vector2(0.495, 0.512), Vector2(0.560, 0.510)],
 	# 6 (Colinas) -> 7 (Planalto)
-	[Vector2(0.559, 0.507), Vector2(0.618, 0.492), Vector2(0.655, 0.438), Vector2(0.722, 0.382), Vector2(0.742, 0.348), Vector2(0.685, 0.312), Vector2(0.625, 0.295)],
+	[Vector2(0.560, 0.510), Vector2(0.618, 0.492), Vector2(0.655, 0.438), Vector2(0.722, 0.382), Vector2(0.742, 0.348), Vector2(0.685, 0.312), Vector2(0.624, 0.295)],
 	# 7 (Planalto) -> 8 (Fenda Abissal)
-	[Vector2(0.548, 0.295), Vector2(0.502, 0.292), Vector2(0.462, 0.262), Vector2(0.425, 0.228)],
+	[Vector2(0.624, 0.295), Vector2(0.548, 0.295), Vector2(0.502, 0.292), Vector2(0.462, 0.262), Vector2(0.426, 0.233)],
 ]
 
 var can_teleport: bool = false
