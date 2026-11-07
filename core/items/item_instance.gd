@@ -24,6 +24,8 @@ var item_level: int = 1
 var is_identified: bool = true
 var explicit_affixes: Array[ItemAffix] = []
 var custom_name: String = ""
+var unique_id: String = ""
+var unique_display_name: String = ""
 
 # Posição de inventário e orientação (deitado ↔ em pé)
 var grid_position: Vector2i = Vector2i(-1, -1)
@@ -121,7 +123,9 @@ func get_display_name() -> String:
 				return "Item Raro Não-Identificado"
 			ItemRarity.UNIQUE:
 				return "Item Único Não-Identificado"
-	# Regra do Ato 1: manter sempre o nome-base do equipamento, sem concatenar modificadores no nome!
+	# Regra do Ato 1: manter sempre o nome-base do equipamento (ou o nome próprio da definição Única), sem concatenar modificadores no nome!
+	if rarity == ItemRarity.UNIQUE and not unique_display_name.is_empty():
+		return unique_display_name
 	return definition.display_name
 
 

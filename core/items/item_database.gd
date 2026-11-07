@@ -333,6 +333,9 @@ static func instantiate_act1_catalog_example(base_id: String) -> ItemInstance:
 	var inst := ItemInstance.new(def, r, def.base_item_level)
 	inst.is_identified = true
 	inst.custom_name = ""
+	if r == ItemInstance.ItemRarity.UNIQUE:
+		inst.unique_id = "unique_crimson_runic_greatsword"
+		inst.unique_display_name = def.display_name
 	for ex in def.example_affixes:
 		if ex != null:
 			inst.explicit_affixes.append(ex.duplicate_affix())
@@ -389,21 +392,21 @@ static func generate_loot(
 static func generate_blacksmith_stock(ilvl: int = 1) -> Array[ItemInstance]:
 	var stock: Array[ItemInstance] = []
 	var blueprint: Array[Dictionary] = [
-		{"id": "sword_steel",     "rar": ItemInstance.ItemRarity.NORMAL,   "tier": 1},
-		{"id": "dagger_sharp",    "rar": ItemInstance.ItemRarity.UNCOMMON, "tier": 1},
-		{"id": "shield_round",    "rar": ItemInstance.ItemRarity.UNCOMMON, "tier": 1},
-		{"id": "chest_plate",     "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 1},
-		{"id": "helm_iron",       "rar": ItemInstance.ItemRarity.NORMAL,   "tier": 1},
-		{"id": "boots_plate",     "rar": ItemInstance.ItemRarity.NORMAL,   "tier": 1},
-		{"id": "gloves_chain",    "rar": ItemInstance.ItemRarity.UNCOMMON, "tier": 1},
-		{"id": "belt_leather",    "rar": ItemInstance.ItemRarity.NORMAL,   "tier": 1},
-		{"id": "shield_tower",    "rar": ItemInstance.ItemRarity.RARE,     "tier": 3},
-		{"id": "greatsword_iron", "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 3},
-		{"id": "chest_plate",     "rar": ItemInstance.ItemRarity.RARE,     "tier": 2},
-		{"id": "sword_steel",     "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 2},
-		{"id": "ring_ruby",       "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 2},
-		{"id": "amulet_hawk",     "rar": ItemInstance.ItemRarity.UNCOMMON, "tier": 2},
-		{"id": "potion_health",   "rar": ItemInstance.ItemRarity.NORMAL,   "tier": 1},
+		{"id": "greatsword_iron", "rar": ItemInstance.ItemRarity.NORMAL, "tier": 2},
+		{"id": "sword_steel",     "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 1},
+		{"id": "shield_tower",    "rar": ItemInstance.ItemRarity.NORMAL, "tier": 2},
+		{"id": "chest_plate",     "rar": ItemInstance.ItemRarity.RARE,   "tier": 2},
+		{"id": "gloves_chain",    "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
+		{"id": "boots_plate",     "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 1},
+		{"id": "helm_iron",       "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 2},
+		{"id": "dagger_sharp",    "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
+		{"id": "shield_round",    "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 1},
+		{"id": "belt_leather",    "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
+		{"id": "greatsword_iron", "rar": ItemInstance.ItemRarity.RARE,   "tier": 3},
+		{"id": "chest_plate",     "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 2},
+		{"id": "ring_ruby",       "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 2},
+		{"id": "amulet_hawk",     "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
+		{"id": "potion_health",   "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
 	]
 	for entry in blueprint:
 		var tier_lvl: int = maxi(1, int(entry["tier"]) + maxi(0, ilvl - 1))
@@ -416,21 +419,21 @@ static func generate_blacksmith_stock(ilvl: int = 1) -> Array[ItemInstance]:
 static func generate_arcanist_stock(ilvl: int = 1) -> Array[ItemInstance]:
 	var stock: Array[ItemInstance] = []
 	var blueprint: Array[Dictionary] = [
-		{"id": "ring_ruby",       "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 2},
-		{"id": "ring_sapphire",   "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 2},
-		{"id": "amulet_hawk",     "rar": ItemInstance.ItemRarity.RARE,     "tier": 2},
-		{"id": "dagger_sharp",    "rar": ItemInstance.ItemRarity.UNCOMMON, "tier": 1},
-		{"id": "sword_steel",     "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 2},
-		{"id": "gloves_chain",    "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 1},
-		{"id": "belt_leather",    "rar": ItemInstance.ItemRarity.UNCOMMON, "tier": 1},
-		{"id": "helm_iron",       "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 2},
-		{"id": "shield_round",    "rar": ItemInstance.ItemRarity.RARE,     "tier": 2},
-		{"id": "boots_plate",     "rar": ItemInstance.ItemRarity.UNCOMMON, "tier": 1},
-		{"id": "ring_sapphire",   "rar": ItemInstance.ItemRarity.RARE,     "tier": 3},
-		{"id": "ring_ruby",       "rar": ItemInstance.ItemRarity.RARE,     "tier": 3},
-		{"id": "chest_plate",     "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 2},
-		{"id": "shield_tower",    "rar": ItemInstance.ItemRarity.MAGIC,    "tier": 3},
-		{"id": "potion_health",   "rar": ItemInstance.ItemRarity.NORMAL,   "tier": 1},
+		{"id": "ring_ruby",       "rar": ItemInstance.ItemRarity.RARE,   "tier": 2},
+		{"id": "ring_sapphire",   "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 2},
+		{"id": "amulet_hawk",     "rar": ItemInstance.ItemRarity.RARE,   "tier": 2},
+		{"id": "dagger_sharp",    "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 2},
+		{"id": "sword_steel",     "rar": ItemInstance.ItemRarity.RARE,   "tier": 2},
+		{"id": "gloves_chain",    "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 1},
+		{"id": "belt_leather",    "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 1},
+		{"id": "helm_iron",       "rar": ItemInstance.ItemRarity.RARE,   "tier": 2},
+		{"id": "greatsword_iron", "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 3},
+		{"id": "shield_round",    "rar": ItemInstance.ItemRarity.RARE,   "tier": 2},
+		{"id": "boots_plate",     "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 2},
+		{"id": "ring_ruby",       "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 1},
+		{"id": "amulet_hawk",     "rar": ItemInstance.ItemRarity.MAGIC,  "tier": 1},
+		{"id": "chest_plate",     "rar": ItemInstance.ItemRarity.RARE,   "tier": 3},
+		{"id": "potion_health",   "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
 	]
 	for entry in blueprint:
 		var tier_lvl: int = maxi(1, int(entry["tier"]) + maxi(0, ilvl - 1))

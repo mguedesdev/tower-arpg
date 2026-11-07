@@ -706,7 +706,12 @@ func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false, monster_class: int
 	if resolved_class < 0:
 		resolved_class = LootBalanceConfig.MonsterClass.BOSS if is_boss else LootBalanceConfig.MonsterClass.NORMAL
 	var monster_lvl: int = maxi(1, area_level)
-	var dropped_items: Array[ItemInstance] = LootGenerationService.generate_monster_loot_drops(monster_lvl, resolved_class, "act1")
+	var profile: Dictionary = {}
+	if resolved_class == LootBalanceConfig.MonsterClass.BOSS:
+		profile = {"enemy_id": "boss_malakor", "guaranteed_min_equipment_drops": 1}
+	var dropped_items: Array[ItemInstance] = LootGenerationService.generate_monster_loot_drops(
+		monster_lvl, resolved_class, current_zone_id, null, profile
+	)
 	for item in dropped_items:
 		if item == null:
 			continue

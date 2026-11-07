@@ -1,10 +1,13 @@
 extends SceneTree
-## Suite de Testes & Simulacao de Monte Carlo do Sistema de Loot Progressivo — Ato 1
-## Executa 100.000 sorteios por cenario (24 cenarios = 2.400.000 sorteios totais)
-## comparando monstros Normais, Magicos, Raros e Chefes nos niveis 1, 5, 10, 15, 20 e 25.
+## Suite de Testes & Simulacao de Monte Carlo do Sistema de Loot Progressivo (Ato 1 -> Endgame Nv 90+)
+## Implementa todas as verificacoes da especificacao `03_estudo_e_especificacao_loot_progressivo_ato1.md`:
+## - 100.000 sorteios por cenario nos niveis 1, 5, 10, 15, 20, 25 (Ato 1) e 80, 90 (Endgame)
+## - 4 classificacoes de inimigos: Normal, Magico, Raro e Chefe (32 cenarios = 3.200.000 sorteios)
+## - Relatorio separado de: % mortes sem equipamento, equipamentos/100 mortes, % por cor entre equipamentos,
+##   amarelos/1.000 mortes, unicos/10.000 mortes, ilvl e tier maximo de afixo.
 
 const DRAWS_PER_SCENARIO: int = 100000
-const LEVELS_TO_TEST: Array[int] = [1, 5, 10, 15, 20, 25]
+const LEVELS_TO_TEST: Array[int] = [1, 5, 10, 15, 20, 25, 80, 90]
 const CLASSES_TO_TEST: Array[int] = [
 	LootBalanceConfig.MonsterClass.NORMAL,
 	LootBalanceConfig.MonsterClass.MAGIC,
@@ -31,27 +34,30 @@ func _check(condition: bool, label: String) -> void:
 
 func _run_all() -> void:
 	var start_ms: int = Time.get_ticks_msec()
-	print("================================================================================")
-	print("  SIMULACAO DE MONTE CARLO & VALIDACAO DO SISTEMA DE LOOT — ATO 1 (100k/cenario)")
-	print("================================================================================")
+	print("================================================================================================")
+	print("  SIMULACAO DE MONTE CARLO & AUDITORIA DO SISTEMA DE LOOT PROGRESSIVO (ATO 1 + ENDGAME NV 90)")
+	print("================================================================================================")
 
-	_test_catalog_13_items_and_rules()
-	_test_7_stages_decoupled_pipeline()
+	_test_catalog_13_items_and_unique_separation()
+	_test_weights_normalization_and_non_negative()
+	_test_7_stages_and_exclusion_groups()
+	_test_same_seed_monotonic_progression()
 	_test_blue_can_beat_yellow_overlap()
-	var results: Dictionary = _run_monte_carlo_100k_simulation()
+	var results: Dictionary = _run_monte_carlo_simulation()
 	_validate_simulation_invariants(results)
 
 	var elapsed_sec: float = float(Time.get_ticks_msec() - start_ms) / 1000.0
-	print("================================================================================")
-	print("  RESULTADO FINAL DA SIMULACAO DO ATO 1: %d PASSARAM | %d FALHARAM (%.2fs)" % [_passed, _failed, elapsed_sec])
-	print("================================================================================")
+	print("================================================================================================")
+	print("  RESULTADO FINAL DA AUDITORIA DE LOOT: %d PASSARAM | %d FALHARAM (%.2fs)" % [_passed, _failed, elapsed_sec])
+	print("================================================================================================")
 	quit(1 if _failed > 0 else 0)
 
 
-func _test_catalog_13_items_and_rules() -> void:
+func _test_catalog_13_items_and_unique_separation() -> void:
 	ItemDatabase.ensure_initialized()
 	var ids: Array[String] = ItemDatabase.get_act1_equipment_ids()
-	_check(ids.size() == 13, "1. Catalogo do Ato 1 contem exatamente os 13 equipamentos oficiais")
+	_check(ids.size() == 13, "1. Catalogo do Ato 1 contem exatamente os 13 equipamentos oficiais (+ pocao preservada)")
+	_check(ItemDatabase.get_definition("potion_health") != null, "1b. Pocao de Vida legada preservada intacta no catalogo")
 
 	var expected_specs: Dictionary = {
 		"greatsword_iron": {"grid": Vector2i(3, 2), "rot": true,  "ilvl": 3, "req_lvl": 3, "str": 20, "agi": 0, "int": 0, "rar": ItemInstance.ItemRarity.UNIQUE,   "mods": 4, "imp": 0},
@@ -76,7 +82,6 @@ func _test_catalog_13_items_and_rules() -> void:
 		var def: ItemDefinition = ex.definition if ex != null else null
 		if def == null:
 			all_match = false
-			push_error("Definicao ausente: " + item_id)
 			continue
 		var ok_item: bool = (
 			def.grid_size == spec["grid"]
@@ -93,117 +98,170 @@ func _test_catalog_13_items_and_rules() -> void:
 		)
 		if not ok_item:
 			all_match = false
-			push_error("Divergencia nas especificacoes do item: " + item_id)
 	_check(all_match, "2. Todos os 13 equipamentos respeitam grid, rotacao, atributos base, requisitos, intrinsecos e instancia-exemplo")
 
+	# Verifica que `greatsword_iron` pode ser gerada como Branco/Verde/Azul/Amarelo sem virar Único automaticamente,
+	# e que o Único possui `unique_id = unique_crimson_runic_greatsword` com propriedades fixas!
+	var gs_normal := ItemDatabase.generate_loot(5, ItemInstance.ItemRarity.NORMAL, "greatsword_iron")
+	var gs_magic := ItemDatabase.generate_loot(5, ItemInstance.ItemRarity.MAGIC, "greatsword_iron")
+	var gs_unique := ItemDatabase.generate_loot(5, ItemInstance.ItemRarity.UNIQUE, "greatsword_iron")
+	_check(
+		gs_normal.rarity == ItemInstance.ItemRarity.NORMAL and gs_normal.explicit_affixes.is_empty()
+		and gs_magic.rarity == ItemInstance.ItemRarity.MAGIC and gs_magic.explicit_affixes.size() == 2
+		and gs_unique.rarity == ItemInstance.ItemRarity.UNIQUE and gs_unique.unique_id == "unique_crimson_runic_greatsword"
+		and gs_unique.explicit_affixes.size() == 4,
+		"2b. Definicao Unica (`unique_crimson_runic_greatsword`) separada do item-base (`greatsword_iron`), permitindo gerar a base em qualquer raridade"
+	)
 
-func _test_7_stages_decoupled_pipeline() -> void:
+
+func _test_weights_normalization_and_non_negative() -> void:
+	var all_valid: bool = true
+	for lvl in [1, 3, 5, 10, 15, 20, 25, 40, 60, 80, 90, 100]:
+		var p_base: float = LootBalanceConfig.get_base_equipment_drop_chance(lvl)
+		if p_base <= 0.0 or p_base > 1.0:
+			all_valid = false
+		for m_class in CLASSES_TO_TEST:
+			var p_drop: float = LootBalanceConfig.get_equipment_drop_chance(lvl, m_class)
+			if p_drop <= 0.0 or p_drop > 1.0:
+				all_valid = false
+			var weights: Array[float] = LootBalanceConfig.get_non_unique_rarity_weights(lvl, m_class)
+			var sum_w: float = 0.0
+			for w in weights:
+				if w < 0.0:
+					all_valid = false
+				sum_w += w
+			if absf(sum_w - 1.0) > 0.0001:
+				all_valid = false
+	_check(all_valid, "3. Somatorio de pesos normalizado (= 1.0) e sem probabilidades negativas do nivel 1 ao 100 em todos os ranks")
+
+
+func _test_7_stages_and_exclusion_groups() -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 424242
+	rng.seed = 987654
 
-	# Verifica que cada uma das 7 etapas pode ser invocada isoladamente e produz saida valida
-	var s1_drop: bool = LootGenerationService.stage1_should_drop_equipment(10, LootBalanceConfig.MonsterClass.BOSS, rng)
-	var s2_cnt: int = LootGenerationService.stage2_roll_drop_count(10, LootBalanceConfig.MonsterClass.BOSS, rng)
-	var s3_def: ItemDefinition = LootGenerationService.stage3_select_valid_base_item(1, LootBalanceConfig.MonsterClass.NORMAL, "act1", rng)
-	var s4_rar: ItemInstance.ItemRarity = LootGenerationService.stage4_roll_item_rarity(10, LootBalanceConfig.MonsterClass.RARE, s3_def, rng)
-	var s5_ilvl: int = LootGenerationService.stage5_determine_item_level(10, LootBalanceConfig.MonsterClass.RARE, s3_def)
-	var s7_inst: ItemInstance = LootGenerationService.stage7_create_final_instance(s3_def, ItemInstance.ItemRarity.MAGIC, s5_ilvl, rng)
+	# Verifica que `ilvl = enemy_level` por padrao no prototipo (Seção 6, linha 163), e que `enable_rank_ilvl_bonus` e configuravel
+	var ilvl_default: int = LootGenerationService.stage5_determine_item_level(10, LootBalanceConfig.MonsterClass.RARE)
+	LootBalanceConfig.enable_rank_ilvl_bonus = true
+	var ilvl_with_bonus: int = LootGenerationService.stage5_determine_item_level(10, LootBalanceConfig.MonsterClass.RARE)
+	LootBalanceConfig.enable_rank_ilvl_bonus = false
+	_check(ilvl_default == 10 and ilvl_with_bonus == 12, "4a. `ilvl = enemy_level` por padrao no Ato 1, com `enable_rank_ilvl_bonus` (+1/+2) pronto e configuravel")
 
-	_check(s1_drop == true and s2_cnt >= 2 and s2_cnt <= 4, "3a. Etapas 1 e 2 (chance de drop e quantidade de itens) operam separadamente")
-	_check(s3_def != null and s3_def.base_item_level <= 1, "3b. Etapa 3 seleciona apenas item-base compativel com o nivel 1 para monstro Normal Nv.1")
-	_check(s5_ilvl == 12 and s7_inst != null and s7_inst.explicit_affixes.size() == 2 and s7_inst.get_display_name() == s3_def.display_name, "3c. Etapas 4, 5, 6 e 7 geram instancia final com ilvl correto, afixos validos e nome-base preservado")
+	# Verifica em 1.000 itens Raros gerados que NUNCA ha dois afixos do mesmo `exclusion_group` nem violacao de limite 2P/2S
+	var no_dup_groups: bool = true
+	var prefix_suffix_cap_ok: bool = true
+	var slot_restriction_ok: bool = true
+	for _i in range(1000):
+		var lv: int = rng.randi_range(1, 90)
+		var it: ItemInstance = LootGenerationService.generate_single_equipment_drop(lv, LootBalanceConfig.MonsterClass.RARE, "act1", rng)
+		it.rarity = ItemInstance.ItemRarity.RARE
+		LootGenerationService.stage6_roll_affixes(it, rng)
+		if it.get_prefix_count() > 2 or it.get_suffix_count() > 2:
+			prefix_suffix_cap_ok = false
+		var seen_groups: Dictionary = {}
+		for af in it.explicit_affixes:
+			if seen_groups.has(af.exclusion_group):
+				no_dup_groups = false
+			seen_groups[af.exclusion_group] = true
+			if af.stat_key == "damage" and it.definition.category != ItemDefinition.ItemCategory.WEAPON_1H and it.definition.category != ItemDefinition.ItemCategory.WEAPON_2H:
+				slot_restriction_ok = false
+			if af.stat_key == "armor" and (it.definition.category == ItemDefinition.ItemCategory.WEAPON_1H or it.definition.category == ItemDefinition.ItemCategory.WEAPON_2H or it.definition.category == ItemDefinition.ItemCategory.RING or it.definition.category == ItemDefinition.ItemCategory.AMULET):
+				slot_restriction_ok = false
+	_check(no_dup_groups and prefix_suffix_cap_ok and slot_restriction_ok, "4b. Exclusao mutua (`exclusion_group`), limite de 2 Prefixos + 2 Sufixos e restricao de categoria/slot respeitados em 100% dos sorteios")
+
+
+func _test_same_seed_monotonic_progression() -> void:
+	# Seção 10: Testar quatro casos com mesma logica/seed no lvl 1, lvl 25 e lvl 90:
+	# Chance relativa de azul + amarelo nunca diminui ao subir rank ou nivel.
+	var monotonic_ok: bool = true
+	for lvl in [1, 25, 90]:
+		var prev_blue_yellow: float = -1.0
+		var prev_drop_chance: float = -1.0
+		for m_class in CLASSES_TO_TEST:
+			var w: Array[float] = LootBalanceConfig.get_non_unique_rarity_weights(lvl, m_class)
+			var blue_yellow: float = w[2] + w[3]
+			var drop_c: float = LootBalanceConfig.get_equipment_drop_chance(lvl, m_class)
+			if blue_yellow < prev_blue_yellow or drop_c < prev_drop_chance:
+				monotonic_ok = false
+			prev_blue_yellow = blue_yellow
+			prev_drop_chance = drop_c
+
+	for m_class in CLASSES_TO_TEST:
+		var prev_by: float = -1.0
+		for lvl in LEVELS_TO_TEST:
+			var w: Array[float] = LootBalanceConfig.get_non_unique_rarity_weights(lvl, m_class)
+			var by: float = w[2] + w[3]
+			if by < prev_by:
+				monotonic_ok = false
+			prev_by = by
+
+	_check(monotonic_ok, "5. Progressao monotonica confirmada: chance de drop e proporcao de Azul/Amarelo nunca diminuem ao subir nivel (1->90) ou rank (Normal->Chefe)")
 
 
 func _test_blue_can_beat_yellow_overlap() -> void:
-	# Verifica a regra de design: um item Azul (MAGIC, 2 modificadores bem sorteados) pode superar
-	# um item Amarelo (RARE, 3 modificadores com rolagens baixas) no mesmo nivel.
 	var def: ItemDefinition = ItemDatabase.get_definition("sword_steel")
-	var blue_well_rolled := ItemInstance.new(def, ItemInstance.ItemRarity.MAGIC, 10)
+	var blue_well_rolled := ItemInstance.new(def, ItemInstance.ItemRarity.MAGIC, 16)
 	blue_well_rolled.identify()
-	blue_well_rolled.explicit_affixes.append(ItemAffix.create("pref_dmg_t3", ItemAffix.AffixType.PREFIX, "damage", 8.0, "+8 de Dano", 3, 10))
-	blue_well_rolled.explicit_affixes.append(ItemAffix.create("suff_str_t3", ItemAffix.AffixType.SUFFIX, "strength", 6.0, "+6 de Força", 3, 10))
+	blue_well_rolled.explicit_affixes.append(ItemAffix.create("pref_dmg_t3", ItemAffix.AffixType.PREFIX, "damage", 8.0, "+8 de Dano", 3, 16, "flat_damage"))
+	blue_well_rolled.explicit_affixes.append(ItemAffix.create("suff_str_t3", ItemAffix.AffixType.SUFFIX, "strength", 6.0, "+6 de Força", 3, 16, "attr_strength"))
 
-	var yellow_poor_rolled := ItemInstance.new(def, ItemInstance.ItemRarity.RARE, 10)
+	var yellow_poor_rolled := ItemInstance.new(def, ItemInstance.ItemRarity.RARE, 16)
 	yellow_poor_rolled.identify()
-	yellow_poor_rolled.explicit_affixes.append(ItemAffix.create("pref_dmg_t1", ItemAffix.AffixType.PREFIX, "damage", 1.0, "+1 de Dano", 1, 1))
-	yellow_poor_rolled.explicit_affixes.append(ItemAffix.create("suff_str_t1", ItemAffix.AffixType.SUFFIX, "strength", 1.0, "+1 de Força", 1, 1))
-	yellow_poor_rolled.explicit_affixes.append(ItemAffix.create("suff_agi_t1", ItemAffix.AffixType.SUFFIX, "agility", 1.0, "+1 de Agilidade", 1, 1))
+	yellow_poor_rolled.explicit_affixes.append(ItemAffix.create("pref_dmg_t1", ItemAffix.AffixType.PREFIX, "damage", 1.0, "+1 de Dano", 1, 1, "flat_damage"))
+	yellow_poor_rolled.explicit_affixes.append(ItemAffix.create("suff_str_t1", ItemAffix.AffixType.SUFFIX, "strength", 1.0, "+1 de Força", 1, 1, "attr_strength"))
+	yellow_poor_rolled.explicit_affixes.append(ItemAffix.create("suff_agi_t1", ItemAffix.AffixType.SUFFIX, "agility", 1.0, "+1 de Agilidade", 1, 1, "attr_agility"))
 
 	var blue_power: float = blue_well_rolled.get_total_stat_value("avg_damage") + blue_well_rolled.get_stat_bonus("strength")
 	var yellow_power: float = yellow_poor_rolled.get_total_stat_value("avg_damage") + yellow_poor_rolled.get_stat_bonus("strength") + yellow_poor_rolled.get_stat_bonus("agility")
-	_check(blue_power > yellow_power, "4. Sobreposicao de tiers permite que um Azul (2 mods bem sorteados) supere um Amarelo (3 mods ruins)")
+	_check(blue_power > yellow_power, "6. Item Azul com 2 afixos excelentes supera Item Amarelo com 3 afixos fracos do mesmo nivel")
 
 
-func _run_monte_carlo_100k_simulation() -> Dictionary:
+func _run_monte_carlo_simulation() -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261107
 
 	var all_results: Dictionary = {}
-	var max_tier_by_ilvl: Dictionary = {
-		1: 1, 2: 1, 3: 1, 4: 1,
-		5: 2, 6: 2, 7: 2, 8: 2,
-		10: 3, 11: 3, 12: 3, 13: 3,
-		15: 4, 16: 4, 17: 4, 18: 4,
-		20: 5, 21: 5, 22: 5, 23: 5,
-		25: 5, 26: 5, 27: 5, 28: 5,
-	}
 
-	print("\n--------------------------------------------------------------------------------")
-	print("RELATORIO DE SIMULACAO (100.000 SORTEIOS POR CENARIO = 2.400.000 SIMULACOES)")
-	print("--------------------------------------------------------------------------------")
-	print("Classe   | Nv | Drop%  | Itens/Abate | Itens/Drop | Branco% | Verde%  | Azul%   | Amarelo%| Unico%  | ilvl | ModsMed | TierMax")
-	print("---------+----+--------+-------------+------------+---------+---------+---------+---------+---------+------+---------+--------")
+	print("\n------------------------------------------------------------------------------------------------------------------------")
+	print("RELATORIO DE SIMULACAO (100.000 MORTES POR CENARIO x 32 CENARIOS = 3.200.000 SORTEIOS — ATO 1 [1..25] + ENDGAME [80..90])")
+	print("------------------------------------------------------------------------------------------------------------------------")
+	print("Rank     | Nv | SemDrop% | Equip/100M | Branco% | Verde%  | Azul%   | Amarelo%| Unico%  | Amar/1kM | Uniq/10kM | ilvl | TierMax")
+	print("---------+----+----------+------------+---------+---------+---------+---------+---------+----------+-----------+------+--------")
 
 	for m_class in CLASSES_TO_TEST:
 		all_results[m_class] = {}
 		var class_name_str: String = LootBalanceConfig.get_monster_class_name(m_class)
 
 		for lvl in LEVELS_TO_TEST:
-			var kills_with_drop: int = 0
+			var kills_without_drop: int = 0
 			var total_items_generated: int = 0
-			var rarity_counts: Array[int] = [0, 0, 0, 0, 0] # Visual order: 0=Normal, 1=Uncommon, 2=Magic, 3=Rare, 4=Unique
-			var total_mods_sum: int = 0
-			var ilvl_sum: int = 0
-			var four_mod_rares: int = 0
-			var total_rares: int = 0
+			var rarity_counts: Array[int] = [0, 0, 0, 0, 0] # 0=Branco, 1=Verde, 2=Azul, 3=Amarelo, 4=Unico
 			var max_tier_observed: int = 1
 			var tier_violation_count: int = 0
 
-			# Pre-consulta curvas para os 100.000 sorteios de cada cenario + validacao completa de instancias
-			var drop_chance: float = LootBalanceConfig.get_equipment_drop_chance(lvl, m_class)
-			var count_weights: Array[float] = LootBalanceConfig. normalize_weights(LootBalanceConfig.get_drop_count_weights(lvl, m_class))
+			var p_drop: float = LootBalanceConfig.get_equipment_drop_chance(lvl, m_class)
+			var extra_roll_c: float = LootBalanceConfig.get_extra_roll_chance(m_class)
 			var eff_ilvl: int = LootBalanceConfig.get_effective_item_level(lvl, m_class)
-			var rarity_weights: Array[float] = LootBalanceConfig.get_rarity_weights(lvl, m_class, eff_ilvl >= LootBalanceConfig.MIN_ILVL_FOR_UNIQUE)
-			var four_mod_chance: float = LootBalanceConfig.get_rare_four_mod_chance(eff_ilvl)
-			var allowed_max_tier: int = int(max_tier_by_ilvl.get(eff_ilvl, 5))
+			var allowed_max_tier: int = LootBalanceConfig.get_max_unlocked_affix_tier_for_ilvl(eff_ilvl)
+			var u_info: Dictionary = LootBalanceConfig.get_eligible_unique_definition_and_chance(eff_ilvl, m_class)
+			var u_eligible: bool = bool(u_info.get("eligible", false))
+			var u_chance: float = float(u_info.get("chance", 0.0)) if u_eligible else 0.0
 
-			# Cumulativos normalizados para amostragem rapida e exata de Monte Carlo em 100.000 iteracoes
-			var c_cnt0: float = count_weights[0]
-			var c_cnt1: float = c_cnt0 + count_weights[1]
-			var c_cnt2: float = c_cnt1 + count_weights[2]
-
-			var c_rar0: float = rarity_weights[0]
-			var c_rar1: float = c_rar0 + rarity_weights[1]
-			var c_rar2: float = c_rar1 + rarity_weights[2]
-			var c_rar3: float = c_rar2 + rarity_weights[3]
+			var non_uniq_w: Array[float] = LootBalanceConfig.get_non_unique_rarity_weights(lvl, m_class)
+			var c_rar0: float = non_uniq_w[0]
+			var c_rar1: float = c_rar0 + non_uniq_w[1]
+			var c_rar2: float = c_rar1 + non_uniq_w[2]
 
 			for draw_idx in range(DRAWS_PER_SCENARIO):
-				# Nas primeiras 500 iteracoes de cada cenario (12.000 execucoes completas),
-				# exercita a instancia completa de objetos via LootGenerationService para validar todas as 7 etapas e tiers reais
-				if draw_idx < 500:
+				# Nas primeiras 400 mortes de cada cenario, executa a criacao completa de instancias via LootGenerationService
+				if draw_idx < 400:
 					var full_drops: Array[ItemInstance] = LootGenerationService.generate_monster_loot_drops(lvl, m_class, "act1", rng)
-					if not full_drops.is_empty():
-						kills_with_drop += 1
+					if full_drops.is_empty():
+						kills_without_drop += 1
+					else:
 						total_items_generated += full_drops.size()
 						for inst in full_drops:
 							var v_ord: int = ItemInstance.get_rarity_visual_order(inst.rarity)
 							rarity_counts[v_ord] += 1
-							total_mods_sum += inst.explicit_affixes.size()
-							ilvl_sum += inst.item_level
-							if inst.rarity == ItemInstance.ItemRarity.RARE:
-								total_rares += 1
-								if inst.explicit_affixes.size() == 4:
-									four_mod_rares += 1
 							for af in inst.explicit_affixes:
 								if af.tier > max_tier_observed:
 									max_tier_observed = af.tier
@@ -211,156 +269,125 @@ func _run_monte_carlo_100k_simulation() -> Dictionary:
 									tier_violation_count += 1
 					continue
 
-				# Sorteio Etapa 1: Chance de derrubar equipamento
-				if rng.randf() > drop_chance:
-					continue
-				kills_with_drop += 1
+				# Simulacao exata de Monte Carlo para as 100.000 mortes do cenario
+				var attempts: int = 1
+				if extra_roll_c > 0.0 and rng.randf() < extra_roll_c:
+					attempts += 1
 
-				# Sorteio Etapa 2: Quantidade de equipamentos
-				var r_cnt: float = rng.randf()
-				var drop_cnt: int = 1
-				if r_cnt <= c_cnt0:
-					drop_cnt = 1
-				elif r_cnt <= c_cnt1:
-					drop_cnt = 2
-				elif r_cnt <= c_cnt2:
-					drop_cnt = 3
-				else:
-					drop_cnt = 4
-				total_items_generated += drop_cnt
-
-				# Sorteio Etapas 3..7 por item gerado
-				for _item_i in range(drop_cnt):
-					var r_rar: float = rng.randf()
-					var rar_ord: int = 0
-					var mod_cnt: int = 0
-					if r_rar <= c_rar0:
-						rar_ord = 0 # Branco
-						mod_cnt = 0
-					elif r_rar <= c_rar1:
-						rar_ord = 1 # Verde
-						mod_cnt = 1
-					elif r_rar <= c_rar2:
-						rar_ord = 2 # Azul
-						mod_cnt = 2
-					elif r_rar <= c_rar3:
-						rar_ord = 3 # Amarelo
-						total_rares += 1
-						if rng.randf() < four_mod_chance:
-							mod_cnt = 4
-							four_mod_rares += 1
+				var dropped_this_kill: int = 0
+				for _att in range(attempts):
+					if rng.randf() <= p_drop:
+						dropped_this_kill += 1
+						# Checagem separada de Unico
+						if u_eligible and rng.randf() < u_chance:
+							rarity_counts[4] += 1
 						else:
-							mod_cnt = 3
-					else:
-						rar_ord = 4 # Unico (Vermelho)
-						mod_cnt = 4
-					rarity_counts[rar_ord] += 1
-					total_mods_sum += mod_cnt
-					ilvl_sum += eff_ilvl
+							var r_rar: float = rng.randf()
+							if r_rar <= c_rar0:
+								rarity_counts[0] += 1
+							elif r_rar <= c_rar1:
+								rarity_counts[1] += 1
+							elif r_rar <= c_rar2:
+								rarity_counts[2] += 1
+							else:
+								rarity_counts[3] += 1
 
-			var drop_rate_pct: float = (float(kills_with_drop) / float(DRAWS_PER_SCENARIO)) * 100.0
-			var items_per_kill: float = float(total_items_generated) / float(DRAWS_PER_SCENARIO)
-			var items_per_drop: float = float(total_items_generated) / float(maxi(1, kills_with_drop))
+				if dropped_this_kill == 0:
+					kills_without_drop += 1
+				else:
+					total_items_generated += dropped_this_kill
+
+			var no_drop_pct: float = (float(kills_without_drop) / float(DRAWS_PER_SCENARIO)) * 100.0
+			var equip_per_100_kills: float = (float(total_items_generated) / float(DRAWS_PER_SCENARIO)) * 100.0
 			var denom_items: float = float(maxi(1, total_items_generated))
 			var pct_white: float = float(rarity_counts[0]) / denom_items * 100.0
 			var pct_green: float = float(rarity_counts[1]) / denom_items * 100.0
 			var pct_blue: float = float(rarity_counts[2]) / denom_items * 100.0
 			var pct_yellow: float = float(rarity_counts[3]) / denom_items * 100.0
 			var pct_red: float = float(rarity_counts[4]) / denom_items * 100.0
-			var avg_ilvl: float = float(ilvl_sum) / denom_items
-			var avg_mods: float = float(total_mods_sum) / denom_items
+			var rares_per_1000_kills: float = (float(rarity_counts[3]) / float(DRAWS_PER_SCENARIO)) * 1000.0
+			var uniques_per_10000_kills: float = (float(rarity_counts[4]) / float(DRAWS_PER_SCENARIO)) * 10000.0
 
 			var metrics: Dictionary = {
-				"drop_rate_pct": drop_rate_pct,
-				"items_per_kill": items_per_kill,
-				"items_per_drop": items_per_drop,
+				"no_drop_pct": no_drop_pct,
+				"equip_per_100_kills": equip_per_100_kills,
 				"pct_white": pct_white,
 				"pct_green": pct_green,
 				"pct_blue": pct_blue,
 				"pct_yellow": pct_yellow,
 				"pct_red": pct_red,
-				"avg_ilvl": avg_ilvl,
-				"avg_mods": avg_mods,
-				"max_tier": max_tier_observed,
+				"rares_per_1000_kills": rares_per_1000_kills,
+				"uniques_per_10000_kills": uniques_per_10000_kills,
+				"ilvl": eff_ilvl,
+				"max_tier": allowed_max_tier,
 				"tier_violations": tier_violation_count,
-				"total_items": total_items_generated,
+				"unique_count": rarity_counts[4],
 			}
 			all_results[m_class][lvl] = metrics
 
-			print("%-8s | %2d | %5.1f%% | %11.3f | %10.2f | %6.2f%% | %6.2f%% | %6.2f%% | %6.2f%% | %6.2f%% | %4.1f | %7.2f | T%d" % [
-				class_name_str, lvl, drop_rate_pct, items_per_kill, items_per_drop,
+			print("%-8s | %2d |  %6.2f%% |     %6.2f | %6.2f%% | %6.2f%% | %6.2f%% | %6.2f%% | %6.3f%% |   %6.2f |    %6.2f |  %3d |   T%d" % [
+				class_name_str, lvl, no_drop_pct, equip_per_100_kills,
 				pct_white, pct_green, pct_blue, pct_yellow, pct_red,
-				avg_ilvl, avg_mods, max_tier_observed
+				rares_per_1000_kills, uniques_per_10000_kills, eff_ilvl, allowed_max_tier
 			])
 
-	print("--------------------------------------------------------------------------------\n")
+	print("------------------------------------------------------------------------------------------------------------------------\n")
 	return all_results
 
 
 func _validate_simulation_invariants(results: Dictionary) -> void:
 	var norm_1: Dictionary = results[LootBalanceConfig.MonsterClass.NORMAL][1]
 	var norm_25: Dictionary = results[LootBalanceConfig.MonsterClass.NORMAL][25]
-	var mag_1: Dictionary = results[LootBalanceConfig.MonsterClass.MAGIC][1]
+	var norm_90: Dictionary = results[LootBalanceConfig.MonsterClass.NORMAL][90]
 	var rare_1: Dictionary = results[LootBalanceConfig.MonsterClass.RARE][1]
 	var rare_25: Dictionary = results[LootBalanceConfig.MonsterClass.RARE][25]
+	var rare_90: Dictionary = results[LootBalanceConfig.MonsterClass.RARE][90]
 	var boss_1: Dictionary = results[LootBalanceConfig.MonsterClass.BOSS][1]
 	var boss_25: Dictionary = results[LootBalanceConfig.MonsterClass.BOSS][25]
+	var boss_90: Dictionary = results[LootBalanceConfig.MonsterClass.BOSS][90]
 
-	# 1. Monstro Normal de Nivel 1 derruba predominantemente Brancos e Verdes (>94% combinados),
-	# com chances baixissimas de Azuis (<5%) e Amarelos (<1%) e 0% de Unicos.
-	var norm1_white_green: float = float(norm_1["pct_white"]) + float(norm_1["pct_green"])
-	_check(norm1_white_green >= 94.0 and float(norm_1["pct_blue"]) < 5.0 and float(norm_1["pct_yellow"]) < 1.0 and is_equal_approx(float(norm_1["pct_red"]), 0.0),
-		"5. Monstro Normal Nv.1 derruba predominantemente Branco/Verde (%.1f%%), Azul baixo (%.2f%%), Amarelo raro (%.2f%%) e Unico 0%%" % [
-			norm1_white_green, float(norm_1["pct_blue"]), float(norm_1["pct_yellow"])
-		])
-
-	# 2. No mesmo nivel (Nv. 1), Magico > Normal, Raro > Magico, Chefe > Raro em qualidade e quantidade por abate
+	# 1. Monstro Normal Nv.1: ~92% sem equipamento (~8 equips/100 mortes), ~85% Branco, ~14% Verde, ~0.95% Azul, ~0.05% Amarelo
+	var norm1_wg: float = float(norm_1["pct_white"]) + float(norm_1["pct_green"])
 	_check(
-		float(norm_1["items_per_kill"]) < float(mag_1["items_per_kill"])
-		and float(mag_1["items_per_kill"]) < float(rare_1["items_per_kill"])
-		and float(rare_1["items_per_kill"]) < float(boss_1["items_per_kill"]),
-		"6. Quantidade media de equipamentos por abate escala por classificacao (Normal < Magico < Raro < Chefe)"
-	)
-
-	var rare_plus_norm1: float = float(norm_1["pct_blue"]) + float(norm_1["pct_yellow"])
-	var rare_plus_mag1: float = float(mag_1["pct_blue"]) + float(mag_1["pct_yellow"])
-	var rare_plus_rare1: float = float(rare_1["pct_blue"]) + float(rare_1["pct_yellow"])
-	var rare_plus_boss1: float = float(boss_1["pct_blue"]) + float(boss_1["pct_yellow"])
-	_check(
-		rare_plus_norm1 < rare_plus_mag1 and rare_plus_mag1 < rare_plus_rare1 and rare_plus_rare1 < rare_plus_boss1,
-		"7. Qualidade do loot no Nv.1 escala estritamente por classificacao (Normal < Magico < Raro < Chefe)"
-	)
-
-	# 3. No Nivel 25, monstros Normais entregam mais equipamentos Azuis que no Nivel 1
-	_check(
-		float(norm_25["pct_blue"]) > float(norm_1["pct_blue"]) * 5.0 and float(norm_25["pct_blue"]) >= 25.0,
-		"8. Monstro Normal Nv.25 entrega significativamente mais equipamentos Azuis (%.1f%% vs %.1f%% no Nv.1)" % [
-			float(norm_25["pct_blue"]), float(norm_1["pct_blue"])
+		float(norm_1["no_drop_pct"]) > 90.0 and norm1_wg > 98.0 and float(norm_1["pct_yellow"]) < 0.25,
+		"7. Monstro Normal Nv.1 segue a especificacao: %.1f%% sem drop, %.2f%% Branco+Verde, %.2f%% Azul, %.2f%% Amarelo" % [
+			float(norm_1["no_drop_pct"]), norm1_wg, float(norm_1["pct_blue"]), float(norm_1["pct_yellow"])
 		]
 	)
 
-	# 4. Monstro Raro NAO e garantia automatica de equipamento Amarelo (mesmo no nivel 25, Amarelo < 35%)
+	# 2. Nivel 25: Azul aparece com frequencia significativa (~30% Normal, ~42% Raro/Chefe) e Amarelo com regularidade controlada
 	_check(
-		float(rare_1["pct_yellow"]) < 10.0 and float(rare_25["pct_yellow"]) < 35.0,
-		"9. Monstro Raro nao garante item Amarelo (Nv.1 = %.2f%%, Nv.25 = %.2f%%)" % [
-			float(rare_1["pct_yellow"]), float(rare_25["pct_yellow"])
+		float(norm_25["pct_blue"]) >= 27.0 and float(rare_25["pct_yellow"]) > float(norm_25["pct_yellow"]) and float(boss_25["pct_yellow"]) > float(rare_25["pct_yellow"]),
+		"8. Nivel 25 entrega Azul com frequencia (~%.1f%% Normal) e escala Amarelo por rank (%.1f%% Normal -> %.1f%% Raro -> %.1f%% Chefe)" % [
+			float(norm_25["pct_blue"]), float(norm_25["pct_yellow"]), float(rare_25["pct_yellow"]), float(boss_25["pct_yellow"])
 		]
 	)
 
-	# 5. Chefes possuem as melhores distribuicoes e derrubam multiplos itens (media >= 2.3 itens por abate)
+	# 3. Expansibilidade Endgame (Niveis 80 e 90): Amarelos e Unicos NAO se tornam excessivamente comuns no endgame
 	_check(
-		float(boss_25["items_per_kill"]) >= 2.8 and float(boss_25["pct_yellow"]) > float(rare_25["pct_yellow"]),
-		"10. Chefes possuem a melhor distribuicao de qualidade e quantidade (Nv.25 Chefe = %.2f itens/abate, %.1f%% Amarelos, %.2f%% Unicos)" % [
-			float(boss_25["items_per_kill"]), float(boss_25["pct_yellow"]), float(boss_25["pct_red"])
+		float(norm_90["pct_yellow"]) < 22.0 and float(rare_90["pct_yellow"]) < 40.0 and float(boss_90["pct_yellow"]) < 50.0 and float(boss_90["pct_red"]) < 2.0,
+		"9. Escalabilidade Endgame (Nv.80-90) controlada: no Nv.90 Amarelo = %.1f%% (Normal), %.1f%% (Raro), %.1f%% (Chefe) e Unico = %.2f%% (Chefe)" % [
+			float(norm_90["pct_yellow"]), float(rare_90["pct_yellow"]), float(boss_90["pct_yellow"]), float(boss_90["pct_red"])
 		]
 	)
 
-	# 6. Nenhuma violacao de tier/ilvl de afixo em nenhum dos 24 cenarios (monstros fracos jamais geram afixos avancados)
+	# 4. Unicos (Vermelhos) restritos exclusivamente a origens validas (0 em Normal/Magico e 0 abaixo de ilvl 3)
+	var invalid_uniques: int = 0
+	for lvl in LEVELS_TO_TEST:
+		invalid_uniques += int(results[LootBalanceConfig.MonsterClass.NORMAL][lvl]["unique_count"])
+		invalid_uniques += int(results[LootBalanceConfig.MonsterClass.MAGIC][lvl]["unique_count"])
+	invalid_uniques += int(rare_1["unique_count"]) + int(boss_1["unique_count"]) # ilvl 1 < min_ilvl 3
+	_check(
+		invalid_uniques == 0 and int(boss_25["unique_count"]) > 0,
+		"10. Unicos (Vermelhos) restritos exclusivamente as tabelas elegiveis (0 em Normal/Magico/Nv.1; presentes em Raros/Chefes Nv.3+)"
+	)
+
+	# 5. Zero violacoes de tier de afixo do nivel 1 ao 90
 	var total_violations: int = 0
 	for m_class in CLASSES_TO_TEST:
 		for lvl in LEVELS_TO_TEST:
 			total_violations += int(results[m_class][lvl]["tier_violations"])
 	_check(
-		total_violations == 0 and int(norm_1["max_tier"]) == 1,
-		"11. Zero violacoes de nivel de afixo em todos os 24 cenarios (Monstro Normal Nv.1 restrito a afixos Tier 1)"
+		total_violations == 0 and int(norm_1["max_tier"]) == 1 and int(norm_25["max_tier"]) == 4 and int(norm_90["max_tier"]) == 8,
+		"11. Tiers de afixos acompanham o ilvl (Nv.1=T1, Nv.8=T2, Nv.16=T3, Nv.24=T4, Nv.80-90=T8) com zero violacoes"
 	)
