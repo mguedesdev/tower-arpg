@@ -6,29 +6,73 @@ class_name ItemIconFactory
 ## • Se não existir, desenha proceduralmente um ícone estilizado com a proporção exata do slot (1x1, 2x2, 2x3, 2x4).
 
 static var _cache: Dictionary = {}
+static var _image_cache: Dictionary = {}
 const CELL_PX: int = 32
 
 
-static func get_icon(def: ItemDefinition) -> Texture2D:
+static func get_icon_for_item(item: ItemInstance, for_paperdoll: bool = false) -> Texture2D:
+	if item == null or item.definition == null:
+		return null
+	var def: ItemDefinition = item.definition
+	if for_paperdoll:
+		# No Paperdoll (ex: Mão Principal), armas/itens deitados (x > y, exceto Cinto) ficam automaticamente EM PÉ!
+		var force_rot_for_upright: bool = (
+			def.grid_size.x > def.grid_size.y
+			and def.category != ItemDefinition.ItemCategory.BELT
+		)
+		return get_icon(def, force_rot_for_upright)
+	return get_icon(def, item.is_rotated)
+
+
+static func get_icon(def: ItemDefinition, rotated: bool = false) -> Texture2D:
 	if def == null:
 		return null
-	var key: String = def.base_id
+	var key: String = def.base_id + ("__rot" if rotated else "")
 	if _cache.has(key):
-		return _cache[key]
+		return _cache[key] as Texture2D
 
-	if not def.icon_path.is_empty() and ResourceLoader.exists(def.icon_path):
-		var tex: Texture2D = load(def.icon_path) as Texture2D
-		if tex != null:
-			_cache[key] = tex
-			return tex
+	var base_img: Image = _get_base_image(def)
+	if base_img == null:
+		return null
 
-	# Gera imagem procedural correspondente à categoria e proporção
-	var generated: Texture2D = _generate_procedural_icon(def)
-	_cache[key] = generated
-	return generated
+	var final_img: Image = base_img
+	if rotated:
+		final_img = base_img.duplicate() as Image
+		final_img.rotate_90(CLOCKWISE)
+
+	var tex: Texture2D = ImageTexture.create_from_image(final_img)
+	_cache[key] = tex
+	return tex
+
+
+static func _get_base_image(def: ItemDefinition) -> Image:
+	if _image_cache.has(def.base_id):
+		return _image_cache[def.base_id] as Image
+
+	var loaded_img: Image = null
+	if not def.icon_path.is_empty():
+		var abs_path: String = ProjectSettings.globalize_path(def.icon_path)
+		if FileAccess.file_exists(abs_path):
+			var file_img := Image.load_from_file(abs_path)
+			if file_img != null and not file_img.is_empty():
+				loaded_img = file_img
+		elif ResourceLoader.exists(def.icon_path):
+			var res_tex: Texture2D = load(def.icon_path) as Texture2D
+			if res_tex != null:
+				loaded_img = res_tex.get_image()
+
+	if loaded_img == null:
+		loaded_img = _generate_procedural_image(def)
+
+	_image_cache[def.base_id] = loaded_img
+	return loaded_img
 
 
 static func _generate_procedural_icon(def: ItemDefinition) -> Texture2D:
+	return ImageTexture.create_from_image(_generate_procedural_image(def))
+
+
+static func _generate_procedural_image(def: ItemDefinition) -> Image:
 	var w: int = maxi(1, def.grid_size.x) * CELL_PX
 	var h: int = maxi(1, def.grid_size.y) * CELL_PX
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
@@ -49,7 +93,7 @@ static func _generate_procedural_icon(def: ItemDefinition) -> Texture2D:
 
 	# Desenha silhueta temática conforme categoria
 	match def.category:
-		ItemDefinition.ItemCategory.WEAPON_2H: # Espada Montante 2H (2x4)
+		ItemDefinition.ItemCategory.WEAPON_2H: # Espada Montante 2H (3x2)
 			_draw_greatsword(img, w, h, steel_color, accent_color)
 		ItemDefinition.ItemCategory.WEAPON_1H:
 			if def.grid_size.x == 1 and def.grid_size.y <= 3: # Adaga (1x3)
@@ -77,7 +121,7 @@ static func _generate_procedural_icon(def: ItemDefinition) -> Texture2D:
 		_:
 			_draw_generic_box(img, w, h, accent_color)
 
-	return ImageTexture.create_from_image(img)
+	return img
 
 
 static func _draw_greatsword(img: Image, w: int, h: int, steel: Color, gold: Color) -> void:

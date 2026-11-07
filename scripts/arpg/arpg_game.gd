@@ -729,10 +729,15 @@ func _grant_starter_items() -> void:
 	if equipment != null and boots != null:
 		equipment.equip_item(boots, ItemDefinition.EquipmentSlot.BOOTS, player_stats)
 
+	var greatsword = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "greatsword_iron")
+	greatsword.identify()
+	backpack.auto_add_item(greatsword)
+
 	var dagger = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "dagger_sharp")
 	backpack.auto_add_item(dagger)
 
 	var ring = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "ring_ruby")
+	ring.identify()
 	backpack.auto_add_item(ring)
 
 	var pot = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")

@@ -418,8 +418,9 @@ func _rebuild_stash_cells() -> void:
 	for item in stash.items:
 		if item == null or item.definition == null:
 			continue
+		var eff_size: Vector2i = item.get_grid_size()
 		var pos_px := Vector2(item.grid_position.x * CELL_SIZE, item.grid_position.y * CELL_SIZE)
-		var size_px := Vector2(item.definition.grid_size.x * CELL_SIZE, item.definition.grid_size.y * CELL_SIZE)
+		var size_px := Vector2(eff_size.x * CELL_SIZE, eff_size.y * CELL_SIZE)
 
 		var item_panel := Panel.new()
 		item_panel.position = pos_px
@@ -436,7 +437,7 @@ func _rebuild_stash_cells() -> void:
 		_stash_grid_container.add_child(item_panel)
 
 		var icon := TextureRect.new()
-		icon.texture = ItemIconFactory.get_icon(item.definition)
+		icon.texture = ItemIconFactory.get_icon_for_item(item, false)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

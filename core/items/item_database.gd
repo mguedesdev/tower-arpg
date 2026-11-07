@@ -17,8 +17,8 @@ static func get_definition(base_id: String) -> ItemDefinition:
 
 
 static func _initialize_catalog() -> void:
-	# 1. Espada Montante 2H (2 colunas x 4 linhas - 4x2 grande e pesada)
-	_register("greatsword_iron", "Espada Montante Pesada", ItemDefinition.ItemCategory.WEAPON_2H, ItemDefinition.EquipmentSlot.MAIN_HAND, Vector2i(2, 4), {
+	# 1. Espada Montante 2H (3 colunas x 2 linhas - 3x2 deitada por padrão, gira para 2x3 em pé)
+	_register("greatsword_iron", "Espada Montante Pesada", ItemDefinition.ItemCategory.WEAPON_2H, ItemDefinition.EquipmentSlot.MAIN_HAND, Vector2i(3, 2), {
 		"dmg_min": 28, "dmg_max": 42, "atk_spd": 0.85, "req_str": 24, "req_agi": 10, "gold": 65, "icon": "res://assets/items/greatsword.png"
 	})
 

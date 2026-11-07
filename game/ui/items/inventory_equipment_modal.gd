@@ -38,9 +38,10 @@ var _drag_start_mouse: Vector2 = Vector2.ZERO
 var _drag_start_win_pos: Vector2 = Vector2.ZERO
 var _has_custom_window_pos: bool = false
 
-# Estado de arrasto de itens
+# Estado de arrasto e foco de itens
 var _held_item: ItemInstance = null
 var _held_preview: TextureRect
+var _hovered_grid_item: ItemInstance = null
 
 # Componentes da UI
 var _grid_container: Control
@@ -164,10 +165,19 @@ func _unhandled_input(event: InputEvent) -> void:
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
-	if event is InputEventMouseButton:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_R:
+			if _try_rotate_current_item():
+				get_viewport().set_input_as_handled()
+				return
+	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if not mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			_is_dragging_window = false
+		elif mb.pressed and _held_item != null and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN or mb.button_index == MOUSE_BUTTON_MIDDLE):
+			if _try_rotate_current_item():
+				get_viewport().set_input_as_handled()
+				return
 	elif event is InputEventMouseMotion:
 		if _is_dragging_window:
 			var current_mouse: Vector2 = get_viewport().get_mouse_position()
@@ -179,6 +189,31 @@ func _input(event: InputEvent) -> void:
 			_has_custom_window_pos = true
 		if _tooltip_panel != null and _tooltip_panel.visible:
 			_reposition_tooltip()
+
+
+func _try_rotate_current_item() -> bool:
+	if _held_item != null:
+		if _held_item.toggle_rotation():
+			_set_held_item(_held_item)
+			var mpos: Vector2 = get_viewport().get_mouse_position()
+			_held_preview.position = mpos - _held_preview.size * 0.5
+			return true
+		return false
+
+	if _hovered_grid_item != null and inventory != null and inventory.items.has(_hovered_grid_item):
+		var target: ItemInstance = _hovered_grid_item
+		if not target.can_rotate():
+			return false
+		if inventory.rotate_item_in_place(target):
+			_show_item_tooltip(target, false)
+			return true
+		else:
+			# Se outros itens adjacentes bloquearem o giro no mesmo lugar, pega na mão já girado!
+			inventory.remove_item(target)
+			target.toggle_rotation()
+			_set_held_item(target)
+			return true
+	return false
 
 
 func _on_viewport_size_changed() -> void:
@@ -483,13 +518,13 @@ func _update_hint_label() -> void:
 		return
 	match active_partner_station:
 		"stash":
-			_hint_label.text = "• [Clique Direito na Mochila]: Guardar no Baú  |  [Clique Esquerdo]: Arrastar para Equipar\n• Passe o mouse para comparar atributos com o item equipado (▲ verde / ▼ vermelho)"
+			_hint_label.text = "• [Clique Direito na Mochila]: Guardar no Baú  |  [Tecla R]: Girar Item (Deitado ↔ Em Pé)\n• Passe o mouse para comparar atributos com o item equipado (▲ verde / ▼ vermelho)"
 			_hint_label.add_theme_color_override("font_color", Color(0.68, 0.92, 0.72))
 		"vendor_physical", "vendor_magic":
-			_hint_label.text = "• [Clique Direito na Mochila]: Vender por 🪙 Ouro (vai para a aba Recomprar)\n• Passe o mouse sobre um item para comparar com seu equipamento atual"
+			_hint_label.text = "• [Clique Direito na Mochila]: Vender por 🪙 Ouro (vai para Recomprar)  |  [Tecla R]: Girar Item\n• Passe o mouse sobre um item para comparar com seu equipamento atual"
 			_hint_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.48))
 		_:
-			_hint_label.text = "• [Clique Esquerdo]: Mover/Equipar  |  [Clique Direito]: Equipar Rápido / Beber Poção\n• Passe o mouse para comparar atributos (▲ ganha em verde / ▼ perde em vermelho)"
+			_hint_label.text = "• [Clique Esquerdo]: Mover/Equipar  |  [Clique Direito]: Equipar / Beber  |  [Tecla R]: Girar Item\n• Passe o mouse para comparar atributos (▲ ganha em verde / ▼ perde em vermelho)"
 			_hint_label.add_theme_color_override("font_color", Color(0.72, 0.68, 0.60))
 
 
@@ -748,8 +783,9 @@ func _refresh_grid_view(force: bool = false) -> void:
 	for item in inventory.items:
 		if item == null or item.definition == null:
 			continue
+		var eff_size: Vector2i = item.get_grid_size()
 		var pos_px: Vector2 = Vector2(item.grid_position.x * CELL_SIZE, item.grid_position.y * CELL_SIZE)
-		var size_px: Vector2 = Vector2(item.definition.grid_size.x * CELL_SIZE, item.definition.grid_size.y * CELL_SIZE)
+		var size_px: Vector2 = Vector2(eff_size.x * CELL_SIZE, eff_size.y * CELL_SIZE)
 
 		var item_panel := Panel.new()
 		item_panel.position = pos_px + Vector2(1, 1)
@@ -763,12 +799,19 @@ func _refresh_grid_view(force: bool = false) -> void:
 		item_st.set_corner_radius_all(4)
 		item_panel.add_theme_stylebox_override("panel", item_st)
 		item_panel.gui_input.connect(func(ev: InputEvent) -> void: _on_item_panel_input(item, ev))
-		item_panel.mouse_entered.connect(func() -> void: _show_item_tooltip(item, false))
-		item_panel.mouse_exited.connect(_hide_tooltip)
+		item_panel.mouse_entered.connect(func() -> void:
+			_hovered_grid_item = item
+			_show_item_tooltip(item, false)
+		)
+		item_panel.mouse_exited.connect(func() -> void:
+			if _hovered_grid_item == item:
+				_hovered_grid_item = null
+			_hide_tooltip()
+		)
 		_grid_container.add_child(item_panel)
 
 		var icon := TextureRect.new()
-		icon.texture = ItemIconFactory.get_icon(item.definition)
+		icon.texture = ItemIconFactory.get_icon_for_item(item, false)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.position = Vector2(3, 3)
@@ -787,7 +830,7 @@ func _refresh_paperdoll_view() -> void:
 		var lbl: Label = slot_panel.get_node("Placeholder") as Label
 		var sil: TextureRect = slot_panel.get_node("Silhouette") as TextureRect
 		if item != null and item.definition != null:
-			icon.texture = ItemIconFactory.get_icon(item.definition)
+			icon.texture = ItemIconFactory.get_icon_for_item(item, true)
 			icon.visible = true
 			lbl.visible = false
 			sil.visible = false
@@ -929,10 +972,10 @@ func _on_doll_slot_hover(slot: ItemDefinition.EquipmentSlot, entered: bool) -> v
 func _set_held_item(item: ItemInstance) -> void:
 	_held_item = item
 	if _held_item != null and _held_item.definition != null:
-		var def: ItemDefinition = _held_item.definition
-		_held_preview.texture = ItemIconFactory.get_icon(def)
-		var exact_w: float = float(def.grid_size.x) * float(CELL_SIZE)
-		var exact_h: float = float(def.grid_size.y) * float(CELL_SIZE)
+		var eff_sz: Vector2i = _held_item.get_grid_size()
+		_held_preview.texture = ItemIconFactory.get_icon_for_item(_held_item, false)
+		var exact_w: float = float(eff_sz.x) * float(CELL_SIZE)
+		var exact_h: float = float(eff_sz.y) * float(CELL_SIZE)
 		_held_preview.custom_minimum_size = Vector2(exact_w, exact_h)
 		_held_preview.size = Vector2(exact_w, exact_h)
 		_held_preview.visible = true
@@ -966,6 +1009,9 @@ func _show_item_tooltip(item: ItemInstance, is_on_paperdoll: bool = false) -> vo
 					action_hint = "[Clique Direito: Beber Poção (+%d Vida)]" % maxi(25, item.definition.base_health)
 				elif item.definition.is_equippable():
 					action_hint = "[Clique Direito: Equipar Item]"
+		if item.can_rotate():
+			var cur_sz: Vector2i = item.get_grid_size()
+			action_hint += "\n[color=#e8c56b][Tecla R: Girar Item (%dx%d ↔ %dx%d)][/color]" % [cur_sz.x, cur_sz.y, cur_sz.y, cur_sz.x]
 
 	_tooltip_text.text = item.format_tooltip_bbcode(stats, equipment, action_hint)
 	_tooltip_panel.visible = true

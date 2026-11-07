@@ -45,7 +45,7 @@ func get_item_at(cell: Vector2i) -> ItemInstance:
 func can_place_at(item: ItemInstance, top_left: Vector2i, ignore_item: ItemInstance = null) -> bool:
 	if item == null or item.definition == null:
 		return false
-	var size: Vector2i = item.definition.grid_size
+	var size: Vector2i = item.get_grid_size()
 	if top_left.x < 0 or top_left.y < 0:
 		return false
 	if top_left.x + size.x > columns or top_left.y + size.y > rows:
@@ -60,7 +60,7 @@ func can_place_at(item: ItemInstance, top_left: Vector2i, ignore_item: ItemInsta
 
 
 func place_item(item: ItemInstance, top_left: Vector2i) -> bool:
-	if not can_place_at(item, top_left):
+	if not can_place_at(item, top_left, item):
 		return false
 
 	# Se o item já estava no grid, limpa suas células anteriores
@@ -69,7 +69,7 @@ func place_item(item: ItemInstance, top_left: Vector2i) -> bool:
 	else:
 		items.append(item)
 
-	var size: Vector2i = item.definition.grid_size
+	var size: Vector2i = item.get_grid_size()
 	item.grid_position = top_left
 	for y in range(top_left.y, top_left.y + size.y):
 		for x in range(top_left.x, top_left.x + size.x):
@@ -77,6 +77,38 @@ func place_item(item: ItemInstance, top_left: Vector2i) -> bool:
 
 	grid_changed.emit()
 	return true
+
+
+func rotate_item_in_place(item: ItemInstance) -> bool:
+	if item == null or not items.has(item) or not item.can_rotate():
+		return false
+	var old_pos: Vector2i = item.grid_position
+	_clear_item_from_cells(item)
+	item.toggle_rotation()
+
+	# Tenta encaixar na mesma posição ou com leve ajuste de borda
+	var new_size: Vector2i = item.get_grid_size()
+	var clamped_pos := Vector2i(
+		clampi(old_pos.x, 0, maxi(0, columns - new_size.x)),
+		clampi(old_pos.y, 0, maxi(0, rows - new_size.y))
+	)
+	var candidate_positions: Array[Vector2i] = [old_pos, clamped_pos]
+	for cand in candidate_positions:
+		if can_place_at(item, cand, item):
+			item.grid_position = cand
+			for y in range(cand.y, cand.y + new_size.y):
+				for x in range(cand.x, cand.x + new_size.x):
+					_grid[y][x] = item
+			grid_changed.emit()
+			return true
+
+	# Reverte se colidir com outros itens adjacentes
+	item.toggle_rotation()
+	var orig_size: Vector2i = item.get_grid_size()
+	for y in range(old_pos.y, old_pos.y + orig_size.y):
+		for x in range(old_pos.x, old_pos.x + orig_size.x):
+			_grid[y][x] = item
+	return false
 
 
 func remove_item(item: ItemInstance) -> bool:
@@ -90,12 +122,10 @@ func remove_item(item: ItemInstance) -> bool:
 
 
 func _clear_item_from_cells(item: ItemInstance) -> void:
-	if item == null or item.grid_position.x < 0:
+	if item == null:
 		return
-	var pos: Vector2i = item.grid_position
-	var size: Vector2i = item.definition.grid_size
-	for y in range(maxi(0, pos.y), mini(rows, pos.y + size.y)):
-		for x in range(maxi(0, pos.x), mini(columns, pos.x + size.x)):
+	for y in range(rows):
+		for x in range(columns):
 			if _grid[y][x] == item:
 				_grid[y][x] = null
 
@@ -103,7 +133,7 @@ func _clear_item_from_cells(item: ItemInstance) -> void:
 func find_free_spot_for(item: ItemInstance) -> Vector2i:
 	if item == null or item.definition == null:
 		return Vector2i(-1, -1)
-	var size: Vector2i = item.definition.grid_size
+	var size: Vector2i = item.get_grid_size()
 	# Varre o grid de cima para baixo, da esquerda para a direita (estilo Diablo)
 	for y in range(rows - size.y + 1):
 		for x in range(columns - size.x + 1):
@@ -114,10 +144,19 @@ func find_free_spot_for(item: ItemInstance) -> Vector2i:
 
 
 func auto_add_item(item: ItemInstance) -> bool:
+	if item == null:
+		return false
 	var spot: Vector2i = find_free_spot_for(item)
-	if spot.x < 0:
-		return false # Mochila cheia para o tamanho do item
-	return place_item(item, spot)
+	if spot.x >= 0:
+		return place_item(item, spot)
+	# Se não couber na orientação atual e puder girar, tenta girar automaticamente para caber!
+	if item.can_rotate():
+		item.toggle_rotation()
+		spot = find_free_spot_for(item)
+		if spot.x >= 0:
+			return place_item(item, spot)
+		item.toggle_rotation()
+	return false # Mochila cheia para o tamanho do item
 
 
 func get_overlapping_items(item: ItemInstance, top_left: Vector2i) -> Array[ItemInstance]:
@@ -125,7 +164,7 @@ func get_overlapping_items(item: ItemInstance, top_left: Vector2i) -> Array[Item
 	var overlapped: Array[ItemInstance] = []
 	if item == null or item.definition == null:
 		return overlapped
-	var size: Vector2i = item.definition.grid_size
+	var size: Vector2i = item.get_grid_size()
 	if top_left.x < 0 or top_left.y < 0 or top_left.x + size.x > columns or top_left.y + size.y > rows:
 		return overlapped
 

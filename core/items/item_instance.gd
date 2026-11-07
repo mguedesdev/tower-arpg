@@ -22,9 +22,31 @@ var is_identified: bool = true
 var explicit_affixes: Array[ItemAffix] = []
 var custom_name: String = ""
 
-# Posição de inventário
+# Posição de inventário e orientação (deitado ↔ em pé)
 var grid_position: Vector2i = Vector2i(-1, -1)
+var is_rotated: bool = false
 var equipped_slot: ItemDefinition.EquipmentSlot = ItemDefinition.EquipmentSlot.NONE
+
+
+func get_grid_size() -> Vector2i:
+	if definition == null:
+		return Vector2i.ONE
+	if is_rotated:
+		return Vector2i(definition.grid_size.y, definition.grid_size.x)
+	return definition.grid_size
+
+
+func can_rotate() -> bool:
+	if definition == null:
+		return false
+	return definition.grid_size.x != definition.grid_size.y
+
+
+func toggle_rotation() -> bool:
+	if not can_rotate():
+		return false
+	is_rotated = not is_rotated
+	return true
 
 
 func _init(p_def: ItemDefinition = null, p_rarity: ItemRarity = ItemRarity.NORMAL, p_ilvl: int = 1) -> void:

@@ -44,29 +44,34 @@ func _run_all() -> void:
 func _test_spatial_grid_dimensions_and_collisions() -> void:
 	var grid := SpatialInventoryGrid.new(10, 4)
 
-	# 1. Espada Montante 2H (2x4)
+	# 1. Espada Montante 2H (3x2 deitada por padrão, gira para 2x3 em pé)
 	var sword_2h := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "greatsword_iron")
-	_check(sword_2h.definition.grid_size == Vector2i(2, 4), "1. Montante 2H possui tamanho exato de 2x4 (4 de altura, 2 de largura)")
+	_check(sword_2h.definition.grid_size == Vector2i(3, 2), "1a. Montante 2H possui tamanho base exato de 3x2 (3 colunas x 2 linhas)")
+	_check(sword_2h.get_grid_size() == Vector2i(3, 2), "1b. Montante 2H inicia deitada (3x2) no inventário")
 
 	# Encaixa no canto superior esquerdo (0, 0)
-	_check(grid.can_place_at(sword_2h, Vector2i(0, 0)), "2. Montante 2x4 cabe no canto (0,0)")
+	_check(grid.can_place_at(sword_2h, Vector2i(0, 0)), "2. Montante 3x2 cabe no canto (0,0)")
 	grid.place_item(sword_2h, Vector2i(0, 0))
 
-	# Colisão: tentar colocar item que sobrepõe qualquer uma das 8 células (x=0..1, y=0..3) deve falhar
-	var dagger := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "dagger_sharp") # 2x2
-	_check(not grid.can_place_at(dagger, Vector2i(1, 1)), "3. Colisão detectada: não permite colocar item em cima de células ocupadas")
+	# Colisão: tentar colocar item que sobrepõe qualquer uma das 6 células (x=0..2, y=0..1) deve falhar
+	var dagger := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "dagger_sharp") # 1x3
+	_check(not grid.can_place_at(dagger, Vector2i(2, 1)), "3. Colisão detectada: não permite colocar item em cima de células ocupadas")
 
-	# Adjacente livre: colocar no (2, 0) deve funcionar
-	_check(grid.can_place_at(dagger, Vector2i(2, 0)), "4. Permite colocar item em células adjacentes livres")
-	grid.place_item(dagger, Vector2i(2, 0))
+	# Adjacente livre: colocar no (3, 0) deve funcionar
+	_check(grid.can_place_at(dagger, Vector2i(3, 0)), "4. Permite colocar item em células adjacentes livres")
+	grid.place_item(dagger, Vector2i(3, 0))
 
-	# Limite da matriz: tentar colocar item fora das bordas (ex: 2x4 na posição x=9 ou y=2 em grade de 4 linhas)
-	_check(not grid.can_place_at(sword_2h, Vector2i(9, 0)), "5a. Bloqueia item extrapolando colunas (x=9 para largura 2)")
-	_check(not grid.can_place_at(sword_2h, Vector2i(4, 2)), "5b. Bloqueia item extrapolando linhas (y=2 para altura 4 em grade de 4 linhas)")
+	# Limite da matriz: tentar colocar item 3x2 fora das bordas (ex: x=8 em grade de 10 colunas ou y=3 em grade de 4 linhas)
+	_check(not grid.can_place_at(sword_2h, Vector2i(8, 0)), "5a. Bloqueia item extrapolando colunas (x=8 para largura 3)")
+	_check(not grid.can_place_at(sword_2h, Vector2i(4, 3)), "5b. Bloqueia item extrapolando linhas (y=3 para altura 2 em grade de 4 linhas)")
+
+	# Teste de Rotação (3x2 deitado -> 2x3 em pé) direto no grid
+	var rotated_ok: bool = grid.rotate_item_in_place(sword_2h)
+	_check(rotated_ok and sword_2h.is_rotated and sword_2h.get_grid_size() == Vector2i(2, 3), "5c. Rotação de item no grid altera tamanho de 3x2 (deitado) para 2x3 (em pé)")
 
 	# Remoção limpa todas as células ocupadas
 	grid.remove_item(sword_2h)
-	_check(grid.can_place_at(sword_2h, Vector2i(0, 0)), "6. Remoção de item libera perfeitamente as 8 células ocupadas no grid")
+	_check(grid.can_place_at(sword_2h, Vector2i(0, 0)), "6. Remoção de item libera perfeitamente as células ocupadas no grid")
 
 
 func _test_equipment_paperdoll_and_2h_weapons() -> void:
@@ -143,7 +148,17 @@ func _test_icon_procedural_generation_all_sizes() -> void:
 	_check(tex_1x3 != null and tex_1x3.get_width() == 32 and tex_1x3.get_height() == 96, "14b. Ícone 1x3 (Adaga fina) gerado com 32x96 pixels")
 	_check(tex_1x4 != null and tex_1x4.get_width() == 32 and tex_1x4.get_height() == 128, "14c. Ícone 1x4 (Espada 1H) gerado com 32x128 pixels")
 	_check(tex_2x2 != null and tex_2x2.get_width() == 64 and tex_2x2.get_height() == 64, "14d. Ícone 2x2 (Elmo/Luva/Bota) gerado com 64x64 pixels")
-	_check(tex_2x4 != null and tex_2x4.get_width() == 64 and tex_2x4.get_height() == 128, "14e. Ícone 2x4 (Peitoral/Montante 2H) gerado com 64x128 pixels")
+	_check(tex_2x4 != null and tex_2x4.get_width() == 64 and tex_2x4.get_height() == 128, "14e. Ícone 2x4 (Peitoral) gerado com 64x128 pixels")
+
+	# Teste do novo sprite 3x2 da Espada de 2 Mãos (deitada no grid vs em pé quando girada ou equipada)
+	var gs_item := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "greatsword_iron")
+	var tex_gs_horiz := ItemIconFactory.get_icon_for_item(gs_item, false)
+	var tex_gs_paperdoll := ItemIconFactory.get_icon_for_item(gs_item, true)
+	gs_item.toggle_rotation()
+	var tex_gs_rot := ItemIconFactory.get_icon_for_item(gs_item, false)
+	_check(tex_gs_horiz != null and tex_gs_horiz.get_width() > tex_gs_horiz.get_height(), "14f. Sprite da Espada 2H 3x2 inicia deitado (largura > altura) no inventário")
+	_check(tex_gs_rot != null and tex_gs_rot.get_height() > tex_gs_rot.get_width(), "14g. Sprite da Espada 2H fica em pé (altura > largura) ao girar no inventário")
+	_check(tex_gs_paperdoll != null and tex_gs_paperdoll.get_height() > tex_gs_paperdoll.get_width(), "14h. Sprite da Espada 2H vai automaticamente em pé quando equipado no Paperdoll")
 
 
 func _test_main_scene_inventory_integration() -> void:
