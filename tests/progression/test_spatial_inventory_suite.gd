@@ -211,7 +211,7 @@ func _test_main_scene_inventory_integration() -> void:
 	main_node.inventory_modal.close_inventory()
 	_check(not main_node.inventory_modal.visible, "19c. Inventário fecha com close_inventory()")
 
-	# Teste de GroundItem3D (Placas 2D empilhadas + Borda mais grossa e caixa maior em destaque)
+	# Teste de GroundItem3D (Placas 2D empilhadas + Borda mais grossa sem expandir de tamanho em destaque)
 	var drop_test := GroundItem3D.new()
 	main_node._ground_items_root.add_child(drop_test)
 	var test_loot := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.RARE, "sword_steel")
@@ -223,7 +223,7 @@ func _test_main_scene_inventory_integration() -> void:
 	drop_test._apply_plate_visual_state(true, true)
 	var bw_high: int = drop_test._plate_style.border_width_left
 	var pad_high: float = drop_test._plate_style.content_margin_left
-	_check(bw_high > bw_normal and pad_high > pad_normal, "19e. Item no chão em destaque ganha borda mais grossa (3px) e caixa/tooltip maior")
+	_check(bw_high > bw_normal and is_equal_approx(pad_high, pad_normal), "19e. Item no chão em destaque ganha apenas contorno mais grosso (3px) sem expandir de tamanho")
 	drop_test.queue_free()
 
 	# Teste do Sistema de Dia e Noite, Sombras 3D e Relógio de Sol/Lua no HUD (sem hora digital)

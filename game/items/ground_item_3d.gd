@@ -289,19 +289,19 @@ func _apply_plate_visual_state(highlighted: bool, force: bool = false) -> void:
 					border_col = Color(0.96, 0.96, 1.0, 1.0) if highlighted else Color(0.32, 0.32, 0.36, 0.80)
 					text_col = Color(1.0, 1.0, 1.0) if highlighted else Color(0.88, 0.88, 0.90)
 
-	# Quando em destaque: borda mais grossa (3px vs 1px) e "tooltip" maior (fonte 16px + margens maiores)!
+	# Quando em destaque: apenas contorno/borda mais grosso (3px vs 1px), mantendo o mesmo tamanho sem expandir!
 	var bw: int = 3 if highlighted else 1
 	_plate_style.bg_color = bg_col
 	_plate_style.border_color = border_col
 	_plate_style.set_border_width_all(bw)
-	_plate_style.content_margin_left = 15 if highlighted else 10
-	_plate_style.content_margin_right = 15 if highlighted else 10
-	_plate_style.content_margin_top = 6 if highlighted else 3
-	_plate_style.content_margin_bottom = 6 if highlighted else 3
-	_plate_style.shadow_size = 8 if highlighted else 3
+	_plate_style.content_margin_left = 10
+	_plate_style.content_margin_right = 10
+	_plate_style.content_margin_top = 4
+	_plate_style.content_margin_bottom = 4
+	_plate_style.shadow_size = 5 if highlighted else 3
 
 	_plate_label.text = _format_ground_plate_text()
-	_plate_label.add_theme_font_size_override("font_size", 16 if highlighted else 13)
+	_plate_label.add_theme_font_size_override("font_size", 13)
 	_plate_label.add_theme_color_override("font_color", text_col)
 	_plate_panel.z_index = 12 if highlighted else 2
 	_plate_panel.reset_size()
