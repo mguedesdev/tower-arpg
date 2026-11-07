@@ -460,8 +460,8 @@ func _on_town_station_interacted(station_id: String, _station_title: String) -> 
 		return
 	town_npc_modal.set_gold(gold)
 	town_npc_modal.open_station(station_id, unlocked_zones, current_zone_id, area_level)
-	# Quando abre Baú, Ferreiro, Arcanista ou Sábio, abre o Inventário automaticamente ao lado!
-	if station_id != "waypoint" and inventory_modal != null and not inventory_modal.visible:
+	# No Baú Pessoal (stash), abre a Mochila automaticamente ao lado; nas lojas, abre centralizada (e acopla lado a lado se apertar [I])!
+	if station_id == "stash" and inventory_modal != null and not inventory_modal.visible:
 		inventory_modal.set_gold(gold)
 		inventory_modal.open_inventory()
 	call_deferred("_relayout_open_modals")

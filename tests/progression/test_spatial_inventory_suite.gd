@@ -218,3 +218,18 @@ func _test_tooltip_comparison_and_npc_stash() -> void:
 	_check(bbcode.contains("▲") and bbcode.contains("#4dff6b"), "20a. Tooltip exibe seta verde ▲ nas linhas em que o item é superior")
 	_check(bbcode.contains("▼") and bbcode.contains("#ff4d4d"), "20b. Tooltip exibe seta vermelha ▼ nas linhas/comparações em que perde status")
 	_check(bbcode.contains("Ganha +8 de Força") and bbcode.contains("Perde -20 de Vida Máxima"), "20c. Área dedicada de comparação exibe ganhos (verde) e o atributo perdido que não existe no item novo (vermelho)")
+
+	# Teste da Loja Padronizada (Ferreiro / Arcanista) em 3 Colunas
+	var npc_modal := TownNpcModal.new()
+	var test_bp := SpatialInventoryGrid.new(10, 6)
+	var test_stash := SpatialInventoryGrid.new(10, 6)
+	root.add_child(npc_modal)
+	npc_modal.bind_context(test_bp, test_stash, equip, stats)
+	var zones: Array[String] = ["town"]
+	npc_modal.open_station("vendor_physical", zones, "town", 1)
+	_check(npc_modal._blacksmith_stock.size() == 15, "21a. Estoque padronizado do Ferreiro possui 15 itens (3 páginas de 5-6 itens)")
+	_check(npc_modal._selected_vendor_item != null and npc_modal._vendor_inspector_box.get_child_count() >= 5, "21b. Painel de inspeção direito exibe vitrine, tier, atributos, lore e botão de compra")
+	npc_modal._search_query = "Espada"
+	npc_modal._refresh_vendor_catalog_and_inspector()
+	_check(npc_modal._vendor_list_vbox.get_child_count() >= 1 and npc_modal._vendor_list_vbox.get_child_count() <= 4, "21c. Busca textual filtra o catálogo em tempo real")
+	npc_modal.queue_free()

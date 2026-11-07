@@ -187,51 +187,61 @@ static func _roll_affixes(item: ItemInstance, ilvl: int) -> void:
 	if item.rarity == ItemInstance.ItemRarity.MAGIC and not chosen_names.is_empty():
 		item.custom_name = "%s %s" % [item.definition.display_name, chosen_names[0]]
 	elif item.rarity == ItemInstance.ItemRarity.RARE:
-		var rare_titles: Array[String] = ["Lâmina do Destino", "Coração de Ferro", "Muralha Antiga", "Sombra Voraz", "Presa Profanada"]
-		item.custom_name = rare_titles[randi() % rare_titles.size()]
+		var suffix_title: String = chosen_names[0] if not chosen_names.is_empty() else "Ancestral"
+		item.custom_name = "%s %s" % [item.definition.display_name, suffix_title]
 	elif item.rarity == ItemInstance.ItemRarity.UNIQUE:
 		item.custom_name = "✦ " + item.definition.display_name + " Ancestral"
 
 
 static func generate_blacksmith_stock(ilvl: int = 1) -> Array[ItemInstance]:
 	var stock: Array[ItemInstance] = []
-	var bases: Array[String] = [
-		"greatsword_iron",
-		"sword_steel",
-		"shield_tower",
-		"chest_plate",
-		"helm_iron",
-		"boots_plate",
+	var blueprint: Array[Dictionary] = [
+		{"id": "greatsword_iron", "rar": ItemInstance.ItemRarity.NORMAL, "tier": 2},
+		{"id": "sword_steel", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 1},
+		{"id": "shield_tower", "rar": ItemInstance.ItemRarity.NORMAL, "tier": 2},
+		{"id": "chest_plate", "rar": ItemInstance.ItemRarity.RARE, "tier": 2},
+		{"id": "gloves_chain", "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
+		{"id": "boots_plate", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 1},
+		{"id": "helm_iron", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 2},
+		{"id": "dagger_sharp", "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
+		{"id": "shield_round", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 1},
+		{"id": "belt_leather", "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
+		{"id": "greatsword_iron", "rar": ItemInstance.ItemRarity.RARE, "tier": 3},
+		{"id": "chest_plate", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 2},
+		{"id": "ring_ruby", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 2},
+		{"id": "amulet_hawk", "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
+		{"id": "potion_health", "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
 	]
-	for i in range(bases.size()):
-		var rar: int = ItemInstance.ItemRarity.MAGIC if (i % 2 == 1) else ItemInstance.ItemRarity.NORMAL
-		if i == 0 and randf() < 0.45:
-			rar = ItemInstance.ItemRarity.RARE
-		var it: ItemInstance = generate_loot(maxi(1, ilvl), rar, bases[i])
+	for entry in blueprint:
+		var tier_lvl: int = maxi(1, int(entry["tier"]) + maxi(0, ilvl - 1))
+		var it: ItemInstance = generate_loot(tier_lvl, int(entry["rar"]), String(entry["id"]))
 		it.identify()
 		stock.append(it)
-	var pot: ItemInstance = generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")
-	pot.identify()
-	stock.append(pot)
 	return stock
 
 
 static func generate_arcanist_stock(ilvl: int = 1) -> Array[ItemInstance]:
 	var stock: Array[ItemInstance] = []
-	var bases: Array[String] = [
-		"ring_ruby",
-		"amulet_hawk",
-		"dagger_sharp",
-		"sword_steel",
-		"gloves_chain",
-		"belt_leather",
+	var blueprint: Array[Dictionary] = [
+		{"id": "ring_ruby", "rar": ItemInstance.ItemRarity.RARE, "tier": 2},
+		{"id": "amulet_hawk", "rar": ItemInstance.ItemRarity.RARE, "tier": 2},
+		{"id": "dagger_sharp", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 2},
+		{"id": "sword_steel", "rar": ItemInstance.ItemRarity.RARE, "tier": 2},
+		{"id": "gloves_chain", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 1},
+		{"id": "belt_leather", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 1},
+		{"id": "helm_iron", "rar": ItemInstance.ItemRarity.RARE, "tier": 2},
+		{"id": "greatsword_iron", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 3},
+		{"id": "shield_round", "rar": ItemInstance.ItemRarity.RARE, "tier": 2},
+		{"id": "boots_plate", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 2},
+		{"id": "ring_ruby", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 1},
+		{"id": "amulet_hawk", "rar": ItemInstance.ItemRarity.MAGIC, "tier": 1},
+		{"id": "chest_plate", "rar": ItemInstance.ItemRarity.RARE, "tier": 3},
+		{"id": "dagger_sharp", "rar": ItemInstance.ItemRarity.RARE, "tier": 3},
+		{"id": "potion_health", "rar": ItemInstance.ItemRarity.NORMAL, "tier": 1},
 	]
-	for i in range(bases.size()):
-		var rar: int = ItemInstance.ItemRarity.RARE if (i < 2 or randf() < 0.4) else ItemInstance.ItemRarity.MAGIC
-		var it: ItemInstance = generate_loot(maxi(1, ilvl), rar, bases[i])
+	for entry in blueprint:
+		var tier_lvl: int = maxi(1, int(entry["tier"]) + maxi(0, ilvl - 1))
+		var it: ItemInstance = generate_loot(tier_lvl, int(entry["rar"]), String(entry["id"]))
 		it.identify()
 		stock.append(it)
-	var pot: ItemInstance = generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")
-	pot.identify()
-	stock.append(pot)
 	return stock

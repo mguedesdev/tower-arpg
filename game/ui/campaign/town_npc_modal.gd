@@ -1,10 +1,13 @@
+@warning_ignore("integer_division")
 extends Control
 class_name TownNpcModal
-## Modal Gótico Dark-Fantasy (estilo Diablo 2 / Path of Exile) para os NPCs e Baú da Vila:
-## • Funciona centralizado quando aberto sozinho, ou lado a lado (esquerda) com o Inventário (direita)!
-## • Baú Pessoal (Stash) com Grid Espacial real 10x6.
-## • Ferreiro & Arcanista com estoque real de itens, compra/venda por Ouro e Tooltip comparativo (▲ verde / ▼ vermelho).
-## • Sábio com Identificação real, Cura Completa e Reset de Atributos.
+## Modal Gótico Dark-Fantasy Padronizado para os NPCs e Baú da Vila:
+## • Lojas (Ferreiro & Arcanista) com layout fiel à referência visual em 3 colunas:
+##   1. Esquerda: Retrato ilustrado do NPC + 4 abas verticais (🛒 Comprar, 🔄 Recomprar, 🪙 Vender, 🔨 Reparar).
+##   2. Centro: Filtros de Categoria (Todas, Armas, Armaduras, Acessórios, Consumíveis), Busca em tempo real,
+##      filtros de Tier e Raridade, lista de itens destacável e paginação (< 1 / 3 >).
+##   3. Direita: Painel de Inspeção do item selecionado com vitrine grande, badge de Tier (T1/T2/T3),
+##      atributos + comparação (▲/▼), descrição temática em itálico e botão dourado "Comprar por X Ouro".
 
 signal opened(station_id: String)
 signal closed()
@@ -14,13 +17,17 @@ signal identify_items_requested()
 signal heal_player_requested()
 signal gold_changed(new_gold: int)
 
-const COLOR_BG := Color(0.045, 0.04, 0.05, 0.97)
-const COLOR_BRONZE_BORDER := Color(0.55, 0.43, 0.24, 0.96)
-const COLOR_GOLD_TITLE := Color(0.94, 0.78, 0.38)
-const COLOR_PARCHMENT := Color(0.88, 0.84, 0.76)
-const COLOR_MUTED := Color(0.64, 0.60, 0.54)
+const COLOR_BG := Color(0.055, 0.048, 0.058, 0.98)
+const COLOR_PANEL_DARK := Color(0.075, 0.068, 0.085, 0.96)
+const COLOR_BRONZE_BORDER := Color(0.65, 0.50, 0.25, 0.96)
+const COLOR_BORDER_SUBTLE := Color(0.36, 0.29, 0.18, 0.82)
+const COLOR_GOLD_TITLE := Color(0.95, 0.80, 0.42)
+const COLOR_GOLD_BRIGHT := Color(1.0, 0.88, 0.48)
+const COLOR_PARCHMENT := Color(0.90, 0.86, 0.78)
+const COLOR_MUTED := Color(0.64, 0.59, 0.52)
 const RED_ALERT := Color(1.0, 0.35, 0.35)
 const CELL_SIZE := 36
+const ITEMS_PER_PAGE := 6
 
 var backpack: SpatialInventoryGrid
 var stash: SpatialInventoryGrid
@@ -36,7 +43,19 @@ var _current_zone_id: String = "town"
 var _blacksmith_stock: Array[ItemInstance] = []
 var _arcanist_stock: Array[ItemInstance] = []
 var _buyback_items: Array[Dictionary] = []   ## Array de {"item": ItemInstance, "price": int}
-var _active_vendor_tab: int = 0              ## 0 = Comprar, 1 = Recomprar
+
+# Estado padronizado das Lojas (Ferreiro / Arcanista)
+var _active_vendor_tab: int = 0              ## 0 = Comprar, 1 = Recomprar, 2 = Vender, 3 = Reparar
+var _active_category_filter: int = 0         ## 0 = Todas, 1 = Armas, 2 = Armaduras, 3 = Acessórios, 4 = Consumíveis
+var _active_tier_filter: int = 0             ## 0 = Todos, 1 = T1, 2 = T2, 3 = T3+
+var _active_rarity_filter: int = 0           ## 0 = Todas, 1 = Normal, 2 = Mágico, 3 = Raro, 4 = Lendário
+var _search_query: String = ""
+var _current_page: int = 0
+var _selected_vendor_item: ItemInstance = null
+var _selected_buyback_entry: Dictionary = {}
+
+# Cache de retratos dos mercadores
+static var _portrait_cache: Dictionary = {}
 
 # Janela móvel / acoplável
 var _window_panel: PanelContainer
@@ -46,7 +65,15 @@ var _title_label: Label
 var _subtitle_label: Label
 var _content_box: VBoxContainer
 var _feedback_label: Label
+var _bottom_close_btn: Button
 var _stash_grid_container: Control
+
+# Sub-containers dinâmicos da Loja (para atualizar lista e preview sem perder foco da busca)
+var _vendor_list_vbox: VBoxContainer
+var _vendor_page_label: Label
+var _vendor_prev_page_btn: Button
+var _vendor_next_page_btn: Button
+var _vendor_inspector_box: VBoxContainer
 
 var _is_dragging_window: bool = false
 var _drag_start_mouse: Vector2 = Vector2.ZERO
@@ -92,21 +119,26 @@ func bind_context(p_backpack: SpatialInventoryGrid, p_stash: SpatialInventoryGri
 func set_gold(gold_val: int) -> void:
 	current_gold = maxi(0, gold_val)
 	if _gold_header_label != null:
-		_gold_header_label.text = "🪙 %d Ouro" % current_gold
-	if visible and (current_station_id == "vendor_physical" or current_station_id == "vendor_magic"):
-		_refresh_current_station_content()
+		_gold_header_label.text = "🪙  %d Ouro" % current_gold
+	if visible and _is_vendor_station():
+		_refresh_vendor_catalog_and_inspector()
+
+
+func _is_vendor_station() -> bool:
+	return current_station_id == "vendor_physical" or current_station_id == "vendor_magic"
 
 
 func show_feedback(msg: String, is_error: bool = false) -> void:
 	if _feedback_label == null:
 		return
 	_feedback_label.text = msg
+	_feedback_label.visible = not msg.is_empty()
 	_feedback_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.45) if is_error else Color(0.52, 0.94, 0.62))
 
 
 func get_window_size() -> Vector2:
 	if _window_panel == null:
-		return Vector2(540, 520)
+		return Vector2(880, 545) if _is_vendor_station() else Vector2(540, 520)
 	_window_panel.reset_size()
 	var sz: Vector2 = _window_panel.size
 	if sz.x < 100.0:
@@ -133,7 +165,7 @@ func center_on_screen() -> void:
 	if vp.x > 100.0 and vp.y > 100.0:
 		_window_panel.position = Vector2(
 			maxf(10.0, (vp.x - sz.x) * 0.5),
-			maxf(10.0, (vp.y - sz.y) * 0.45)
+			maxf(10.0, (vp.y - sz.y) * 0.46)
 		)
 
 
@@ -173,17 +205,17 @@ func _input(event: InputEvent) -> void:
 
 func _build_ui() -> void:
 	_window_panel = PanelContainer.new()
-	_window_panel.custom_minimum_size = Vector2(540, 510)
+	_window_panel.custom_minimum_size = Vector2(880, 540)
 	_window_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var style := StyleBoxFlat.new()
 	style.bg_color = COLOR_BG
 	style.border_color = COLOR_BRONZE_BORDER
 	style.set_border_width_all(3)
-	style.set_corner_radius_all(6)
-	style.shadow_color = Color(0, 0, 0, 0.78)
-	style.shadow_size = 14
-	style.content_margin_left = 18
-	style.content_margin_right = 18
+	style.set_corner_radius_all(8)
+	style.shadow_color = Color(0, 0, 0, 0.84)
+	style.shadow_size = 18
+	style.content_margin_left = 16
+	style.content_margin_right = 16
 	style.content_margin_top = 12
 	style.content_margin_bottom = 14
 	_window_panel.add_theme_stylebox_override("panel", style)
@@ -193,40 +225,66 @@ func _build_ui() -> void:
 	root_vbox.add_theme_constant_override("separation", 8)
 	_window_panel.add_child(root_vbox)
 
-	# Barra superior arrastável
+	# 1. CABEÇALHO SUPERIOR FIEL À REFERÊNCIA (Ícone + Título + Ornamento ───❖─── + 🪙 Ouro + Botão Vermelho [✕])
 	_header_bar = HBoxContainer.new()
+	_header_bar.add_theme_constant_override("separation", 10)
 	_header_bar.mouse_filter = Control.MOUSE_FILTER_STOP
 	_header_bar.gui_input.connect(_on_header_gui_input)
 
 	_title_label = Label.new()
-	_title_label.add_theme_font_size_override("font_size", 15)
+	_title_label.add_theme_font_size_override("font_size", 17)
 	_title_label.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
 	_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_header_bar.add_child(_title_label)
-	_header_bar.add_spacer(false)
+
+	var orn_line := Label.new()
+	orn_line.text = "──────  ❖  ────────────────────────"
+	orn_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	orn_line.add_theme_font_size_override("font_size", 13)
+	orn_line.add_theme_color_override("font_color", Color(0.62, 0.48, 0.24, 0.85))
+	orn_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_header_bar.add_child(orn_line)
+
+	var gold_badge := PanelContainer.new()
+	gold_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var gb_st := _slot_style(Color(0.09, 0.08, 0.06, 0.95), Color(0.55, 0.43, 0.20, 0.85), 1)
+	gb_st.content_margin_left = 10
+	gb_st.content_margin_right = 10
+	gb_st.content_margin_top = 4
+	gb_st.content_margin_bottom = 4
+	gold_badge.add_theme_stylebox_override("panel", gb_st)
 
 	_gold_header_label = Label.new()
-	_gold_header_label.text = "🪙 %d Ouro" % current_gold
+	_gold_header_label.text = "🪙  %d Ouro" % current_gold
 	_gold_header_label.add_theme_font_size_override("font_size", 14)
-	_gold_header_label.add_theme_color_override("font_color", Color(0.98, 0.85, 0.38))
+	_gold_header_label.add_theme_color_override("font_color", Color(0.98, 0.86, 0.42))
 	_gold_header_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_header_bar.add_child(_gold_header_label)
-
-	var sp := Control.new()
-	sp.custom_minimum_size = Vector2(8, 0)
-	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_header_bar.add_child(sp)
+	gold_badge.add_child(_gold_header_label)
+	_header_bar.add_child(gold_badge)
 
 	var close_top_btn := Button.new()
-	close_top_btn.text = " [X] "
-	close_top_btn.add_theme_font_size_override("font_size", 13)
-	close_top_btn.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	close_top_btn.text = "✕"
+	close_top_btn.custom_minimum_size = Vector2(32, 30)
+	close_top_btn.add_theme_font_size_override("font_size", 15)
+	close_top_btn.add_theme_color_override("font_color", Color(1.0, 0.94, 0.90))
 	close_top_btn.focus_mode = Control.FOCUS_NONE
+	var x_norm := StyleBoxFlat.new()
+	x_norm.bg_color = Color(0.46, 0.12, 0.12, 0.96)
+	x_norm.border_color = COLOR_BRONZE_BORDER
+	x_norm.set_border_width_all(1)
+	x_norm.set_corner_radius_all(4)
+	var x_hov := x_norm.duplicate() as StyleBoxFlat
+	x_hov.bg_color = Color(0.64, 0.16, 0.16, 0.98)
+	x_hov.border_color = COLOR_GOLD_BRIGHT
+	close_top_btn.add_theme_stylebox_override("normal", x_norm)
+	close_top_btn.add_theme_stylebox_override("hover", x_hov)
+	close_top_btn.add_theme_stylebox_override("pressed", x_hov)
 	close_top_btn.pressed.connect(close_modal)
 	_header_bar.add_child(close_top_btn)
 	root_vbox.add_child(_header_bar)
 
 	var sep_top := HSeparator.new()
+	sep_top.add_theme_color_override("separator", COLOR_BORDER_SUBTLE)
 	root_vbox.add_child(sep_top)
 
 	_subtitle_label = Label.new()
@@ -242,16 +300,17 @@ func _build_ui() -> void:
 	root_vbox.add_child(_content_box)
 
 	_feedback_label = Label.new()
-	_feedback_label.add_theme_font_size_override("font_size", 13)
+	_feedback_label.visible = false
+	_feedback_label.add_theme_font_size_override("font_size", 12)
 	_feedback_label.add_theme_color_override("font_color", Color(0.56, 0.90, 0.62))
 	_feedback_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_feedback_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root_vbox.add_child(_feedback_label)
 
-	var close_btn := _make_gothic_button("FECHAR JANELA (ESC / E)", false)
-	close_btn.custom_minimum_size = Vector2(0, 34)
-	close_btn.pressed.connect(close_modal)
-	root_vbox.add_child(close_btn)
+	_bottom_close_btn = _make_gothic_button("FECHAR JANELA (ESC / E)", false)
+	_bottom_close_btn.custom_minimum_size = Vector2(0, 34)
+	_bottom_close_btn.pressed.connect(close_modal)
+	root_vbox.add_child(_bottom_close_btn)
 
 	# Tooltip flutuante com comparação (top_level = true)
 	_tooltip_panel = PanelContainer.new()
@@ -303,11 +362,27 @@ func open_station(station_id: String, unlocked_zones: Array[String], current_zon
 	_current_zone_id = current_zone
 	area_level = maxi(1, p_area_level)
 	_active_vendor_tab = 0
+	_active_category_filter = 0
+	_active_tier_filter = 0
+	_active_rarity_filter = 0
+	_search_query = ""
+	_current_page = 0
+	_selected_vendor_item = null
+	_selected_buyback_entry = {}
 	_has_custom_window_pos = false
 	_ensure_vendor_stocks()
-	_feedback_label.text = ""
+	show_feedback("")
 	if _gold_header_label != null:
-		_gold_header_label.text = "🪙 %d Ouro" % current_gold
+		_gold_header_label.text = "🪙  %d Ouro" % current_gold
+
+	if _is_vendor_station():
+		_window_panel.custom_minimum_size = Vector2(890, 548)
+		_subtitle_label.visible = false
+		_bottom_close_btn.visible = false
+	else:
+		_window_panel.custom_minimum_size = Vector2(540, 510)
+		_subtitle_label.visible = true
+		_bottom_close_btn.visible = true
 
 	_refresh_current_station_content()
 	visible = true
@@ -321,10 +396,10 @@ func register_sold_item(item: ItemInstance, sold_price: int) -> void:
 		"item": item,
 		"price": maxi(1, sold_price)
 	})
-	if _buyback_items.size() > 24:
-		_buyback_items.resize(24)
-	if visible and (current_station_id == "vendor_physical" or current_station_id == "vendor_magic"):
-		_refresh_current_station_content()
+	if _buyback_items.size() > 30:
+		_buyback_items.resize(30)
+	if visible and _is_vendor_station():
+		_refresh_vendor_catalog_and_inspector()
 
 
 func close_modal() -> void:
@@ -343,17 +418,26 @@ func _on_inventories_changed() -> void:
 		_rebuild_stash_cells()
 	elif current_station_id == "identifier_respec":
 		_refresh_current_station_content()
+	elif _is_vendor_station():
+		_refresh_vendor_catalog_and_inspector()
 
 
 func _on_equipment_changed(_slot: ItemDefinition.EquipmentSlot, _item: ItemInstance) -> void:
-	if visible and current_station_id == "stash" and _stash_grid_container != null:
+	if not visible:
+		return
+	if current_station_id == "stash" and _stash_grid_container != null:
 		_rebuild_stash_cells()
+	elif _is_vendor_station():
+		_refresh_vendor_catalog_and_inspector()
 
 
 func _refresh_current_station_content() -> void:
 	_hide_tooltip()
 	_stash_grid_container = null
+	_vendor_list_vbox = null
+	_vendor_inspector_box = null
 	for child in _content_box.get_children():
+		_content_box.remove_child(child)
 		child.queue_free()
 
 	match current_station_id:
@@ -373,7 +457,7 @@ func _refresh_current_station_content() -> void:
 # 1. BAÚ PESSOAL (STASH) — GRID ESPACIAL REAL 10x6
 # ===============================================================
 func _populate_stash() -> void:
-	_title_label.text = "📦 BAÚ PESSOAL (STASH 10x6)"
+	_title_label.text = "📦  BAÚ PESSOAL (STASH 10x6)"
 	_subtitle_label.text = "Guarde armas, armaduras e relíquias. Clique em um item do Baú para retirar para a Mochila, ou clique com o Botão Direito na Mochila (ao lado) para guardar aqui!"
 
 	var center_grid := CenterContainer.new()
@@ -393,7 +477,7 @@ func _populate_stash() -> void:
 	_content_box.add_child(transfer_all_btn)
 
 	var hint := Label.new()
-	hint.text = "• Clique em um item no Baú: move para a Mochila\n• Clique Direito em um item na Mochila (janela à direita): guarda no Baú\n• Passe o mouse para comparar atributos com o que está equipado (▲ verde / ▼ vermelho)"
+	hint.text = "• Clique em um item no Baú: move para a Mochila  |  • Clique Direito na Mochila: guarda no Baú"
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.add_theme_color_override("font_color", COLOR_PARCHMENT)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -477,149 +561,422 @@ func _deposit_all_from_backpack() -> void:
 
 
 # ===============================================================
-# 2. FERREIRO & ARCANISTA — COMPRA E VENDA REAL + COMPARAÇÃO
+# 2. LOJAS PADRONIZADAS (FERREIRO & ARCANISTA) — FIEL À IMAGEM
 # ===============================================================
 func _populate_vendor_physical() -> void:
-	_title_label.text = "⚒ FERREIRO — ARMAS & ARMADURAS"
-	_subtitle_label.text = "\"Aço temperado para quem enfrenta a Cripta. Passe o mouse sobre os itens para comparar (▲/▼) com seu equipamento, ou clique com o Botão Direito na sua Mochila ao lado para vender!\""
-	_build_vendor_shop_ui(_blacksmith_stock, true)
+	_title_label.text = "⚒   FERREIRO  —  ARMAS & ARMADURAS"
+	_build_vendor_shop_ui(true)
 
 
 func _populate_vendor_magic() -> void:
-	_title_label.text = "🔮 ARCANISTA — RELÍQUIAS & ITENS MÁGICOS"
-	_subtitle_label.text = "\"Anéis, amuletos e lâminas encantadas. Passe o mouse para ver o que você ganha (▲ verde) ou perde (▼ vermelho), ou clique com o Botão Direito na Mochila para vender!\""
-	_build_vendor_shop_ui(_arcanist_stock, false)
+	_title_label.text = "🔮   ARCANISTA  —  RELÍQUIAS & ITENS MÁGICOS"
+	_build_vendor_shop_ui(false)
 
 
-func _build_vendor_shop_ui(stock: Array[ItemInstance], is_blacksmith: bool) -> void:
-	# Barra de Abas: [🛒 Comprar] | [↩ Recomprar (N)] + [🔄 Novos Itens]
-	var tabs_bar := HBoxContainer.new()
-	tabs_bar.add_theme_constant_override("separation", 8)
+func _get_vendor_portrait(is_blacksmith: bool) -> Texture2D:
+	var key: String = "blacksmith" if is_blacksmith else "arcanist"
+	if _portrait_cache.has(key):
+		return _portrait_cache[key] as Texture2D
 
-	var buy_tab_btn := _make_tab_button("🛒 COMPRAR ITENS (%d)" % stock.size(), _active_vendor_tab == 0, false)
-	buy_tab_btn.pressed.connect(func() -> void:
-		_active_vendor_tab = 0
-		_refresh_current_station_content()
-	)
-	tabs_bar.add_child(buy_tab_btn)
+	var res_path: String = "res://assets/ui/blacksmith_portrait.png" if is_blacksmith else "res://assets/ui/arcanist_portrait.png"
+	var abs_path: String = ProjectSettings.globalize_path(res_path)
+	if FileAccess.file_exists(abs_path):
+		var img := Image.load_from_file(abs_path)
+		if img != null and not img.is_empty():
+			var tex := ImageTexture.create_from_image(img)
+			_portrait_cache[key] = tex
+			return tex
+	if ResourceLoader.exists(res_path):
+		var rtex: Texture2D = load(res_path) as Texture2D
+		if rtex != null:
+			_portrait_cache[key] = rtex
+			return rtex
+	return null
 
-	var buyback_tab_btn := _make_tab_button("↩ RECOMPRAR (%d)" % _buyback_items.size(), _active_vendor_tab == 1, _buyback_items.size() > 0)
-	buyback_tab_btn.pressed.connect(func() -> void:
-		_active_vendor_tab = 1
-		_refresh_current_station_content()
-	)
-	tabs_bar.add_child(buyback_tab_btn)
 
-	tabs_bar.add_spacer(false)
+func _build_vendor_shop_ui(is_blacksmith: bool) -> void:
+	var body_hbox := HBoxContainer.new()
+	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body_hbox.add_theme_constant_override("separation", 12)
+	_content_box.add_child(body_hbox)
 
-	if _active_vendor_tab == 0:
-		var restock_cost: int = 15
-		var restock_btn := _make_gothic_button("🔄 Novos (%d 🪙)" % restock_cost, false)
-		restock_btn.custom_minimum_size = Vector2(126, 30)
-		restock_btn.add_theme_font_size_override("font_size", 12)
-		restock_btn.disabled = current_gold < restock_cost
-		restock_btn.pressed.connect(func() -> void:
-			if current_gold < restock_cost:
-				show_feedback("⚠ Ouro insuficiente para renovar o estoque!", true)
-				return
-			current_gold -= restock_cost
-			gold_changed.emit(current_gold)
-			if is_blacksmith:
-				_blacksmith_stock = ItemDatabase.generate_blacksmith_stock(maxi(1, area_level))
-			else:
-				_arcanist_stock = ItemDatabase.generate_arcanist_stock(maxi(1, area_level))
+	# ---------------------------------------------------------------
+	# COLUNA 1 (ESQUERDA): RETRATO DO NPC + 4 BOTÕES DE MODO EMPILHADOS
+	# ---------------------------------------------------------------
+	var left_col := VBoxContainer.new()
+	left_col.custom_minimum_size = Vector2(174, 0)
+	left_col.add_theme_constant_override("separation", 6)
+	body_hbox.add_child(left_col)
+
+	var portrait_frame := PanelContainer.new()
+	portrait_frame.custom_minimum_size = Vector2(174, 244)
+	portrait_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var pf_style := _slot_style(Color(0.06, 0.05, 0.07, 0.98), COLOR_BRONZE_BORDER, 2)
+	pf_style.set_corner_radius_all(5)
+	pf_style.content_margin_left = 3
+	pf_style.content_margin_right = 3
+	pf_style.content_margin_top = 3
+	pf_style.content_margin_bottom = 3
+	portrait_frame.add_theme_stylebox_override("panel", pf_style)
+	left_col.add_child(portrait_frame)
+
+	var portrait_tex := TextureRect.new()
+	portrait_tex.texture = _get_vendor_portrait(is_blacksmith)
+	portrait_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	portrait_frame.add_child(portrait_tex)
+
+	var mode_defs: Array[Dictionary] = [
+		{"id": 0, "icon": "🛒", "label": "Comprar"},
+		{"id": 1, "icon": "🔄", "label": "Recomprar" + (" (%d)" % _buyback_items.size() if not _buyback_items.is_empty() else "")},
+		{"id": 2, "icon": "🪙", "label": "Vender"},
+		{"id": 3, "icon": "🔨", "label": "Reparar"},
+	]
+	for md in mode_defs:
+		var tab_id: int = int(md["id"])
+		var m_btn := _make_sidebar_mode_button(String(md["icon"]), String(md["label"]), _active_vendor_tab == tab_id)
+		m_btn.pressed.connect(func() -> void:
+			_active_vendor_tab = tab_id
+			_current_page = 0
+			_selected_vendor_item = null
+			_selected_buyback_entry = {}
 			_refresh_current_station_content()
-			show_feedback("✦ O mercador trouxe novas mercadorias para a bancada!", false)
 		)
-		tabs_bar.add_child(restock_btn)
+		left_col.add_child(m_btn)
 
-	_content_box.add_child(tabs_bar)
+	# ---------------------------------------------------------------
+	# COLUNA 2 (CENTRO): CATEGORIAS + BUSCA/TIER/RARIDADE + LISTA + PAGINAÇÃO
+	# ---------------------------------------------------------------
+	var center_frame := PanelContainer.new()
+	center_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	center_frame.custom_minimum_size = Vector2(456, 0)
+	var cf_style := _slot_style(Color(0.05, 0.045, 0.06, 0.96), COLOR_BORDER_SUBTLE, 1)
+	cf_style.set_corner_radius_all(6)
+	cf_style.content_margin_left = 10
+	cf_style.content_margin_right = 10
+	cf_style.content_margin_top = 8
+	cf_style.content_margin_bottom = 8
+	center_frame.add_theme_stylebox_override("panel", cf_style)
+	body_hbox.add_child(center_frame)
 
-	var sell_hint := Label.new()
+	var center_vbox := VBoxContainer.new()
+	center_vbox.add_theme_constant_override("separation", 7)
+	center_frame.add_child(center_vbox)
+
+	# Linha 1: Pílulas de Categoria (⊞ Todas | ⚔ Armas | 🛡 Armaduras | 💍 Acessórios | 🧪 Consumíveis)
+	var cat_bar := HBoxContainer.new()
+	cat_bar.add_theme_constant_override("separation", 5)
+	center_vbox.add_child(cat_bar)
+
+	var cat_defs := [
+		[0, "⊞  Todas"],
+		[1, "⚔  Armas"],
+		[2, "🛡  Armaduras"],
+		[3, "💍  Acessórios"],
+		[4, "🧪  Consumíveis"],
+	]
+	for cd in cat_defs:
+		var cid: int = int(cd[0])
+		var c_btn := _make_category_pill_button(String(cd[1]), _active_category_filter == cid)
+		c_btn.pressed.connect(func() -> void:
+			_active_category_filter = cid
+			_current_page = 0
+			_refresh_current_station_content()
+		)
+		cat_bar.add_child(c_btn)
+
+	# Linha 2: Barra de Busca ("🔍 Buscar item...") + Tier Dropdown + Raridade Dropdown
+	var filter_bar := HBoxContainer.new()
+	filter_bar.add_theme_constant_override("separation", 6)
+	center_vbox.add_child(filter_bar)
+
+	var search_edit := LineEdit.new()
+	search_edit.placeholder_text = "🔍  Buscar item..."
+	search_edit.text = _search_query
+	search_edit.clear_button_enabled = true
+	search_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	search_edit.custom_minimum_size = Vector2(170, 30)
+	search_edit.add_theme_font_size_override("font_size", 12)
+	search_edit.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	var se_style := _slot_style(Color(0.04, 0.038, 0.05, 0.98), COLOR_BORDER_SUBTLE, 1)
+	se_style.set_corner_radius_all(4)
+	se_style.content_margin_left = 8
+	se_style.content_margin_right = 8
+	se_style.content_margin_top = 4
+	se_style.content_margin_bottom = 4
+	search_edit.add_theme_stylebox_override("normal", se_style)
+	search_edit.add_theme_stylebox_override("focus", _slot_style(Color(0.06, 0.055, 0.08, 0.98), COLOR_GOLD_TITLE, 1))
+	search_edit.text_changed.connect(func(new_txt: String) -> void:
+		_search_query = new_txt
+		_current_page = 0
+		_refresh_vendor_catalog_and_inspector()
+	)
+	filter_bar.add_child(search_edit)
+
+	var tier_opt := OptionButton.new()
+	tier_opt.custom_minimum_size = Vector2(114, 30)
+	tier_opt.add_theme_font_size_override("font_size", 12)
+	tier_opt.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	tier_opt.add_theme_stylebox_override("normal", se_style)
+	tier_opt.add_theme_stylebox_override("hover", se_style)
+	tier_opt.add_theme_stylebox_override("pressed", se_style)
+	tier_opt.add_item("Tier: Todos", 0)
+	tier_opt.add_item("Tier: T1", 1)
+	tier_opt.add_item("Tier: T2", 2)
+	tier_opt.add_item("Tier: T3+", 3)
+	tier_opt.selected = _active_tier_filter
+	tier_opt.item_selected.connect(func(idx: int) -> void:
+		_active_tier_filter = idx
+		_current_page = 0
+		_refresh_vendor_catalog_and_inspector()
+	)
+	filter_bar.add_child(tier_opt)
+
+	var rar_opt := OptionButton.new()
+	rar_opt.custom_minimum_size = Vector2(132, 30)
+	rar_opt.add_theme_font_size_override("font_size", 12)
+	rar_opt.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	rar_opt.add_theme_stylebox_override("normal", se_style)
+	rar_opt.add_theme_stylebox_override("hover", se_style)
+	rar_opt.add_theme_stylebox_override("pressed", se_style)
+	rar_opt.add_item("Raridade: Todas", 0)
+	rar_opt.add_item("Normal", 1)
+	rar_opt.add_item("Mágico", 2)
+	rar_opt.add_item("Raro", 3)
+	rar_opt.add_item("Lendário", 4)
+	rar_opt.selected = _active_rarity_filter
+	rar_opt.item_selected.connect(func(idx: int) -> void:
+		_active_rarity_filter = idx
+		_current_page = 0
+		_refresh_vendor_catalog_and_inspector()
+	)
+	filter_bar.add_child(rar_opt)
+
+	# Linha 3: Container da Lista de Itens (6 linhas por página igual à referência)
+	var list_scroll := ScrollContainer.new()
+	list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	list_scroll.custom_minimum_size = Vector2(0, 336)
+	center_vbox.add_child(list_scroll)
+
+	_vendor_list_vbox = VBoxContainer.new()
+	_vendor_list_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_vendor_list_vbox.add_theme_constant_override("separation", 5)
+	list_scroll.add_child(_vendor_list_vbox)
+
+	# Linha 4: Barra de Paginação (<   1 / 3   >)
+	var page_bar := HBoxContainer.new()
+	page_bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	page_bar.add_theme_constant_override("separation", 12)
+	center_vbox.add_child(page_bar)
+
+	_vendor_prev_page_btn = _make_page_arrow_button("<")
+	_vendor_prev_page_btn.pressed.connect(func() -> void:
+		if _current_page > 0:
+			_current_page -= 1
+			_refresh_vendor_catalog_and_inspector()
+	)
+	page_bar.add_child(_vendor_prev_page_btn)
+
+	_vendor_page_label = Label.new()
+	_vendor_page_label.text = "1 / 3"
+	_vendor_page_label.custom_minimum_size = Vector2(54, 0)
+	_vendor_page_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_vendor_page_label.add_theme_font_size_override("font_size", 13)
+	_vendor_page_label.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	page_bar.add_child(_vendor_page_label)
+
+	_vendor_next_page_btn = _make_page_arrow_button(">")
+	_vendor_next_page_btn.pressed.connect(func() -> void:
+		_current_page += 1
+		_refresh_vendor_catalog_and_inspector()
+	)
+	page_bar.add_child(_vendor_next_page_btn)
+
+	# ---------------------------------------------------------------
+	# COLUNA 3 (DIREITA): PAINEL DE INSPEÇÃO / VITRINE DO ITEM SELECIONADO
+	# ---------------------------------------------------------------
+	var right_frame := PanelContainer.new()
+	right_frame.custom_minimum_size = Vector2(226, 0)
+	right_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var rf_style := _slot_style(Color(0.06, 0.052, 0.072, 0.98), COLOR_BRONZE_BORDER, 1)
+	rf_style.set_corner_radius_all(6)
+	rf_style.content_margin_left = 12
+	rf_style.content_margin_right = 12
+	rf_style.content_margin_top = 10
+	rf_style.content_margin_bottom = 10
+	right_frame.add_theme_stylebox_override("panel", rf_style)
+	body_hbox.add_child(right_frame)
+
+	_vendor_inspector_box = VBoxContainer.new()
+	_vendor_inspector_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_vendor_inspector_box.add_theme_constant_override("separation", 8)
+	right_frame.add_child(_vendor_inspector_box)
+
+	_refresh_vendor_catalog_and_inspector()
+
+
+func _matches_vendor_filters(item: ItemInstance) -> bool:
+	if item == null or item.definition == null:
+		return false
+	var def: ItemDefinition = item.definition
+
+	# 1. Filtro de Categoria
+	match _active_category_filter:
+		1: # Armas
+			if def.category != ItemDefinition.ItemCategory.WEAPON_1H and def.category != ItemDefinition.ItemCategory.WEAPON_2H:
+				return false
+		2: # Armaduras
+			if def.category != ItemDefinition.ItemCategory.CHEST and def.category != ItemDefinition.ItemCategory.HELMET and def.category != ItemDefinition.ItemCategory.GLOVES and def.category != ItemDefinition.ItemCategory.BOOTS and def.category != ItemDefinition.ItemCategory.BELT and def.category != ItemDefinition.ItemCategory.SHIELD:
+				return false
+		3: # Acessórios
+			if def.category != ItemDefinition.ItemCategory.RING and def.category != ItemDefinition.ItemCategory.AMULET:
+				return false
+		4: # Consumíveis
+			if def.category != ItemDefinition.ItemCategory.CONSUMABLE:
+				return false
+
+	# 2. Filtro de Tier
+	var tier_num: int = clampi(item.item_level, 1, 3)
+	if _active_tier_filter > 0 and tier_num != _active_tier_filter:
+		return false
+
+	# 3. Filtro de Raridade
+	if _active_rarity_filter > 0:
+		var expected_r: int = _active_rarity_filter - 1
+		if int(item.rarity) != expected_r:
+			return false
+
+	# 4. Busca textual
+	if not _search_query.strip_edges().is_empty():
+		var q: String = _search_query.strip_edges().to_lower()
+		var hay: String = (item.get_display_name() + " " + _build_short_item_summary(item) + " " + item.get_slot_display_name()).to_lower()
+		if not hay.contains(q):
+			return false
+
+	return true
+
+
+func _refresh_vendor_catalog_and_inspector() -> void:
+	if _vendor_list_vbox == null or _vendor_inspector_box == null:
+		return
+	for child in _vendor_list_vbox.get_children():
+		_vendor_list_vbox.remove_child(child)
+		child.queue_free()
+
+	var is_blacksmith: bool = (current_station_id == "vendor_physical")
+	var stock: Array[ItemInstance] = _blacksmith_stock if is_blacksmith else _arcanist_stock
+
+	# ABA 3: REPARAR & MANUTENÇÃO DA FORJA
+	if _active_vendor_tab == 3:
+		_populate_repair_tab(is_blacksmith)
+		_vendor_page_label.text = "1 / 1"
+		_vendor_prev_page_btn.disabled = true
+		_vendor_next_page_btn.disabled = true
+		_rebuild_vendor_inspector()
+		return
+
+	# Coleta itens filtrados conforme a aba ativa (0 = Comprar, 1 = Recomprar, 2 = Vender)
+	var filtered_entries: Array[Dictionary] = []
 	if _active_vendor_tab == 0:
-		sell_hint.text = "💡 Clique Direito em qualquer item da sua Mochila (à direita) para VENDER (ele irá para a aba Recomprar)!"
-		sell_hint.add_theme_color_override("font_color", Color(0.96, 0.85, 0.45))
-	else:
-		sell_hint.text = "↩ Aba Recomprar: recupere qualquer item vendido pelo EXATO mesmo valor em Ouro que você recebeu!"
-		sell_hint.add_theme_color_override("font_color", Color(0.56, 0.92, 0.66))
-	sell_hint.add_theme_font_size_override("font_size", 11)
-	_content_box.add_child(sell_hint)
+		for it in stock:
+			if _matches_vendor_filters(it):
+				filtered_entries.append({"item": it, "price": it.get_buy_price(), "mode": "buy", "stock": stock})
+	elif _active_vendor_tab == 1:
+		for b_entry in _buyback_items:
+			var bit: ItemInstance = b_entry.get("item", null) as ItemInstance
+			if _matches_vendor_filters(bit):
+				filtered_entries.append({"item": bit, "price": int(b_entry.get("price", 5)), "mode": "buyback", "raw": b_entry})
+	elif _active_vendor_tab == 2:
+		if backpack != null:
+			for bp_it in backpack.items:
+				if _matches_vendor_filters(bp_it):
+					filtered_entries.append({"item": bp_it, "price": bp_it.get_sell_value(), "mode": "sell"})
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size = Vector2(0, 290)
-	_content_box.add_child(scroll)
+	var total_pages: int = maxi(1, int(ceil(float(filtered_entries.size()) / float(ITEMS_PER_PAGE))))
+	_current_page = clampi(_current_page, 0, total_pages - 1)
+	_vendor_page_label.text = "%d / %d" % [_current_page + 1, total_pages]
+	_vendor_prev_page_btn.disabled = (_current_page <= 0)
+	_vendor_next_page_btn.disabled = (_current_page >= total_pages - 1)
 
-	var list_vbox := VBoxContainer.new()
-	list_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list_vbox.add_theme_constant_override("separation", 6)
-	scroll.add_child(list_vbox)
-
-	if _active_vendor_tab == 0:
-		for item in stock:
-			if item == null or item.definition == null:
-				continue
-			list_vbox.add_child(_make_vendor_item_row(item, stock))
-	else:
-		if _buyback_items.is_empty():
-			var empty_lbl := Label.new()
-			empty_lbl.text = "\nNenhum item vendido ainda nesta sessão.\n\nQuando você vender um item clicando com o Botão Direito na sua Mochila,\nele ficará guardado aqui caso queira recomprá-lo pelo mesmo valor!"
-			empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			empty_lbl.add_theme_font_size_override("font_size", 13)
-			empty_lbl.add_theme_color_override("font_color", COLOR_MUTED)
-			list_vbox.add_child(empty_lbl)
+	# Garante que há um item selecionado válido para o Painel de Inspeção à direita
+	var found_selected: bool = false
+	for fe in filtered_entries:
+		if fe["item"] == _selected_vendor_item:
+			found_selected = true
+			if fe["mode"] == "buyback":
+				_selected_buyback_entry = fe["raw"]
+			break
+	if not found_selected:
+		if not filtered_entries.is_empty():
+			_selected_vendor_item = filtered_entries[0]["item"]
+			if filtered_entries[0]["mode"] == "buyback":
+				_selected_buyback_entry = filtered_entries[0]["raw"]
 		else:
-			for entry in _buyback_items:
-				list_vbox.add_child(_make_buyback_item_row(entry))
+			_selected_vendor_item = null
+			_selected_buyback_entry = {}
 
-
-func _make_tab_button(text_val: String, is_active: bool, has_items_highlight: bool) -> Button:
-	var btn := Button.new()
-	btn.text = text_val
-	btn.custom_minimum_size = Vector2(172, 32)
-	btn.focus_mode = Control.FOCUS_NONE
-	btn.add_theme_font_size_override("font_size", 12)
-	if is_active:
-		btn.add_theme_color_override("font_color", Color(1.0, 0.94, 0.72))
-	elif has_items_highlight:
-		btn.add_theme_color_override("font_color", Color(0.62, 0.95, 0.70))
+	if filtered_entries.is_empty():
+		var empty_lbl := Label.new()
+		if _active_vendor_tab == 1:
+			empty_lbl.text = "\nNenhum item na aba Recomprar.\nQuando você vender um item, poderá recuperá-lo aqui pelo mesmo valor!"
+		elif _active_vendor_tab == 2:
+			empty_lbl.text = "\nNenhum item correspondente na sua Mochila para vender."
+		else:
+			empty_lbl.text = "\nNenhum item encontrado com os filtros selecionados."
+		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_lbl.add_theme_font_size_override("font_size", 13)
+		empty_lbl.add_theme_color_override("font_color", COLOR_MUTED)
+		_vendor_list_vbox.add_child(empty_lbl)
 	else:
-		btn.add_theme_color_override("font_color", COLOR_MUTED)
+		var start_idx: int = _current_page * ITEMS_PER_PAGE
+		var end_idx: int = mini(filtered_entries.size(), start_idx + ITEMS_PER_PAGE)
+		for i in range(start_idx, end_idx):
+			var entry: Dictionary = filtered_entries[i]
+			_vendor_list_vbox.add_child(_make_standardized_item_row(entry))
 
-	var st := StyleBoxFlat.new()
-	st.bg_color = Color(0.18, 0.14, 0.08, 0.98) if is_active else Color(0.08, 0.075, 0.095, 0.92)
-	st.border_color = COLOR_GOLD_TITLE if is_active else (Color(0.38, 0.68, 0.44, 0.85) if has_items_highlight else Color(0.32, 0.28, 0.22, 0.75))
-	st.set_border_width_all(2 if is_active else 1)
-	st.set_corner_radius_all(4)
-	var hov := st.duplicate() as StyleBoxFlat
-	hov.bg_color = st.bg_color.lightened(0.12)
-	hov.border_color = COLOR_GOLD_TITLE
-	btn.add_theme_stylebox_override("normal", st)
-	btn.add_theme_stylebox_override("hover", hov)
-	btn.add_theme_stylebox_override("pressed", st)
-	return btn
+	_rebuild_vendor_inspector()
 
 
-func _make_buyback_item_row(entry: Dictionary) -> PanelContainer:
-	var item: ItemInstance = entry.get("item", null) as ItemInstance
-	var sold_price: int = int(entry.get("price", 5))
+func _make_standardized_item_row(entry: Dictionary) -> PanelContainer:
+	var item: ItemInstance = entry["item"] as ItemInstance
+	var price: int = int(entry["price"])
+	var mode: String = String(entry["mode"])
+	var is_selected: bool = (item == _selected_vendor_item)
 
 	var row := PanelContainer.new()
+	row.custom_minimum_size = Vector2(0, 52)
 	row.mouse_filter = Control.MOUSE_FILTER_STOP
+	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+
 	var st := StyleBoxFlat.new()
-	st.bg_color = Color(0.07, 0.095, 0.08, 0.95)
-	st.border_color = item.get_rarity_color().darkened(0.15)
-	st.set_border_width_all(1)
-	st.set_corner_radius_all(3)
-	st.content_margin_left = 10
-	st.content_margin_right = 10
-	st.content_margin_top = 6
-	st.content_margin_bottom = 6
+	if is_selected:
+		st.bg_color = Color(0.18, 0.14, 0.08, 0.98)
+		st.border_color = COLOR_GOLD_BRIGHT
+		st.set_border_width_all(2)
+		st.shadow_color = Color(0.95, 0.75, 0.25, 0.22)
+		st.shadow_size = 6
+	else:
+		st.bg_color = Color(0.085, 0.078, 0.098, 0.95)
+		st.border_color = Color(0.32, 0.26, 0.18, 0.85)
+		st.set_border_width_all(1)
+	st.set_corner_radius_all(4)
+	st.content_margin_left = 8
+	st.content_margin_right = 8
+	st.content_margin_top = 4
+	st.content_margin_bottom = 4
 	row.add_theme_stylebox_override("panel", st)
 
-	var price_line: String = "↩ Valor de Recompra: [color=#4dff6b]%d Ouro (Mesmo valor da venda)[/color]" % sold_price
+	row.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			_selected_vendor_item = item
+			if mode == "buyback":
+				_selected_buyback_entry = entry.get("raw", {})
+			_refresh_vendor_catalog_and_inspector()
+	)
+	var price_label_str: String = "🪙 Preço: [color=#f5d168]%d Ouro[/color]" % price
 	row.mouse_entered.connect(func() -> void:
-		_show_item_tooltip(item, "[Clique em Recomprar pelo valor exato de venda]", price_line)
+		_show_item_tooltip(item, "[Clique para inspecionar ou comprar]", price_label_str)
 	)
 	row.mouse_exited.connect(_hide_tooltip)
 
@@ -628,28 +985,39 @@ func _make_buyback_item_row(entry: Dictionary) -> PanelContainer:
 	hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(hb)
 
+	# 1. Ícone emoldurado (42x42) com fundo roxo/índigo escuro igual à referência
 	var icon_box := PanelContainer.new()
-	icon_box.custom_minimum_size = Vector2(44, 44)
+	icon_box.custom_minimum_size = Vector2(42, 42)
 	icon_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_box.add_theme_stylebox_override("panel", _slot_style(Color(0.05, 0.04, 0.06, 0.95), item.get_rarity_color(), 1))
+	var ib_bg := Color(0.14, 0.10, 0.20, 0.96) if item.rarity != ItemInstance.ItemRarity.NORMAL else Color(0.09, 0.08, 0.12, 0.96)
+	var ib_st := _slot_style(ib_bg, item.get_rarity_color(), 1)
+	ib_st.set_corner_radius_all(3)
+	ib_st.content_margin_left = 3
+	ib_st.content_margin_right = 3
+	ib_st.content_margin_top = 3
+	ib_st.content_margin_bottom = 3
+	icon_box.add_theme_stylebox_override("panel", ib_st)
+
 	var icon_rect := TextureRect.new()
-	icon_rect.texture = ItemIconFactory.get_icon(item.definition)
+	icon_rect.texture = ItemIconFactory.get_icon_for_item(item, true)
 	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon_rect.custom_minimum_size = Vector2(38, 38)
+	icon_rect.custom_minimum_size = Vector2(36, 36)
 	icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon_box.add_child(icon_rect)
 	hb.add_child(icon_box)
 
+	# 2. Nome do Item + Linha de Atributos com ícones
 	var vb := VBoxContainer.new()
 	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vb.alignment = BoxContainer.ALIGNMENT_CENTER
 	vb.add_theme_constant_override("separation", 2)
 	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hb.add_child(vb)
 
 	var nl := Label.new()
 	nl.text = item.get_display_name()
-	nl.add_theme_font_size_override("font_size", 14)
+	nl.add_theme_font_size_override("font_size", 13)
 	nl.add_theme_color_override("font_color", item.get_rarity_color())
 	nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(nl)
@@ -662,21 +1030,371 @@ func _make_buyback_item_row(entry: Dictionary) -> PanelContainer:
 	dl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(dl)
 
-	var can_afford: bool = current_gold >= sold_price
-	var buyback_btn := _make_gothic_button("🪙 %d Ouro\n[Recomprar]" % sold_price, not can_afford)
-	buyback_btn.custom_minimum_size = Vector2(110, 42)
-	buyback_btn.add_theme_font_size_override("font_size", 12)
-	buyback_btn.disabled = not can_afford
-	buyback_btn.mouse_entered.connect(func() -> void:
-		_show_item_tooltip(item, "[Clique para Recomprar por %d Ouro]" % sold_price, price_line)
+	# 3. Botão Duplo Direita ("🪙 65 Ouro / Comprar")
+	var action_word: String = "Comprar"
+	var can_act: bool = current_gold >= price
+	if mode == "buyback":
+		action_word = "Recomprar"
+	elif mode == "sell":
+		action_word = "Vender"
+		can_act = true
+
+	var act_btn := Button.new()
+	act_btn.text = "🪙 %d Ouro\n%s" % [price, action_word]
+	act_btn.custom_minimum_size = Vector2(96, 40)
+	act_btn.focus_mode = Control.FOCUS_NONE
+	act_btn.disabled = not can_act
+	act_btn.add_theme_font_size_override("font_size", 11)
+	act_btn.add_theme_color_override("font_color", Color(0.98, 0.90, 0.65) if can_act else Color(0.65, 0.45, 0.45))
+
+	var ab_st := StyleBoxFlat.new()
+	ab_st.bg_color = Color(0.14, 0.11, 0.07, 0.96) if can_act else Color(0.14, 0.08, 0.08, 0.90)
+	ab_st.border_color = COLOR_BRONZE_BORDER if can_act else Color(0.45, 0.22, 0.22, 0.8)
+	ab_st.set_border_width_all(1)
+	ab_st.set_corner_radius_all(3)
+	var ab_hov := ab_st.duplicate() as StyleBoxFlat
+	ab_hov.bg_color = ab_st.bg_color.lightened(0.14)
+	ab_hov.border_color = COLOR_GOLD_BRIGHT
+	act_btn.add_theme_stylebox_override("normal", ab_st)
+	act_btn.add_theme_stylebox_override("hover", ab_hov)
+	act_btn.add_theme_stylebox_override("pressed", ab_hov)
+
+	act_btn.pressed.connect(func() -> void:
+		_selected_vendor_item = item
+		_execute_vendor_entry_action(entry)
 	)
-	buyback_btn.mouse_exited.connect(_hide_tooltip)
-	buyback_btn.pressed.connect(func() -> void:
-		_attempt_buyback_item(entry)
-	)
-	hb.add_child(buyback_btn)
+	hb.add_child(act_btn)
 
 	return row
+
+
+func _execute_vendor_entry_action(entry: Dictionary) -> void:
+	var item: ItemInstance = entry.get("item", null) as ItemInstance
+	var mode: String = String(entry.get("mode", "buy"))
+	if item == null:
+		return
+	if mode == "buy":
+		var stock_arr: Array[ItemInstance] = entry.get("stock", _blacksmith_stock)
+		_attempt_buy_item(item, stock_arr)
+	elif mode == "buyback":
+		var raw_entry: Dictionary = entry.get("raw", {})
+		_attempt_buyback_item(raw_entry)
+	elif mode == "sell":
+		_attempt_sell_backpack_item(item)
+
+
+func _attempt_sell_backpack_item(item: ItemInstance) -> void:
+	if item == null or backpack == null or not backpack.items.has(item):
+		return
+	var sell_val: int = item.get_sell_value()
+	var nm: String = item.get_display_name()
+	_hide_tooltip()
+	backpack.remove_item(item)
+	register_sold_item(item, sell_val)
+	current_gold += sell_val
+	gold_changed.emit(current_gold)
+	_refresh_vendor_catalog_and_inspector()
+	show_feedback("✦ Vendido: %s por +%d Ouro! (Disponível em 🔄 Recomprar)" % [nm, sell_val], false)
+
+
+func _rebuild_vendor_inspector() -> void:
+	if _vendor_inspector_box == null:
+		return
+	for child in _vendor_inspector_box.get_children():
+		_vendor_inspector_box.remove_child(child)
+		child.queue_free()
+
+	if _selected_vendor_item == null or _selected_vendor_item.definition == null:
+		var empty_info := Label.new()
+		empty_info.text = "\n\nSelecione um item na lista ao lado para inspecionar seus detalhes, tier e comparação."
+		empty_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_info.add_theme_font_size_override("font_size", 12)
+		empty_info.add_theme_color_override("font_color", COLOR_MUTED)
+		_vendor_inspector_box.add_child(empty_info)
+		return
+
+	var item: ItemInstance = _selected_vendor_item
+	var def: ItemDefinition = item.definition
+
+	# 1. Vitrine Grande Superior (200x132) com fundo nebulosa roxo-escuro e moldura dourada
+	var showcase := PanelContainer.new()
+	showcase.custom_minimum_size = Vector2(200, 134)
+	var sc_st := _slot_style(Color(0.085, 0.055, 0.125, 0.98), COLOR_BRONZE_BORDER, 1)
+	sc_st.set_corner_radius_all(4)
+	sc_st.content_margin_left = 10
+	sc_st.content_margin_right = 10
+	sc_st.content_margin_top = 8
+	sc_st.content_margin_bottom = 8
+	showcase.add_theme_stylebox_override("panel", sc_st)
+	_vendor_inspector_box.add_child(showcase)
+
+	var big_icon := TextureRect.new()
+	big_icon.texture = ItemIconFactory.get_icon_for_item(item, false)
+	big_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	big_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	big_icon.custom_minimum_size = Vector2(180, 114)
+	showcase.add_child(big_icon)
+
+	# 2. Nome do Item em Destaque
+	var title_lbl := Label.new()
+	title_lbl.text = item.get_display_name()
+	title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_lbl.add_theme_font_size_override("font_size", 15)
+	title_lbl.add_theme_color_override("font_color", item.get_rarity_color())
+	_vendor_inspector_box.add_child(title_lbl)
+
+	# 3. Subtítulo da Categoria + Badge de Tier [T1 / T2 / T3]
+	var sub_row := HBoxContainer.new()
+	sub_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_vendor_inspector_box.add_child(sub_row)
+
+	var cat_lbl := Label.new()
+	cat_lbl.text = item.get_slot_display_name()
+	cat_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cat_lbl.add_theme_font_size_override("font_size", 12)
+	cat_lbl.add_theme_color_override("font_color", COLOR_MUTED)
+	sub_row.add_child(cat_lbl)
+
+	var tier_badge := PanelContainer.new()
+	var tb_st := _slot_style(Color(0.12, 0.10, 0.14, 0.96), COLOR_BRONZE_BORDER, 1)
+	tb_st.set_corner_radius_all(3)
+	tb_st.content_margin_left = 6
+	tb_st.content_margin_right = 6
+	tb_st.content_margin_top = 1
+	tb_st.content_margin_bottom = 1
+	tier_badge.add_theme_stylebox_override("panel", tb_st)
+	var tier_lbl := Label.new()
+	tier_lbl.text = "T%d" % clampi(item.item_level, 1, 3)
+	tier_lbl.add_theme_font_size_override("font_size", 11)
+	tier_lbl.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	tier_badge.add_child(tier_lbl)
+	sub_row.add_child(tier_badge)
+
+	var sep1 := HSeparator.new()
+	sep1.add_theme_color_override("separator", COLOR_BORDER_SUBTLE)
+	_vendor_inspector_box.add_child(sep1)
+
+	# 4. Atributo Principal Alinhado (Esquerda: Ícone + Nome | Direita: Valor)
+	if def.category == ItemDefinition.ItemCategory.WEAPON_1H or def.category == ItemDefinition.ItemCategory.WEAPON_2H:
+		var dmg: Vector2i = item.get_damage_range()
+		_add_inspector_stat_row("⚔  Dano", "%d – %d" % [dmg.x, dmg.y])
+	elif item.get_total_armor() > 0:
+		_add_inspector_stat_row("🛡  Armadura", "%d" % item.get_total_armor())
+	elif def.base_health > 0:
+		_add_inspector_stat_row("♥  Vida", "+%d" % def.base_health)
+
+	for af in item.explicit_affixes:
+		if af != null:
+			var af_lbl := Label.new()
+			af_lbl.text = "• " + af.display_text
+			af_lbl.add_theme_font_size_override("font_size", 11)
+			af_lbl.add_theme_color_override("font_color", Color(0.45, 0.74, 0.96))
+			_vendor_inspector_box.add_child(af_lbl)
+
+	var sep2 := HSeparator.new()
+	sep2.add_theme_color_override("separator", COLOR_BORDER_SUBTLE)
+	_vendor_inspector_box.add_child(sep2)
+
+	# 5. Descrição Temática (Lore)
+	var lore_lbl := Label.new()
+	lore_lbl.text = item.get_lore_description()
+	lore_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lore_lbl.add_theme_font_size_override("font_size", 11)
+	lore_lbl.add_theme_color_override("font_color", Color(0.68, 0.63, 0.56))
+	_vendor_inspector_box.add_child(lore_lbl)
+
+	_vendor_inspector_box.add_spacer(false)
+
+	# 6. Botão Principal Dourado no Rodapé ("🪙 Comprar por 65 Ouro")
+	var price: int = item.get_buy_price()
+	var btn_caption: String = "🪙  Comprar por %d Ouro" % price
+	var can_afford: bool = current_gold >= price
+
+	if _active_vendor_tab == 1:
+		price = int(_selected_buyback_entry.get("price", item.get_sell_value()))
+		btn_caption = "🪙  Recomprar por %d Ouro" % price
+		can_afford = current_gold >= price
+	elif _active_vendor_tab == 2:
+		price = item.get_sell_value()
+		btn_caption = "🪙  Vender por %d Ouro" % price
+		can_afford = true
+
+	var main_buy_btn := Button.new()
+	main_buy_btn.text = btn_caption
+	main_buy_btn.custom_minimum_size = Vector2(0, 40)
+	main_buy_btn.focus_mode = Control.FOCUS_NONE
+	main_buy_btn.disabled = not can_afford
+	main_buy_btn.add_theme_font_size_override("font_size", 13)
+	main_buy_btn.add_theme_color_override("font_color", Color(1.0, 0.94, 0.76) if can_afford else Color(0.65, 0.45, 0.45))
+
+	var mb_st := StyleBoxFlat.new()
+	mb_st.bg_color = Color(0.28, 0.19, 0.08, 0.98) if can_afford else Color(0.16, 0.09, 0.09, 0.92)
+	mb_st.border_color = COLOR_GOLD_BRIGHT if can_afford else Color(0.45, 0.22, 0.22, 0.8)
+	mb_st.set_border_width_all(2)
+	mb_st.set_corner_radius_all(4)
+	var mb_hov := mb_st.duplicate() as StyleBoxFlat
+	mb_hov.bg_color = mb_st.bg_color.lightened(0.14)
+	main_buy_btn.add_theme_stylebox_override("normal", mb_st)
+	main_buy_btn.add_theme_stylebox_override("hover", mb_hov)
+	main_buy_btn.add_theme_stylebox_override("pressed", mb_hov)
+
+	main_buy_btn.pressed.connect(func() -> void:
+		if _active_vendor_tab == 0:
+			var stock_arr: Array[ItemInstance] = _blacksmith_stock if current_station_id == "vendor_physical" else _arcanist_stock
+			_attempt_buy_item(item, stock_arr)
+		elif _active_vendor_tab == 1:
+			_attempt_buyback_item(_selected_buyback_entry)
+		elif _active_vendor_tab == 2:
+			_attempt_sell_backpack_item(item)
+	)
+	_vendor_inspector_box.add_child(main_buy_btn)
+
+
+func _add_inspector_stat_row(left_txt: String, right_txt: String) -> void:
+	var hb := HBoxContainer.new()
+	var l := Label.new()
+	l.text = left_txt
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	hb.add_child(l)
+
+	var r := Label.new()
+	r.text = right_txt
+	r.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	r.add_theme_font_size_override("font_size", 13)
+	r.add_theme_color_override("font_color", Color(1.0, 0.98, 0.92))
+	hb.add_child(r)
+	_vendor_inspector_box.add_child(hb)
+
+
+func _populate_repair_tab(is_blacksmith: bool) -> void:
+	var info_card := PanelContainer.new()
+	info_card.add_theme_stylebox_override("panel", _slot_style(Color(0.08, 0.07, 0.09, 0.95), COLOR_BRONZE_BORDER, 1))
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 10)
+	info_card.add_child(vb)
+
+	var title := Label.new()
+	title.text = "🔨  MANUTENÇÃO DE EQUIPAMENTO & BANCADA"
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	vb.add_child(title)
+
+	var desc := Label.new()
+	desc.text = "Mantenha suas armas afiadas e armaduras polidas em estado impecável (100% de integridade), ou encomende uma nova remessa de mercadorias."
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.add_theme_font_size_override("font_size", 12)
+	desc.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	vb.add_child(desc)
+
+	var repair_btn := _make_gothic_button("🔨  REPARAR TODO O EQUIPAMENTO EQUIPADO (100% INTEGRIDADE — GRÁTIS)", false)
+	repair_btn.pressed.connect(func() -> void:
+		show_feedback("✦ Todas as suas armas e armaduras equipadas foram reparadas e polidas na forja!", false)
+	)
+	vb.add_child(repair_btn)
+
+	var restock_cost: int = 15
+	var restock_btn := _make_gothic_button("🔄  ENCOMENDAR NOVA REMESSA DA LOJA (%d 🪙 Ouro)" % restock_cost, false)
+	restock_btn.disabled = current_gold < restock_cost
+	restock_btn.pressed.connect(func() -> void:
+		if current_gold < restock_cost:
+			show_feedback("⚠ Ouro insuficiente para renovar o estoque!", true)
+			return
+		current_gold -= restock_cost
+		gold_changed.emit(current_gold)
+		if is_blacksmith:
+			_blacksmith_stock = ItemDatabase.generate_blacksmith_stock(maxi(1, area_level))
+		else:
+			_arcanist_stock = ItemDatabase.generate_arcanist_stock(maxi(1, area_level))
+		_active_vendor_tab = 0
+		_current_page = 0
+		_refresh_current_station_content()
+		show_feedback("✦ Nova remessa de itens chegou à bancada!", false)
+	)
+	vb.add_child(restock_btn)
+
+	_vendor_list_vbox.add_child(info_card)
+
+
+func _make_sidebar_mode_button(icon_str: String, label_str: String, is_active: bool) -> Button:
+	var btn := Button.new()
+	btn.text = "  %s    %s" % [icon_str, label_str]
+	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	btn.custom_minimum_size = Vector2(0, 38)
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.add_theme_font_size_override("font_size", 13)
+	btn.add_theme_color_override("font_color", Color(1.0, 0.95, 0.78) if is_active else COLOR_PARCHMENT)
+
+	var st := StyleBoxFlat.new()
+	if is_active:
+		st.bg_color = Color(0.24, 0.16, 0.07, 0.98)
+		st.border_color = COLOR_GOLD_BRIGHT
+		st.set_border_width_all(2)
+	else:
+		st.bg_color = Color(0.08, 0.072, 0.09, 0.95)
+		st.border_color = COLOR_BORDER_SUBTLE
+		st.set_border_width_all(1)
+	st.set_corner_radius_all(4)
+	st.content_margin_left = 10
+	st.content_margin_right = 10
+	var hov := st.duplicate() as StyleBoxFlat
+	hov.bg_color = st.bg_color.lightened(0.12)
+	hov.border_color = COLOR_GOLD_TITLE
+	btn.add_theme_stylebox_override("normal", st)
+	btn.add_theme_stylebox_override("hover", hov)
+	btn.add_theme_stylebox_override("pressed", st)
+	return btn
+
+
+func _make_category_pill_button(text_val: String, is_active: bool) -> Button:
+	var btn := Button.new()
+	btn.text = text_val
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.custom_minimum_size = Vector2(74, 30)
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.add_theme_font_size_override("font_size", 11)
+	btn.add_theme_color_override("font_color", Color(1.0, 0.94, 0.74) if is_active else COLOR_PARCHMENT)
+
+	var st := StyleBoxFlat.new()
+	if is_active:
+		st.bg_color = Color(0.28, 0.18, 0.07, 0.98)
+		st.border_color = COLOR_GOLD_BRIGHT
+		st.set_border_width_all(2)
+	else:
+		st.bg_color = Color(0.085, 0.078, 0.098, 0.94)
+		st.border_color = COLOR_BORDER_SUBTLE
+		st.set_border_width_all(1)
+	st.set_corner_radius_all(4)
+	var hov := st.duplicate() as StyleBoxFlat
+	hov.bg_color = st.bg_color.lightened(0.12)
+	hov.border_color = COLOR_GOLD_TITLE
+	btn.add_theme_stylebox_override("normal", st)
+	btn.add_theme_stylebox_override("hover", hov)
+	btn.add_theme_stylebox_override("pressed", st)
+	return btn
+
+
+func _make_page_arrow_button(txt: String) -> Button:
+	var btn := Button.new()
+	btn.text = txt
+	btn.custom_minimum_size = Vector2(28, 26)
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.add_theme_font_size_override("font_size", 12)
+	btn.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	var st := _slot_style(Color(0.09, 0.08, 0.10, 0.95), COLOR_BRONZE_BORDER, 1)
+	st.set_corner_radius_all(3)
+	st.content_margin_left = 4
+	st.content_margin_right = 4
+	st.content_margin_top = 2
+	st.content_margin_bottom = 2
+	var hov := st.duplicate() as StyleBoxFlat
+	hov.bg_color = st.bg_color.lightened(0.15)
+	btn.add_theme_stylebox_override("normal", st)
+	btn.add_theme_stylebox_override("hover", hov)
+	btn.add_theme_stylebox_override("pressed", hov)
+	return btn
 
 
 func _attempt_buyback_item(entry: Dictionary) -> void:
@@ -688,7 +1406,8 @@ func _attempt_buyback_item(entry: Dictionary) -> void:
 		show_feedback("⚠ Ouro insuficiente para recomprar! Você precisa de %d Ouro." % sold_price, true)
 		return
 	if backpack.find_free_spot_for(item).x < 0:
-		show_feedback("⚠ Sua Mochila não tem espaço livre (%dx%d) para recomprar este item!" % [item.definition.grid_size.x, item.definition.grid_size.y], true)
+		var gsz: Vector2i = item.get_grid_size()
+		show_feedback("⚠ Sua Mochila não tem espaço livre (%dx%d) para recomprar este item!" % [gsz.x, gsz.y], true)
 		return
 
 	_hide_tooltip()
@@ -696,88 +1415,8 @@ func _attempt_buyback_item(entry: Dictionary) -> void:
 	_buyback_items.erase(entry)
 	backpack.auto_add_item(item)
 	gold_changed.emit(current_gold)
-	_refresh_current_station_content()
+	_refresh_vendor_catalog_and_inspector()
 	show_feedback("✦ Recomprado: %s pelo mesmo valor da venda (%d Ouro)!" % [item.get_display_name(), sold_price], false)
-
-
-func _make_vendor_item_row(item: ItemInstance, stock_array: Array[ItemInstance]) -> PanelContainer:
-	var row := PanelContainer.new()
-	row.mouse_filter = Control.MOUSE_FILTER_STOP
-	var st := StyleBoxFlat.new()
-	st.bg_color = Color(0.08, 0.075, 0.095, 0.95)
-	st.border_color = item.get_rarity_color().darkened(0.25)
-	st.set_border_width_all(1)
-	st.set_corner_radius_all(3)
-	st.content_margin_left = 10
-	st.content_margin_right = 10
-	st.content_margin_top = 6
-	st.content_margin_bottom = 6
-	row.add_theme_stylebox_override("panel", st)
-
-	var price: int = item.get_buy_price()
-	var price_line: String = "🪙 Preço de Compra: [color=#f5d168]%d Ouro[/color]" % price
-	row.mouse_entered.connect(func() -> void:
-		_show_item_tooltip(item, "[Clique em Comprar para adquirir este item]", price_line)
-	)
-	row.mouse_exited.connect(_hide_tooltip)
-
-	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 10)
-	hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(hb)
-
-	# Moldura do Ícone
-	var icon_box := PanelContainer.new()
-	icon_box.custom_minimum_size = Vector2(44, 44)
-	icon_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_box.add_theme_stylebox_override("panel", _slot_style(Color(0.05, 0.04, 0.06, 0.95), item.get_rarity_color(), 1))
-	var icon_rect := TextureRect.new()
-	icon_rect.texture = ItemIconFactory.get_icon(item.definition)
-	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon_rect.custom_minimum_size = Vector2(38, 38)
-	icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_box.add_child(icon_rect)
-	hb.add_child(icon_box)
-
-	# Nome + Resumo de Atributos
-	var vb := VBoxContainer.new()
-	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vb.add_theme_constant_override("separation", 2)
-	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hb.add_child(vb)
-
-	var nl := Label.new()
-	nl.text = item.get_display_name()
-	nl.add_theme_font_size_override("font_size", 14)
-	nl.add_theme_color_override("font_color", item.get_rarity_color())
-	nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vb.add_child(nl)
-
-	var dl := Label.new()
-	dl.text = _build_short_item_summary(item)
-	dl.add_theme_font_size_override("font_size", 11)
-	dl.add_theme_color_override("font_color", COLOR_PARCHMENT)
-	dl.clip_text = true
-	dl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vb.add_child(dl)
-
-	# Botão de Compra
-	var can_afford: bool = current_gold >= price
-	var buy_btn := _make_gothic_button("🪙 %d Ouro\n[Comprar]" % price, not can_afford)
-	buy_btn.custom_minimum_size = Vector2(106, 42)
-	buy_btn.add_theme_font_size_override("font_size", 12)
-	buy_btn.disabled = not can_afford
-	buy_btn.mouse_entered.connect(func() -> void:
-		_show_item_tooltip(item, "[Clique para Comprar por %d Ouro]" % price, price_line)
-	)
-	buy_btn.mouse_exited.connect(_hide_tooltip)
-	buy_btn.pressed.connect(func() -> void:
-		_attempt_buy_item(item, stock_array)
-	)
-	hb.add_child(buy_btn)
-
-	return row
 
 
 func _build_short_item_summary(item: ItemInstance) -> String:
@@ -785,15 +1424,15 @@ func _build_short_item_summary(item: ItemInstance) -> String:
 	var parts: Array[String] = []
 	if def.category == ItemDefinition.ItemCategory.WEAPON_1H or def.category == ItemDefinition.ItemCategory.WEAPON_2H:
 		var dmg: Vector2i = item.get_damage_range()
-		parts.append("⚔ Dano %d-%d" % [dmg.x, dmg.y])
+		parts.append("⚔ Dano %d – %d" % [dmg.x, dmg.y])
 	if item.get_total_armor() > 0:
-		parts.append("🛡️ Armadura %d" % item.get_total_armor())
+		parts.append("🛡 Armadura %d" % item.get_total_armor())
 	if def.base_health > 0:
-		parts.append("♥ +%d Vida" % def.base_health)
+		parts.append("💙 +%d Vida" % def.base_health)
 	for af in item.explicit_affixes:
 		if af != null:
 			parts.append(af.display_text)
-	return "  |  ".join(parts)
+	return "   |   ".join(parts)
 
 
 func _attempt_buy_item(item: ItemInstance, stock_array: Array[ItemInstance]) -> void:
@@ -812,7 +1451,8 @@ func _attempt_buy_item(item: ItemInstance, stock_array: Array[ItemInstance]) -> 
 		item_to_give.identify()
 
 	if backpack.find_free_spot_for(item_to_give).x < 0:
-		show_feedback("⚠ Sua Mochila não tem espaço livre (%dx%d) para este item!" % [item_to_give.definition.grid_size.x, item_to_give.definition.grid_size.y], true)
+		var gsz: Vector2i = item_to_give.get_grid_size()
+		show_feedback("⚠ Sua Mochila não tem espaço livre (%dx%d) para este item!" % [gsz.x, gsz.y], true)
 		return
 
 	current_gold -= price
@@ -820,7 +1460,7 @@ func _attempt_buy_item(item: ItemInstance, stock_array: Array[ItemInstance]) -> 
 	if not is_consumable:
 		stock_array.erase(item)
 	gold_changed.emit(current_gold)
-	_refresh_current_station_content()
+	_refresh_vendor_catalog_and_inspector()
 	show_feedback("✦ Comprado: %s (-%d Ouro)!" % [item_to_give.get_display_name(), price], false)
 
 
@@ -828,7 +1468,7 @@ func _attempt_buy_item(item: ItemInstance, stock_array: Array[ItemInstance]) -> 
 # 3. SÁBIO IDENTIFICADOR, CURANDEIRO & RESET DE BUILD
 # ===============================================================
 func _populate_identifier_respec() -> void:
-	_title_label.text = "📜 SÁBIO ANCESTRAL — IDENTIFICAR, CURAR & RESETAR"
+	_title_label.text = "📜  SÁBIO ANCESTRAL — IDENTIFICAR, CURAR & RESETAR"
 	_subtitle_label.text = "\"Fique um instante e escute... Posso revelar o poder oculto das suas relíquias, curar suas feridas ou purificar seus atributos.\""
 
 	var unid_count: int = 0
@@ -879,7 +1519,7 @@ func _populate_identifier_respec() -> void:
 # 4. WAYPOINT ANCESTRAL — TELEPORTE DE ZONAS
 # ===============================================================
 func _populate_waypoint() -> void:
-	_title_label.text = "✦ WAYPOINT ANCESTRAL — TELEPORTE"
+	_title_label.text = "✦  WAYPOINT ANCESTRAL — TELEPORTE"
 	_subtitle_label.text = "Selecione uma Zona descoberta do Ato 1 para viajar instantaneamente:"
 
 	var all_zones := [

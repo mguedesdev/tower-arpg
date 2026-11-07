@@ -215,6 +215,37 @@ func get_slot_display_name() -> String:
 	return "Equipamento"
 
 
+func get_lore_description() -> String:
+	if definition == null:
+		return "Relíquia forjada nas profundezas de Velen."
+	match definition.category:
+		ItemDefinition.ItemCategory.WEAPON_2H:
+			return "Uma lâmina robusta, feita para atingir com força devastadora."
+		ItemDefinition.ItemCategory.WEAPON_1H:
+			if definition.base_id.contains("dagger"):
+				return "Leve e silenciosa, ideal para golpes rápidos nos pontos vitais."
+			return "Equilíbrio preciso entre alcance, velocidade e poder de corte."
+		ItemDefinition.ItemCategory.SHIELD:
+			return "Bastião temperado em forja ardente para suportar os golpes mais brutais."
+		ItemDefinition.ItemCategory.CHEST:
+			return "Placas sobrepostas que protegem o coração contra as garras da Cripta."
+		ItemDefinition.ItemCategory.HELMET:
+			return "Forjado em ferro maciço para guardar a mente em meio ao caos."
+		ItemDefinition.ItemCategory.GLOVES:
+			return "Manoplas articuladas que oferecem firmeza implacável ao empunhar armas."
+		ItemDefinition.ItemCategory.BOOTS:
+			return "Grevas reforçadas para marchar firme sobre terrenos amaldiçoados."
+		ItemDefinition.ItemCategory.BELT:
+			return "Couro curtido com fivela pesada de bronze para sustentar o equipamento."
+		ItemDefinition.ItemCategory.RING:
+			return "Um aro ancestral cuja gema pulsa com o vigor dos antigos guerreiros."
+		ItemDefinition.ItemCategory.AMULET:
+			return "Talismã encantado que aguça os sentidos e guia os passos na escuridão."
+		ItemDefinition.ItemCategory.CONSUMABLE:
+			return "Elixir alquímico puro que restaura o vigor vital instantaneamente."
+	return "Equipamento temperado para enfrentar os horrores do Primeiro Ato."
+
+
 func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = null, action_hint: String = "", custom_price_line: String = "") -> String:
 	if definition == null:
 		return ""
