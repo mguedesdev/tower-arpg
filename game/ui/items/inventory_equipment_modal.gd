@@ -11,15 +11,16 @@ signal closed()
 signal item_context_action_requested(item: ItemInstance)
 signal potion_consumed(heal_amount: int)
 
-const BG_COLOR := Color(0.055, 0.048, 0.058, 0.98)
-const PANEL_INNER_BG := Color(0.075, 0.065, 0.08, 0.96)
-const BORDER_COLOR := Color(0.68, 0.52, 0.26, 0.96)
-const BORDER_SUBTLE := Color(0.42, 0.33, 0.19, 0.85)
-const GOLD_COLOR := Color(0.94, 0.79, 0.44)
-const TEXT_COLOR := Color(0.93, 0.89, 0.82)
-const MUTED_LABEL := Color(0.68, 0.60, 0.50)
+const BG_COLOR := Color(0.055, 0.042, 0.052, 0.98)
+const PANEL_INNER_BG := Color(0.075, 0.060, 0.075, 0.96)
+const BORDER_COLOR := Color(0.74, 0.56, 0.26, 0.98)
+const BORDER_SUBTLE := Color(0.42, 0.31, 0.18, 0.85)
+const GOLD_COLOR := Color(0.96, 0.82, 0.46)
+const TEXT_COLOR := Color(0.94, 0.90, 0.82)
+const MUTED_LABEL := Color(0.74, 0.65, 0.54)
 const RED_ALERT := Color(0.95, 0.28, 0.28)
-const CELL_SIZE := 39
+const CELL_SIZE := 38
+const EQUIP_BACKDROP_PATH := "res://assets/ui/inventory_equip_backdrop.png"
 
 var inventory: SpatialInventoryGrid
 var equipment: CharacterEquipment
@@ -52,14 +53,12 @@ var _grid_container: Control
 var _paperdoll_slots: Dictionary = {}    ## EquipmentSlot -> Panel
 var _silhouette_cache: Dictionary = {}   ## EquipmentSlot -> Texture2D
 
-# Labels de Status Básico (Tabela 2 colunas fiel à referência)
+# Labels de Atributos Principais e Vida/Mana (Vertical enxuto: Vida, Mana, Força, Agilidade, Inteligência e Ouro)
 var _stat_val_hp: Label
-var _stat_val_dmg: Label
-var _stat_val_crit: Label
 var _stat_val_mana: Label
-var _stat_val_armor: Label
-var _stat_val_speed: Label
-var _stat_attributes_footer: Label
+var _stat_val_str: Label
+var _stat_val_agi: Label
+var _stat_val_int: Label
 
 # Tooltip flutuante
 var _tooltip_panel: PanelContainer
@@ -111,7 +110,7 @@ func set_partner_station(station_id: String) -> void:
 
 func get_window_size() -> Vector2:
 	if _window_panel == null:
-		return Vector2(690, 540)
+		return Vector2(416, 682)
 	_window_panel.reset_size()
 	var sz: Vector2 = _window_panel.size
 	if sz.x < 100.0:
@@ -237,54 +236,59 @@ func _on_viewport_size_changed() -> void:
 
 
 func _center_window_on_screen() -> void:
-	if _window_panel == null or not active_partner_station.is_empty():
+	dock_on_right_side()
+
+
+func dock_on_right_side() -> void:
+	if _window_panel == null:
 		return
 	var sz: Vector2 = get_window_size()
 	var vp: Vector2 = get_viewport_rect().size
 	if vp.x > 100.0 and vp.y > 100.0:
 		_window_panel.position = Vector2(
-			maxf(10.0, (vp.x - sz.x) * 0.5),
-			maxf(10.0, (vp.y - sz.y) * 0.45)
+			maxf(10.0, vp.x - sz.x - 14.0),
+			maxf(8.0, (vp.y - sz.y) * 0.5)
 		)
 
 
 func _build_ui() -> void:
-	# Moldura Principal Dourada Gótica
+	# Moldura Principal Vertical Dourada Gótica (ancorada à direita da tela)
 	_window_panel = PanelContainer.new()
 	_window_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_window_panel.custom_minimum_size = Vector2(412, 676)
 	var root_style := StyleBoxFlat.new()
 	root_style.bg_color = BG_COLOR
 	root_style.border_color = BORDER_COLOR
 	root_style.set_border_width_all(3)
-	root_style.set_corner_radius_all(8)
-	root_style.shadow_color = Color(0, 0, 0, 0.82)
-	root_style.shadow_size = 16
-	root_style.content_margin_left = 18
-	root_style.content_margin_right = 18
-	root_style.content_margin_top = 12
-	root_style.content_margin_bottom = 14
+	root_style.set_corner_radius_all(10)
+	root_style.shadow_color = Color(0, 0, 0, 0.86)
+	root_style.shadow_size = 18
+	root_style.content_margin_left = 12
+	root_style.content_margin_right = 12
+	root_style.content_margin_top = 8
+	root_style.content_margin_bottom = 10
 	_window_panel.add_theme_stylebox_override("panel", root_style)
 	add_child(_window_panel)
 
 	var main_vbox := VBoxContainer.new()
-	main_vbox.add_theme_constant_override("separation", 8)
+	main_vbox.add_theme_constant_override("separation", 6)
 	_window_panel.add_child(main_vbox)
 
-	# 1. CABEÇALHO SUPERIOR CENTRALIZADO: "────── ❖ INVENTÁRIO ❖ ──────" + [X]
+	# 1. CABEÇALHO SUPERIOR: "🪙 405" (Esquerda) | "── ❖ INVENTÁRIO ❖ ──" (Centro) | "[✕]" (Direita)
 	_header_bar = HBoxContainer.new()
 	_header_bar.mouse_filter = Control.MOUSE_FILTER_STOP
 	_header_bar.gui_input.connect(_on_header_gui_input)
 
 	_gold_header_label = Label.new()
 	_gold_header_label.text = "🪙 %d" % current_gold
-	_gold_header_label.custom_minimum_size = Vector2(72, 0)
-	_gold_header_label.add_theme_font_size_override("font_size", 14)
-	_gold_header_label.add_theme_color_override("font_color", Color(0.98, 0.84, 0.36))
+	_gold_header_label.custom_minimum_size = Vector2(82, 0)
+	_gold_header_label.add_theme_font_size_override("font_size", 15)
+	_gold_header_label.add_theme_color_override("font_color", Color(0.98, 0.85, 0.36))
 	_gold_header_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_header_bar.add_child(_gold_header_label)
 
 	var title := Label.new()
-	title.text = "──────────  ❖   INVENTÁRIO   ❖  ──────────"
+	title.text = "─── ❖  INVENTÁRIO  ❖ ───"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 17)
@@ -294,11 +298,11 @@ func _build_ui() -> void:
 
 	var close_btn := Button.new()
 	close_btn.text = "✕"
-	close_btn.custom_minimum_size = Vector2(30, 28)
-	close_btn.add_theme_font_size_override("font_size", 14)
+	close_btn.custom_minimum_size = Vector2(28, 26)
+	close_btn.add_theme_font_size_override("font_size", 13)
 	close_btn.add_theme_color_override("font_color", GOLD_COLOR)
 	close_btn.focus_mode = Control.FOCUS_NONE
-	var x_style := _slot_style(Color(0.12, 0.10, 0.13, 0.95), BORDER_COLOR, 1)
+	var x_style := _slot_style(Color(0.12, 0.09, 0.11, 0.96), BORDER_COLOR, 1)
 	x_style.set_corner_radius_all(4)
 	var x_hov := x_style.duplicate() as StyleBoxFlat
 	x_hov.bg_color = Color(0.35, 0.12, 0.12, 0.95)
@@ -313,56 +317,72 @@ func _build_ui() -> void:
 	h_sep.add_theme_color_override("separator", BORDER_SUBTLE)
 	main_vbox.add_child(h_sep)
 
-	# 2. CORPO DIVIDIDO: ESQUERDA (EQUIPAMENTO + STATUS BÁSICO) | DIREITA (MOCHILA 10 x 6)
-	var body_hbox := HBoxContainer.new()
-	body_hbox.add_theme_constant_override("separation", 16)
-	main_vbox.add_child(body_hbox)
-
-	# ================= COLUNA ESQUERDA =================
-	var left_vbox := VBoxContainer.new()
-	left_vbox.custom_minimum_size = Vector2(252, 0)
-	left_vbox.add_theme_constant_override("separation", 6)
-	body_hbox.add_child(left_vbox)
-
-	var doll_title := Label.new()
-	doll_title.text = "────  ❖  EQUIPAMENTO  ❖  ────"
-	doll_title.add_theme_font_size_override("font_size", 13)
-	doll_title.add_theme_color_override("font_color", GOLD_COLOR)
-	doll_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	left_vbox.add_child(doll_title)
+	# 2. PARTE SUPERIOR: EQUIPAMENTO (Com estandartes carmesim e braseiros acesos de fundo)
+	var equip_frame := PanelContainer.new()
+	var ef_style := _slot_style(Color(0.05, 0.035, 0.05, 0.98), BORDER_SUBTLE, 1)
+	ef_style.set_corner_radius_all(6)
+	ef_style.content_margin_left = 0
+	ef_style.content_margin_right = 0
+	ef_style.content_margin_top = 0
+	ef_style.content_margin_bottom = 0
+	equip_frame.add_theme_stylebox_override("panel", ef_style)
+	main_vbox.add_child(equip_frame)
 
 	var doll_root := Control.new()
-	doll_root.custom_minimum_size = Vector2(252, 298)
-	left_vbox.add_child(doll_root)
+	doll_root.custom_minimum_size = Vector2(388, 250)
+	equip_frame.add_child(doll_root)
+
+	if ResourceLoader.exists(EQUIP_BACKDROP_PATH):
+		var bg_tex := TextureRect.new()
+		bg_tex.texture = load(EQUIP_BACKDROP_PATH) as Texture2D
+		bg_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		bg_tex.stretch_mode = TextureRect.STRETCH_SCALE
+		bg_tex.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		bg_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		doll_root.add_child(bg_tex)
+
 	_build_paperdoll(doll_root)
 
-	# Card de STATUS BÁSICO (Fiel à imagem de referência: placa superior + 2 colunas com divisórias)
-	_build_basic_status_card(left_vbox)
+	# 3. FAIXA CENTRAL: ATRIBUTOS PRINCIPAIS (Apenas Vida, Mana, Força, Agilidade e Inteligência)
+	_build_basic_status_card(main_vbox)
 
-	# Divisor Vertical Dourado
-	var v_sep := VSeparator.new()
-	body_hbox.add_child(v_sep)
+	# 4. PARTE INFERIOR: MOCHILA (10 x 6) + DICAS DE RODAPÉ
+	var bag_header_hbox := HBoxContainer.new()
+	bag_header_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	main_vbox.add_child(bag_header_hbox)
 
-	# ================= COLUNA DIREITA: MOCHILA (10 x 6) =================
-	var right_vbox := VBoxContainer.new()
-	right_vbox.add_theme_constant_override("separation", 8)
-	body_hbox.add_child(right_vbox)
+	var bag_badge := PanelContainer.new()
+	var bb_style := StyleBoxFlat.new()
+	bb_style.bg_color = Color(0.09, 0.068, 0.085, 0.98)
+	bb_style.border_color = BORDER_COLOR
+	bb_style.set_border_width_all(1)
+	bb_style.set_corner_radius_all(4)
+	bb_style.content_margin_left = 14
+	bb_style.content_margin_right = 14
+	bb_style.content_margin_top = 2
+	bb_style.content_margin_bottom = 2
+	bag_badge.add_theme_stylebox_override("panel", bb_style)
+	bag_header_hbox.add_child(bag_badge)
 
 	_mochila_title_label = Label.new()
-	_mochila_title_label.text = "🎒  MOCHILA (10 x 6)"
-	_mochila_title_label.add_theme_font_size_override("font_size", 14)
+	_mochila_title_label.text = "🎒  MOCHILA (10 × 6)"
+	_mochila_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mochila_title_label.add_theme_font_size_override("font_size", 13)
 	_mochila_title_label.add_theme_color_override("font_color", GOLD_COLOR)
-	right_vbox.add_child(_mochila_title_label)
+	bag_badge.add_child(_mochila_title_label)
+
+	var grid_center := CenterContainer.new()
+	main_vbox.add_child(grid_center)
 
 	var grid_frame := PanelContainer.new()
-	var gf_style := _slot_style(Color(0.04, 0.035, 0.045, 0.98), BORDER_COLOR, 2)
-	gf_style.set_corner_radius_all(4)
+	var gf_style := _slot_style(Color(0.04, 0.032, 0.042, 0.98), BORDER_COLOR, 2)
+	gf_style.set_corner_radius_all(5)
 	gf_style.content_margin_left = 4
 	gf_style.content_margin_right = 4
 	gf_style.content_margin_top = 4
 	gf_style.content_margin_bottom = 4
 	grid_frame.add_theme_stylebox_override("panel", gf_style)
-	right_vbox.add_child(grid_frame)
+	grid_center.add_child(grid_frame)
 
 	_grid_container = Control.new()
 	_grid_container.custom_minimum_size = Vector2(10 * CELL_SIZE, 6 * CELL_SIZE)
@@ -372,8 +392,8 @@ func _build_ui() -> void:
 
 	_hint_label = Label.new()
 	_hint_label.add_theme_font_size_override("font_size", 11)
-	_hint_label.add_theme_color_override("font_color", Color(0.75, 0.70, 0.62))
-	right_vbox.add_child(_hint_label)
+	_hint_label.add_theme_color_override("font_color", Color(0.82, 0.75, 0.64))
+	main_vbox.add_child(_hint_label)
 	_update_hint_label()
 
 	# Preview flutuante do item seguro na mão (top_level = true)
@@ -414,28 +434,15 @@ func _build_ui() -> void:
 
 
 func _build_basic_status_card(parent_vbox: VBoxContainer) -> void:
-	# Placa de título "STATUS BÁSICO" emoldurada
-	var header_badge := PanelContainer.new()
-	var hb_style := StyleBoxFlat.new()
-	hb_style.bg_color = Color(0.09, 0.075, 0.09, 0.98)
-	hb_style.border_color = BORDER_COLOR
-	hb_style.set_border_width_all(1)
-	hb_style.set_corner_radius_all(4)
-	hb_style.content_margin_left = 12
-	hb_style.content_margin_right = 12
-	hb_style.content_margin_top = 3
-	hb_style.content_margin_bottom = 3
-	header_badge.add_theme_stylebox_override("panel", hb_style)
+	# Título "─── ◆ ATRIBUTOS PRINCIPAIS ◆ ───" fiel à referência
+	var attr_title := Label.new()
+	attr_title.text = "──────  ◆  ATRIBUTOS PRINCIPAIS  ◆  ──────"
+	attr_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	attr_title.add_theme_font_size_override("font_size", 12)
+	attr_title.add_theme_color_override("font_color", GOLD_COLOR)
+	parent_vbox.add_child(attr_title)
 
-	var badge_lbl := Label.new()
-	badge_lbl.text = "❖   STATUS BÁSICO   ❖"
-	badge_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	badge_lbl.add_theme_font_size_override("font_size", 12)
-	badge_lbl.add_theme_color_override("font_color", GOLD_COLOR)
-	header_badge.add_child(badge_lbl)
-	parent_vbox.add_child(header_badge)
-
-	# Quadro de Status em 2 Colunas (Vida/Dano/Crítico | Mana/Armadura/Velocidade)
+	# Painel enxuto exibindo APENAS: Vida, Mana, Força, Agilidade (Dex) e Inteligência (Int)
 	var stats_card := PanelContainer.new()
 	var sc_style := StyleBoxFlat.new()
 	sc_style.bg_color = PANEL_INNER_BG
@@ -444,87 +451,71 @@ func _build_basic_status_card(parent_vbox: VBoxContainer) -> void:
 	sc_style.set_corner_radius_all(5)
 	sc_style.content_margin_left = 10
 	sc_style.content_margin_right = 10
-	sc_style.content_margin_top = 8
-	sc_style.content_margin_bottom = 8
+	sc_style.content_margin_top = 6
+	sc_style.content_margin_bottom = 6
 	stats_card.add_theme_stylebox_override("panel", sc_style)
 	parent_vbox.add_child(stats_card)
 
 	var card_vbox := VBoxContainer.new()
-	card_vbox.add_theme_constant_override("separation", 6)
+	card_vbox.add_theme_constant_override("separation", 4)
 	stats_card.add_child(card_vbox)
 
-	var cols_hbox := HBoxContainer.new()
-	cols_hbox.add_theme_constant_override("separation", 8)
-	card_vbox.add_child(cols_hbox)
+	# Linha 1: Vida & Mana
+	var vitals_hbox := HBoxContainer.new()
+	vitals_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vitals_hbox.add_theme_constant_override("separation", 10)
+	card_vbox.add_child(vitals_hbox)
 
-	# Coluna Esquerda: Vida, Dano, Crítico
-	var col_left := VBoxContainer.new()
-	col_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col_left.add_theme_constant_override("separation", 4)
-	cols_hbox.add_child(col_left)
-
-	_stat_val_hp = _add_stat_row(col_left, "❤️", "Vida", "100")
-	col_left.add_child(_make_thin_sep())
-	_stat_val_dmg = _add_stat_row(col_left, "⚔️", "Dano", "14")
-	col_left.add_child(_make_thin_sep())
-	_stat_val_crit = _add_stat_row(col_left, "💥", "Crítico", "5%")
-
-	# Divisor central vertical
-	var mid_sep := VSeparator.new()
-	cols_hbox.add_child(mid_sep)
-
-	# Coluna Direita: Mana, Armadura, Velocidade
-	var col_right := VBoxContainer.new()
-	col_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col_right.add_theme_constant_override("separation", 4)
-	cols_hbox.add_child(col_right)
-
-	_stat_val_mana = _add_stat_row(col_right, "💧", "Mana", "50")
-	col_right.add_child(_make_thin_sep())
-	_stat_val_armor = _add_stat_row(col_right, "🛡️", "Armadura", "12")
-	col_right.add_child(_make_thin_sep())
-	_stat_val_speed = _add_stat_row(col_right, "👟", "Velocidade", "6.2 m/s")
+	_stat_val_hp = _add_inline_stat_badge(vitals_hbox, "❤️", "Vida:", "100", Color(1.0, 0.48, 0.48))
+	vitals_hbox.add_child(VSeparator.new())
+	_stat_val_mana = _add_inline_stat_badge(vitals_hbox, "💧", "Mana:", "50", Color(0.45, 0.78, 1.0))
 
 	card_vbox.add_child(_make_thin_sep())
 
-	# Linha compacta de Atributos (Força / Agilidade / Inteligência)
-	_stat_attributes_footer = Label.new()
-	_stat_attributes_footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_stat_attributes_footer.add_theme_font_size_override("font_size", 11)
-	_stat_attributes_footer.add_theme_color_override("font_color", Color(0.84, 0.76, 0.62))
-	card_vbox.add_child(_stat_attributes_footer)
+	# Linha 2: Força | Agilidade | Inteligência (idêntico à imagem de referência)
+	var attr_hbox := HBoxContainer.new()
+	attr_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	attr_hbox.add_theme_constant_override("separation", 8)
+	card_vbox.add_child(attr_hbox)
+
+	_stat_val_str = _add_inline_stat_badge(attr_hbox, "💪", "Força:", "20", GOLD_COLOR)
+	attr_hbox.add_child(VSeparator.new())
+	_stat_val_agi = _add_inline_stat_badge(attr_hbox, "🪶", "Agilidade:", "14", GOLD_COLOR)
+	attr_hbox.add_child(VSeparator.new())
+	_stat_val_int = _add_inline_stat_badge(attr_hbox, "📖", "Inteligência:", "10", GOLD_COLOR)
 
 
-func _add_stat_row(parent_col: VBoxContainer, icon_str: String, label_str: String, default_val: String) -> Label:
+func _add_inline_stat_badge(parent_hb: HBoxContainer, icon_str: String, label_str: String, default_val: String, val_color: Color) -> Label:
 	var hb := HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_theme_constant_override("separation", 4)
 
 	var ic := Label.new()
 	ic.text = icon_str
-	ic.add_theme_font_size_override("font_size", 11)
+	ic.add_theme_font_size_override("font_size", 12)
 	hb.add_child(ic)
 
 	var nm := Label.new()
 	nm.text = label_str
-	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nm.add_theme_font_size_override("font_size", 11)
-	nm.add_theme_color_override("font_color", Color(0.80, 0.76, 0.68))
+	nm.add_theme_color_override("font_color", TEXT_COLOR)
 	hb.add_child(nm)
 
 	var val := Label.new()
 	val.text = default_val
-	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	val.add_theme_font_size_override("font_size", 12)
-	val.add_theme_color_override("font_color", Color(0.98, 0.96, 0.92))
+	val.add_theme_font_size_override("font_size", 13)
+	val.add_theme_color_override("font_color", val_color)
 	hb.add_child(val)
 
-	parent_col.add_child(hb)
+	parent_hb.add_child(hb)
 	return val
 
 
 func _make_thin_sep() -> HSeparator:
 	var s := HSeparator.new()
 	s.add_theme_constant_override("separation", 2)
+	s.add_theme_color_override("separator", BORDER_SUBTLE)
 	return s
 
 
@@ -533,14 +524,14 @@ func _update_hint_label() -> void:
 		return
 	match active_partner_station:
 		"stash":
-			_hint_label.text = "• [Clique Direito na Mochila]: Guardar no Baú  |  [Tecla R]: Girar Item (Deitado ↔ Em Pé)\n• Passe o mouse para comparar atributos com o item equipado (▲ verde / ▼ vermelho)"
+			_hint_label.text = "◆ [Clique Direito]: Guardar no Baú   |   [Tecla R]: Girar Item\n◆ Passe o mouse sobre um item para comparar com seu equipamento atual."
 			_hint_label.add_theme_color_override("font_color", Color(0.68, 0.92, 0.72))
 		"vendor_physical", "vendor_magic":
-			_hint_label.text = "• [Clique Direito na Mochila]: Vender por 🪙 Ouro (vai para Recomprar)  |  [Tecla R]: Girar Item\n• Passe o mouse sobre um item para comparar com seu equipamento atual"
+			_hint_label.text = "◆ [Clique Direito]: Vender por 🪙 Ouro (vai para Recomprar)   |   [Tecla R]: Girar Item\n◆ Passe o mouse sobre um item para comparar com seu equipamento atual."
 			_hint_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.48))
 		_:
-			_hint_label.text = "• [Clique Esquerdo]: Mover/Equipar  |  [Clique Direito]: Equipar / Beber  |  [Tecla R]: Girar Item\n• Passe o mouse para comparar atributos (▲ ganha em verde / ▼ perde em vermelho)"
-			_hint_label.add_theme_color_override("font_color", Color(0.72, 0.68, 0.60))
+			_hint_label.text = "◆ [Clique Direito]: Equipar / Usar   |   [Tecla R]: Girar Item\n◆ Passe o mouse sobre um item para comparar com seu equipamento atual."
+			_hint_label.add_theme_color_override("font_color", Color(0.84, 0.78, 0.66))
 
 
 func _on_header_gui_input(event: InputEvent) -> void:
@@ -554,24 +545,27 @@ func _on_header_gui_input(event: InputEvent) -> void:
 
 
 # ===============================================================
-# PAPERDOLL EM CRUZ FIEL À IMAGEM DE REFERÊNCIA + SILHUETAS
+# PAPERDOLL CENTRALIZADO NO MEDALHÃO SUPERIOR FIEL À REFERÊNCIA
 # ===============================================================
 func _build_paperdoll(root: Control) -> void:
-	# Coluna Central: Elmo -> Peitoral -> Cinto -> Botas
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.HELMET, "Elmo", Vector2(88, 2), Vector2(76, 68))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.CHEST, "Peitoral", Vector2(88, 76), Vector2(76, 94))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BELT, "Cinto", Vector2(88, 176), Vector2(76, 48))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BOOTS, "Botas", Vector2(88, 230), Vector2(76, 66))
+	var cx: float = 194.0
+	# Linha 1 (Topo): Elmo | Colar (e Luvas discretamente à esquerda na linha inferior)
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.HELMET, "Elmo", Vector2(cx - 64.0, 26.0), Vector2(60, 48))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.AMULET, "Colar", Vector2(cx + 4.0, 26.0), Vector2(60, 48))
 
-	# Ala Esquerda: Luvas -> Mão Principal -> Anel 1
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.GLOVES, "Luvas", Vector2(16, 12), Vector2(64, 58))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.MAIN_HAND, "Mão\nPrincipal", Vector2(6, 76), Vector2(74, 94))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_1, "Anel 1", Vector2(20, 176), Vector2(60, 48))
+	# Linha 2 (Meio Superior): Mão Principal | Peitoral | Mão Secundária
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.MAIN_HAND, "Mão\nPrincipal", Vector2(cx - 102.0, 80.0), Vector2(62, 68))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.CHEST, "Peitoral", Vector2(cx - 33.0, 80.0), Vector2(66, 68))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.OFF_HAND, "Mão\nSecundária", Vector2(cx + 40.0, 80.0), Vector2(62, 68))
 
-	# Ala Direita: Colar -> Mão Secundária -> Anel 2
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.AMULET, "Colar", Vector2(172, 12), Vector2(64, 58))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.OFF_HAND, "Mão\nSecundária", Vector2(172, 76), Vector2(74, 94))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_2, "Anel 2", Vector2(172, 176), Vector2(60, 48))
+	# Linha 3 (Meio Inferior): Anel 1 | Cinto | Anel 2
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_1, "Anel 1", Vector2(cx - 98.0, 154.0), Vector2(56, 42))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BELT, "Cinto", Vector2(cx - 33.0, 154.0), Vector2(66, 42))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_2, "Anel 2", Vector2(cx + 42.0, 154.0), Vector2(56, 42))
+
+	# Linha 4 (Base): Botas centralizadas + Luvas à esquerda
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.GLOVES, "Luvas", Vector2(cx - 98.0, 200.0), Vector2(56, 46))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BOOTS, "Botas", Vector2(cx - 33.0, 200.0), Vector2(66, 46))
 
 
 func _create_doll_slot(parent: Control, slot: ItemDefinition.EquipmentSlot, label_txt: String, pos: Vector2, sz_px: Vector2) -> void:
@@ -883,10 +877,6 @@ func _refresh_stats_view() -> void:
 	if stats == null:
 		return
 	var hp: int = stats.get_max_health()
-	var dmg: int = stats.get_damage()
-	var armor: int = int(roundi(stats.get_stat(&"armor")))
-	var mov_spd: float = stats.get_stat(&"move_speed")
-	var crit_c: int = int(roundi(stats.get_stat(&"crit_chance") * 100.0))
 	var str_val: int = int(roundi(stats.get_stat(&"strength")))
 	var agi_val: int = int(roundi(stats.get_stat(&"agility")))
 	var int_val: int = int(roundi(stats.get_stat(&"intelligence")))
@@ -894,18 +884,14 @@ func _refresh_stats_view() -> void:
 
 	if _stat_val_hp != null:
 		_stat_val_hp.text = "%d" % hp
-	if _stat_val_dmg != null:
-		_stat_val_dmg.text = "%d" % dmg
-	if _stat_val_crit != null:
-		_stat_val_crit.text = "%d%%" % crit_c
 	if _stat_val_mana != null:
 		_stat_val_mana.text = "%d" % mana_val
-	if _stat_val_armor != null:
-		_stat_val_armor.text = "%d" % armor
-	if _stat_val_speed != null:
-		_stat_val_speed.text = "%.1f m/s" % mov_spd
-	if _stat_attributes_footer != null:
-		_stat_attributes_footer.text = "Força: %d   •   Agil.: %d   •   Int.: %d" % [str_val, agi_val, int_val]
+	if _stat_val_str != null:
+		_stat_val_str.text = "%d" % str_val
+	if _stat_val_agi != null:
+		_stat_val_agi.text = "%d" % agi_val
+	if _stat_val_int != null:
+		_stat_val_int.text = "%d" % int_val
 
 
 # --- INTERAÇÃO COM O MOUSE ---

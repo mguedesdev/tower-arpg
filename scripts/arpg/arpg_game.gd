@@ -496,16 +496,16 @@ func _relayout_open_modals() -> void:
 		inventory_modal.set_partner_station(town_npc_modal.current_station_id)
 		var npc_sz: Vector2 = town_npc_modal.get_window_size()
 		var inv_sz: Vector2 = inventory_modal.get_window_size()
-		var gap: float = 12.0
-		var total_w: float = npc_sz.x + gap + inv_sz.x
-		var start_x: float = maxf(8.0, (vp.x - total_w) * 0.5)
-		var npc_y: float = maxf(14.0, (vp.y - npc_sz.y) * 0.44)
-		var inv_y: float = maxf(14.0, (vp.y - inv_sz.y) * 0.44)
-		town_npc_modal.set_window_position(Vector2(start_x, npc_y))
-		inventory_modal.set_window_position(Vector2(start_x + npc_sz.x + gap, inv_y))
+		var gap: float = 10.0
+		var inv_x: float = maxf(8.0, vp.x - inv_sz.x - 12.0)
+		var inv_y: float = maxf(8.0, (vp.y - inv_sz.y) * 0.5)
+		var npc_x: float = maxf(8.0, inv_x - gap - npc_sz.x)
+		var npc_y: float = maxf(14.0, (vp.y - npc_sz.y) * 0.5)
+		town_npc_modal.set_window_position(Vector2(npc_x, npc_y))
+		inventory_modal.set_window_position(Vector2(inv_x, inv_y))
 	elif inv_open:
 		inventory_modal.set_partner_station("")
-		inventory_modal._center_window_on_screen()
+		inventory_modal.dock_on_right_side()
 	elif npc_open:
 		if inventory_modal != null:
 			inventory_modal.set_partner_station("")
