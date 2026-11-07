@@ -191,3 +191,47 @@ static func _roll_affixes(item: ItemInstance, ilvl: int) -> void:
 		item.custom_name = rare_titles[randi() % rare_titles.size()]
 	elif item.rarity == ItemInstance.ItemRarity.UNIQUE:
 		item.custom_name = "✦ " + item.definition.display_name + " Ancestral"
+
+
+static func generate_blacksmith_stock(ilvl: int = 1) -> Array[ItemInstance]:
+	var stock: Array[ItemInstance] = []
+	var bases: Array[String] = [
+		"greatsword_iron",
+		"sword_steel",
+		"shield_tower",
+		"chest_plate",
+		"helm_iron",
+		"boots_plate",
+	]
+	for i in range(bases.size()):
+		var rar: int = ItemInstance.ItemRarity.MAGIC if (i % 2 == 1) else ItemInstance.ItemRarity.NORMAL
+		if i == 0 and randf() < 0.45:
+			rar = ItemInstance.ItemRarity.RARE
+		var it: ItemInstance = generate_loot(maxi(1, ilvl), rar, bases[i])
+		it.identify()
+		stock.append(it)
+	var pot: ItemInstance = generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")
+	pot.identify()
+	stock.append(pot)
+	return stock
+
+
+static func generate_arcanist_stock(ilvl: int = 1) -> Array[ItemInstance]:
+	var stock: Array[ItemInstance] = []
+	var bases: Array[String] = [
+		"ring_ruby",
+		"amulet_hawk",
+		"dagger_sharp",
+		"sword_steel",
+		"gloves_chain",
+		"belt_leather",
+	]
+	for i in range(bases.size()):
+		var rar: int = ItemInstance.ItemRarity.RARE if (i < 2 or randf() < 0.4) else ItemInstance.ItemRarity.MAGIC
+		var it: ItemInstance = generate_loot(maxi(1, ilvl), rar, bases[i])
+		it.identify()
+		stock.append(it)
+	var pot: ItemInstance = generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")
+	pot.identify()
+	stock.append(pot)
+	return stock

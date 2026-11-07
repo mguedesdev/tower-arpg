@@ -55,6 +55,22 @@ func _test_arpg_game_isolation() -> void:
 	_check(arpg.skill_bar_hud != null and arpg.skill_bar_hud.visible, "7. ARPG exibe barra de skills ativas (LMB/RMB/1-4)")
 	_check(arpg.get("level_up_modal") == null, "8. ARPG não possui nem instancia cartas de sobrevivente")
 	_check(arpg.player.skill_controller != null and arpg.player.skill_controller.enabled, "9. Player do ARPG opera com PlayerSkillController ativo")
+
+	# Teste de acoplamento lado a lado (Baú + Inventário) e economia dos NPCs
+	arpg._on_town_station_interacted("stash", "Baú Pessoal")
+	arpg._relayout_open_modals()
+	_check(arpg.town_npc_modal.visible and arpg.inventory_modal.visible, "9a. Abrir Baú abre automaticamente o Inventário lado a lado")
+	var first_item = arpg.backpack.items[0]
+	arpg._on_inventory_context_action(first_item)
+	_check(arpg.stash_grid.items.has(first_item), "9b. Clique direito na Mochila com Baú aberto guarda o item no Grid do Baú")
+
+	arpg._on_town_station_interacted("vendor_physical", "Ferreiro")
+	arpg._relayout_open_modals()
+	var prev_gold: int = arpg.gold
+	var sell_item = arpg.backpack.items[0]
+	arpg._on_inventory_context_action(sell_item)
+	_check(arpg.gold > prev_gold, "9c. Clique direito na Mochila com Mercador aberto vende o item por Ouro")
+
 	arpg.queue_free()
 
 

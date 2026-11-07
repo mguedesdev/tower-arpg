@@ -1,15 +1,18 @@
 extends Control
 class_name InventoryEquipmentModal
 ## Modal Unificado de Inventário Espacial em Grid (Diablo 2 / PoE) + Paperdoll + Status do Personagem.
-## • Janela centralizada por padrão e arrastável pelo cabeçalho.
-## • Preview do item seguro com tamanho real exato do grid (sem distorção de escala).
+## • Centralizado quando aberto sozinho; posicionado lado a lado (direita) quando aberto junto com NPC/Baú.
+## • Tooltip com comparação linha a linha (▲ verde / ▼ vermelho) e área dedicada de Ganhos e Perdas.
 ## • Atalho: [I] ou [B].
 
+signal opened()
 signal closed()
+signal item_context_action_requested(item: ItemInstance)
+signal potion_consumed(heal_amount: int)
 
-const BG_COLOR := Color(0.045, 0.04, 0.045, 0.96)
-const BORDER_COLOR := Color(0.48, 0.38, 0.22, 0.95)
-const GOLD_COLOR := Color(0.92, 0.74, 0.35)
+const BG_COLOR := Color(0.045, 0.04, 0.045, 0.97)
+const BORDER_COLOR := Color(0.55, 0.43, 0.24, 0.96)
+const GOLD_COLOR := Color(0.94, 0.78, 0.38)
 const TEXT_COLOR := Color(0.92, 0.89, 0.82)
 const RED_ALERT := Color(1.0, 0.35, 0.35)
 const CELL_SIZE := 36
@@ -17,10 +20,14 @@ const CELL_SIZE := 36
 var inventory: SpatialInventoryGrid
 var equipment: CharacterEquipment
 var stats: CharacterStats
+var current_gold: int = 150
+var active_partner_station: String = ""
 
 # Janela móvel
 var _window_panel: PanelContainer
 var _header_bar: HBoxContainer
+var _gold_header_label: Label
+var _hint_label: Label
 var _is_dragging_window: bool = false
 var _drag_start_mouse: Vector2 = Vector2.ZERO
 var _drag_start_win_pos: Vector2 = Vector2.ZERO
@@ -67,15 +74,52 @@ func bind_context(inv: SpatialInventoryGrid, eq: CharacterEquipment, p_stats: Ch
 	_refresh_all()
 
 
+func set_gold(gold_val: int) -> void:
+	current_gold = maxi(0, gold_val)
+	if _gold_header_label != null:
+		_gold_header_label.text = "🪙 %d Ouro" % current_gold
+	if visible:
+		_refresh_stats_view()
+
+
+func set_partner_station(station_id: String) -> void:
+	active_partner_station = station_id
+	_has_custom_window_pos = false
+	_update_hint_label()
+
+
+func get_window_size() -> Vector2:
+	if _window_panel == null:
+		return Vector2(648, 520)
+	_window_panel.reset_size()
+	var sz: Vector2 = _window_panel.size
+	if sz.x < 100.0:
+		sz = _window_panel.get_combined_minimum_size()
+	return sz
+
+
+func set_window_position(pos: Vector2) -> void:
+	if _window_panel == null:
+		return
+	var vp: Vector2 = get_viewport_rect().size
+	var sz: Vector2 = get_window_size()
+	if vp.x > 100.0 and vp.y > 100.0:
+		pos.x = clampf(pos.x, 6.0, maxf(6.0, vp.x - sz.x - 6.0))
+		pos.y = clampf(pos.y, 6.0, maxf(6.0, vp.y - sz.y - 6.0))
+	_window_panel.position = pos
+
+
 func open_inventory() -> void:
 	visible = true
+	_update_hint_label()
 	_refresh_all()
 	if not _has_custom_window_pos:
 		call_deferred("_center_window_on_screen")
+	opened.emit()
 
 
 func close_inventory() -> void:
-	if _held_item != null:
+	if _held_item != null and inventory != null:
 		# Devolve item seguro à mochila se estava na mão
 		inventory.auto_add_item(_held_item)
 		_set_held_item(null)
@@ -97,7 +141,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.keycode == KEY_I or event.keycode == KEY_B:
 			toggle_inventory()
 			get_viewport().set_input_as_handled()
-		elif event.keycode == KEY_ESCAPE and visible:
+		elif event.keycode == KEY_ESCAPE and visible and active_partner_station.is_empty():
 			close_inventory()
 			get_viewport().set_input_as_handled()
 
@@ -109,30 +153,33 @@ func _input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if not mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			_is_dragging_window = false
-	elif event is InputEventMouseMotion and _is_dragging_window:
-		var current_mouse: Vector2 = get_viewport().get_mouse_position()
-		var new_pos: Vector2 = _drag_start_win_pos + (current_mouse - _drag_start_mouse)
-		var vp: Vector2 = get_viewport_rect().size
-		new_pos.x = clampf(new_pos.x, 6.0, vp.x - _window_panel.size.x - 6.0)
-		new_pos.y = clampf(new_pos.y, 6.0, vp.y - _window_panel.size.y - 6.0)
-		_window_panel.position = new_pos
-		_has_custom_window_pos = true
+	elif event is InputEventMouseMotion:
+		if _is_dragging_window:
+			var current_mouse: Vector2 = get_viewport().get_mouse_position()
+			var new_pos: Vector2 = _drag_start_win_pos + (current_mouse - _drag_start_mouse)
+			var vp: Vector2 = get_viewport_rect().size
+			new_pos.x = clampf(new_pos.x, 6.0, maxf(6.0, vp.x - _window_panel.size.x - 6.0))
+			new_pos.y = clampf(new_pos.y, 6.0, maxf(6.0, vp.y - _window_panel.size.y - 6.0))
+			_window_panel.position = new_pos
+			_has_custom_window_pos = true
+		if _tooltip_panel != null and _tooltip_panel.visible:
+			_reposition_tooltip()
 
 
 func _on_viewport_size_changed() -> void:
-	if not _has_custom_window_pos:
+	if not _has_custom_window_pos and active_partner_station.is_empty():
 		_center_window_on_screen()
 
 
 func _center_window_on_screen() -> void:
-	if _window_panel == null:
+	if _window_panel == null or not active_partner_station.is_empty():
 		return
-	_window_panel.reset_size()
+	var sz: Vector2 = get_window_size()
 	var vp: Vector2 = get_viewport_rect().size
 	if vp.x > 100.0 and vp.y > 100.0:
 		_window_panel.position = Vector2(
-			maxf(10.0, (vp.x - _window_panel.size.x) * 0.5),
-			maxf(10.0, (vp.y - _window_panel.size.y) * 0.5)
+			maxf(10.0, (vp.x - sz.x) * 0.5),
+			maxf(10.0, (vp.y - sz.y) * 0.45)
 		)
 
 
@@ -145,17 +192,17 @@ func _build_ui() -> void:
 	root_style.border_color = BORDER_COLOR
 	root_style.set_border_width_all(3)
 	root_style.set_corner_radius_all(6)
-	root_style.shadow_color = Color(0, 0, 0, 0.75)
+	root_style.shadow_color = Color(0, 0, 0, 0.78)
 	root_style.shadow_size = 14
-	root_style.content_margin_left = 18
-	root_style.content_margin_right = 18
+	root_style.content_margin_left = 16
+	root_style.content_margin_right = 16
 	root_style.content_margin_top = 12
-	root_style.content_margin_bottom = 16
+	root_style.content_margin_bottom = 14
 	_window_panel.add_theme_stylebox_override("panel", root_style)
 	add_child(_window_panel)
 
 	var main_vbox := VBoxContainer.new()
-	main_vbox.add_theme_constant_override("separation", 10)
+	main_vbox.add_theme_constant_override("separation", 8)
 	_window_panel.add_child(main_vbox)
 
 	# Cabeçalho arrastável
@@ -164,12 +211,24 @@ func _build_ui() -> void:
 	_header_bar.gui_input.connect(_on_header_gui_input)
 
 	var title := Label.new()
-	title.text = "⚔ PERSONAGEM & MOCHILA (GRID ARPG) — [ARRASTE AQUI]"
+	title.text = "⚔ EQUIPAMENTO & MOCHILA [I]"
 	title.add_theme_font_size_override("font_size", 14)
 	title.add_theme_color_override("font_color", GOLD_COLOR)
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_header_bar.add_child(title)
 	_header_bar.add_spacer(false)
+
+	_gold_header_label = Label.new()
+	_gold_header_label.text = "🪙 %d Ouro" % current_gold
+	_gold_header_label.add_theme_font_size_override("font_size", 14)
+	_gold_header_label.add_theme_color_override("font_color", Color(0.98, 0.85, 0.38))
+	_gold_header_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_header_bar.add_child(_gold_header_label)
+
+	var spacer_small := Control.new()
+	spacer_small.custom_minimum_size = Vector2(10, 0)
+	spacer_small.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_header_bar.add_child(spacer_small)
 
 	var close_btn := Button.new()
 	close_btn.text = " [X] "
@@ -186,12 +245,12 @@ func _build_ui() -> void:
 
 	# Corpo dividido: Esquerda = Paperdoll + Status | Direita = Grid da Mochila
 	var body_hbox := HBoxContainer.new()
-	body_hbox.add_theme_constant_override("separation", 22)
+	body_hbox.add_theme_constant_override("separation", 16)
 	main_vbox.add_child(body_hbox)
 
 	# --- PAINEL ESQUERDO: PAPERDOLL + STATUS DO PERSONAGEM ---
 	var left_vbox := VBoxContainer.new()
-	left_vbox.add_theme_constant_override("separation", 8)
+	left_vbox.add_theme_constant_override("separation", 6)
 	body_hbox.add_child(left_vbox)
 
 	var doll_title := Label.new()
@@ -202,27 +261,27 @@ func _build_ui() -> void:
 	left_vbox.add_child(doll_title)
 
 	var doll_root := Control.new()
-	doll_root.custom_minimum_size = Vector2(250, 360)
+	doll_root.custom_minimum_size = Vector2(246, 354)
 	left_vbox.add_child(doll_root)
 	_build_paperdoll(doll_root)
 
-	# Painel de Status do Personagem (na mesma janela!)
+	# Painel de Status do Personagem
 	var stats_card := PanelContainer.new()
 	var sc_style := StyleBoxFlat.new()
-	sc_style.bg_color = Color(0.06, 0.05, 0.07, 0.9)
-	sc_style.border_color = Color(0.35, 0.28, 0.18, 0.8)
+	sc_style.bg_color = Color(0.06, 0.05, 0.07, 0.92)
+	sc_style.border_color = Color(0.35, 0.28, 0.18, 0.85)
 	sc_style.set_border_width_all(1)
 	sc_style.set_corner_radius_all(3)
 	sc_style.content_margin_left = 10
 	sc_style.content_margin_right = 10
-	sc_style.content_margin_top = 8
-	sc_style.content_margin_bottom = 8
+	sc_style.content_margin_top = 6
+	sc_style.content_margin_bottom = 6
 	stats_card.add_theme_stylebox_override("panel", sc_style)
 
 	_stats_label = RichTextLabel.new()
 	_stats_label.bbcode_enabled = true
 	_stats_label.fit_content = true
-	_stats_label.custom_minimum_size = Vector2(245, 110)
+	_stats_label.custom_minimum_size = Vector2(236, 104)
 	_stats_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stats_card.add_child(_stats_label)
 	left_vbox.add_child(stats_card)
@@ -248,13 +307,13 @@ func _build_ui() -> void:
 	_grid_container.gui_input.connect(_on_grid_gui_input)
 	right_vbox.add_child(_grid_container)
 
-	var hint := Label.new()
-	hint.text = "• Clique Esquerdo: pegar/soltar  |  Clique Direito: equipar direto\n• Arraste o cabeçalho superior para mover a janela."
-	hint.add_theme_font_size_override("font_size", 11)
-	hint.add_theme_color_override("font_color", Color(0.65, 0.60, 0.55))
-	right_vbox.add_child(hint)
+	_hint_label = Label.new()
+	_hint_label.add_theme_font_size_override("font_size", 11)
+	_hint_label.add_theme_color_override("font_color", Color(0.75, 0.70, 0.62))
+	right_vbox.add_child(_hint_label)
+	_update_hint_label()
 
-	# Preview flutuante do item seguro na mão (top_level = true para nunca ser esticado por containers!)
+	# Preview flutuante do item seguro na mão (top_level = true)
 	_held_preview = TextureRect.new()
 	_held_preview.top_level = true
 	_held_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -264,28 +323,46 @@ func _build_ui() -> void:
 	_held_preview.modulate = Color(1, 1, 1, 0.88)
 	add_child(_held_preview)
 
-	# Tooltip flutuante (top_level = true para flutuar acima de tudo livremente)
+	# Tooltip flutuante com comparação (top_level = true)
 	_tooltip_panel = PanelContainer.new()
 	_tooltip_panel.top_level = true
 	_tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tooltip_panel.visible = false
+	_tooltip_panel.z_index = 120
 	var t_style := StyleBoxFlat.new()
-	t_style.bg_color = Color(0.06, 0.05, 0.07, 0.98)
+	t_style.bg_color = Color(0.05, 0.045, 0.06, 0.98)
 	t_style.border_color = GOLD_COLOR
 	t_style.set_border_width_all(2)
 	t_style.set_corner_radius_all(4)
-	t_style.content_margin_left = 10
-	t_style.content_margin_right = 10
-	t_style.content_margin_top = 8
-	t_style.content_margin_bottom = 8
+	t_style.shadow_color = Color(0, 0, 0, 0.8)
+	t_style.shadow_size = 10
+	t_style.content_margin_left = 12
+	t_style.content_margin_right = 12
+	t_style.content_margin_top = 10
+	t_style.content_margin_bottom = 10
 	_tooltip_panel.add_theme_stylebox_override("panel", t_style)
 	_tooltip_text = RichTextLabel.new()
 	_tooltip_text.bbcode_enabled = true
 	_tooltip_text.fit_content = true
-	_tooltip_text.custom_minimum_size = Vector2(230, 40)
+	_tooltip_text.custom_minimum_size = Vector2(280, 40)
 	_tooltip_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tooltip_panel.add_child(_tooltip_text)
 	add_child(_tooltip_panel)
+
+
+func _update_hint_label() -> void:
+	if _hint_label == null:
+		return
+	match active_partner_station:
+		"stash":
+			_hint_label.text = "• [Clique Direito na Mochila]: Guardar no Baú Pessoal\n• [Clique Esquerdo]: Arrastar para Equipar ou Organizar\n• Passe o mouse sobre um item para comparar (▲ verde / ▼ vermelho)"
+			_hint_label.add_theme_color_override("font_color", Color(0.68, 0.92, 0.72))
+		"vendor_physical", "vendor_magic":
+			_hint_label.text = "• [Clique Direito na Mochila]: Vender Item por 🪙 Ouro\n• [Clique Esquerdo]: Arrastar para Equipar ou Organizar\n• Passe o mouse para comparar com seu equipamento atual"
+			_hint_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.48))
+		_:
+			_hint_label.text = "• [Clique Esquerdo]: Pegar/Mover  |  [Clique Direito]: Equipar / Usar Poção\n• Passe o mouse para comparar atributos (▲ ganha / ▼ perde)\n• Arraste o cabeçalho superior para mover a janela."
+			_hint_label.add_theme_color_override("font_color", Color(0.72, 0.68, 0.60))
 
 
 func _on_header_gui_input(event: InputEvent) -> void:
@@ -299,17 +376,16 @@ func _on_header_gui_input(event: InputEvent) -> void:
 
 
 func _build_paperdoll(root: Control) -> void:
-	# Posições clássicas do boneco com Peitoral 4x2 e Cinto ajustado
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.HELMET, "Elmo", Vector2(96, 6), Vector2(2, 2))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.AMULET, "Amul.", Vector2(174, 20), Vector2(1, 1))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.CHEST, "Peitoral", Vector2(96, 84), Vector2(2, 4))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.MAIN_HAND, "Arma 1H/2H", Vector2(16, 84), Vector2(2, 4))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.OFF_HAND, "Escudo", Vector2(174, 84), Vector2(2, 4))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.GLOVES, "Luvas", Vector2(16, 234), Vector2(2, 2))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BELT, "Cinto", Vector2(96, 234), Vector2(2, 1))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BOOTS, "Botas", Vector2(96, 276), Vector2(2, 2))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_1, "Anel 1", Vector2(174, 234), Vector2(1, 1))
-	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_2, "Anel 2", Vector2(212, 234), Vector2(1, 1))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.HELMET, "Elmo", Vector2(92, 4), Vector2(2, 2))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.AMULET, "Amul.", Vector2(170, 18), Vector2(1, 1))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.CHEST, "Peitoral", Vector2(92, 82), Vector2(2, 4))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.MAIN_HAND, "Arma 1H/2H", Vector2(12, 82), Vector2(2, 4))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.OFF_HAND, "Escudo", Vector2(170, 82), Vector2(2, 4))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.GLOVES, "Luvas", Vector2(12, 232), Vector2(2, 2))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BELT, "Cinto", Vector2(92, 232), Vector2(2, 1))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.BOOTS, "Botas", Vector2(92, 274), Vector2(2, 2))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_1, "Anel 1", Vector2(170, 232), Vector2(1, 1))
+	_create_doll_slot(root, ItemDefinition.EquipmentSlot.RING_2, "Anel 2", Vector2(208, 232), Vector2(1, 1))
 
 
 func _create_doll_slot(parent: Control, slot: ItemDefinition.EquipmentSlot, label_txt: String, pos: Vector2, size_cells: Vector2) -> void:
@@ -397,7 +473,7 @@ func _refresh_grid_view(force: bool = false) -> void:
 			border_col = RED_ALERT
 		item_panel.add_theme_stylebox_override("panel", _slot_style(Color(0.12, 0.10, 0.14, 0.95), border_col, 2))
 		item_panel.gui_input.connect(func(ev: InputEvent) -> void: _on_item_panel_input(item, ev))
-		item_panel.mouse_entered.connect(func() -> void: _show_item_tooltip(item))
+		item_panel.mouse_entered.connect(func() -> void: _show_item_tooltip(item, false))
 		item_panel.mouse_exited.connect(_hide_tooltip)
 		_grid_container.add_child(item_panel)
 
@@ -434,7 +510,9 @@ func _refresh_paperdoll_view() -> void:
 
 
 func _refresh_stats_view() -> void:
-	if stats == null:
+	if _gold_header_label != null:
+		_gold_header_label.text = "🪙 %d Ouro" % current_gold
+	if stats == null or _stats_label == null:
 		return
 	var hp: int = stats.get_max_health()
 	var dmg: int = stats.get_damage()
@@ -446,12 +524,12 @@ func _refresh_stats_view() -> void:
 	var agi_val: int = int(roundi(stats.get_stat(&"agility")))
 	var int_val: int = int(roundi(stats.get_stat(&"intelligence")))
 
-	_stats_label.text = "[color=#f2cb6f][b]✦ STATUS DO GUERREIRO[/b][/color]\n" + \
+	_stats_label.text = "[color=#f2cb6f][b]✦ STATUS DO GUERREIRO[/b][/color]  [color=#f8d858](🪙 %d)[/color]\n" % current_gold + \
 		"♥ Vida: [color=#ffffff]%d[/color]   |   🛡️ Armadura: [color=#ffffff]%d[/color]\n" % [hp, armor] + \
 		"⚔ Dano: [color=#ffffff]%d[/color]   |   ⚡ Cadência: [color=#ffffff]%.2fx[/color]\n" % [dmg, atk_spd] + \
 		"👟 Desloc.: [color=#ffffff]%.1fm/s[/color] |  🎯 Crítico: [color=#ffffff]%d%%[/color]\n" % [mov_spd, int(roundi(crit_c))] + \
 		"[color=#98a3b3]────────────────────────────[/color]\n" + \
-		"🏋 Força: [color=#e8b356]%d[/color]  |  🏹 Agilidade: [color=#6cc8e8]%d[/color]  |  🔮 Inteligência: [color=#b58ce8]%d[/color]" % [str_val, agi_val, int_val]
+		"🏋 Força: [color=#e8b356]%d[/color] | 🏹 Agil.: [color=#6cc8e8]%d[/color] | 🔮 Int.: [color=#b58ce8]%d[/color]" % [str_val, agi_val, int_val]
 
 
 # --- INTERAÇÃO COM O MOUSE ---
@@ -461,7 +539,6 @@ func _on_grid_gui_input(event: InputEvent) -> void:
 		var cell := Vector2i(int(mb.position.x / CELL_SIZE), int(mb.position.y / CELL_SIZE))
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if _held_item != null:
-				# Tenta colocar o item na célula clicada
 				if inventory.can_place_at(_held_item, cell):
 					inventory.place_item(_held_item, cell)
 					_set_held_item(null)
@@ -480,7 +557,6 @@ func _on_item_panel_input(item: ItemInstance, event: InputEvent) -> void:
 				inventory.remove_item(item)
 				_set_held_item(item)
 			else:
-				# Troca
 				var prev_held: ItemInstance = _held_item
 				inventory.remove_item(item)
 				if inventory.can_place_at(prev_held, item.grid_position):
@@ -489,7 +565,21 @@ func _on_item_panel_input(item: ItemInstance, event: InputEvent) -> void:
 				else:
 					inventory.place_item(item, item.grid_position)
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
-			# Clique direito: equipa direto no slot correspondente!
+			_hide_tooltip()
+			# Se estiver com Baú ou Mercador aberto ao lado, executa a ação de contexto rápida (Guardar no Baú / Vender por Ouro)
+			if active_partner_station == "stash" or active_partner_station == "vendor_physical" or active_partner_station == "vendor_magic":
+				item_context_action_requested.emit(item)
+				return
+
+			# Se for Poção de Vida consumível, bebe a poção!
+			if item.definition.category == ItemDefinition.ItemCategory.CONSUMABLE:
+				var heal_val: int = maxi(25, item.definition.base_health)
+				inventory.remove_item(item)
+				potion_consumed.emit(heal_val)
+				_refresh_all()
+				return
+
+			# Clique direito padrão: equipa direto no slot correspondente!
 			if item.definition.is_equippable():
 				var target_slot: ItemDefinition.EquipmentSlot = item.definition.equip_slot
 				if target_slot == ItemDefinition.EquipmentSlot.RING_1 and equipment.get_equipped_item(ItemDefinition.EquipmentSlot.RING_1) != null:
@@ -516,7 +606,7 @@ func _on_doll_slot_input(slot: ItemDefinition.EquipmentSlot, event: InputEvent) 
 				_set_held_item(equipped_item)
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			if equipped_item != null:
-				# Desequipa direto para a mochila
+				_hide_tooltip()
 				equipment.unequip_item(slot, stats)
 				if not inventory.auto_add_item(equipped_item):
 					_set_held_item(equipped_item)
@@ -527,7 +617,7 @@ func _on_doll_slot_hover(slot: ItemDefinition.EquipmentSlot, entered: bool) -> v
 	if entered:
 		var item: ItemInstance = equipment.get_equipped_item(slot)
 		if item != null:
-			_show_item_tooltip(item)
+			_show_item_tooltip(item, true)
 	else:
 		_hide_tooltip()
 
@@ -537,7 +627,6 @@ func _set_held_item(item: ItemInstance) -> void:
 	if _held_item != null and _held_item.definition != null:
 		var def: ItemDefinition = _held_item.definition
 		_held_preview.texture = ItemIconFactory.get_icon(def)
-		# Tamanho rigorosamente exato correspondente aos slots da grade (sem escala gigantesca!)
 		var exact_w: float = float(def.grid_size.x) * float(CELL_SIZE)
 		var exact_h: float = float(def.grid_size.y) * float(CELL_SIZE)
 		_held_preview.custom_minimum_size = Vector2(exact_w, exact_h)
@@ -554,52 +643,42 @@ func _on_equipment_changed(_slot: ItemDefinition.EquipmentSlot, _item: ItemInsta
 	_refresh_stats_view()
 
 
-func _show_item_tooltip(item: ItemInstance) -> void:
+func _show_item_tooltip(item: ItemInstance, is_on_paperdoll: bool = false) -> void:
 	if item == null or item.definition == null or _held_item != null:
 		_hide_tooltip()
 		return
-	var def: ItemDefinition = item.definition
-	var r_col: String = item.get_rarity_color().to_html(false)
 
-	var t: String = "[center][b][color=#%s]%s[/color][/b][/center]\n" % [r_col, item.get_display_name()]
-	if not item.is_identified:
-		t += "[center][color=#ff4d4d]Não-Identificado (Leve ao Sábio)[/color][/center]\n"
+	var action_hint: String = ""
+	if is_on_paperdoll:
+		action_hint = "[Clique Direito: Desequipar para a Mochila]"
+	else:
+		match active_partner_station:
+			"stash":
+				action_hint = "[Clique Direito: Guardar no Baú Pessoal]"
+			"vendor_physical", "vendor_magic":
+				action_hint = "[Clique Direito: Vender por %d Ouro]" % item.get_sell_value()
+			_:
+				if item.definition.category == ItemDefinition.ItemCategory.CONSUMABLE:
+					action_hint = "[Clique Direito: Beber Poção (+%d Vida)]" % maxi(25, item.definition.base_health)
+				elif item.definition.is_equippable():
+					action_hint = "[Clique Direito: Equipar Item]"
 
-	# Dano ou Armadura
-	if def.category == ItemDefinition.ItemCategory.WEAPON_1H or def.category == ItemDefinition.ItemCategory.WEAPON_2H:
-		var dmg: Vector2i = item.get_damage_range()
-		t += "⚔ Dano: [color=#ffffff]%d - %d[/color]\n" % [dmg.x, dmg.y]
-		t += "⚡ Vel. Ataque: [color=#ffffff]%.2fx[/color]\n" % def.base_attack_speed
-	elif item.get_total_armor() > 0:
-		t += "🛡️ Armadura: [color=#ffffff]%d[/color]\n" % item.get_total_armor()
-
-	# Requisitos (Vermelho se não atingir)
-	var req_text: String = ""
-	if def.req_strength > 0:
-		var ok: bool = stats == null or stats.get_stat(&"strength") >= def.req_strength
-		var c: String = "#ffffff" if ok else "#ff4d4d"
-		req_text += "Requer Força: [color=%s]%d[/color]  " % [c, def.req_strength]
-	if def.req_agility > 0:
-		var ok: bool = stats == null or stats.get_stat(&"agility") >= def.req_agility
-		var c: String = "#ffffff" if ok else "#ff4d4d"
-		req_text += "Requer Agilidade: [color=%s]%d[/color]  " % [c, def.req_agility]
-	if not req_text.is_empty():
-		t += "[color=#b3a898]" + req_text + "[/color]\n"
-
-	# Afixos explícitos
-	if item.is_identified and not item.explicit_affixes.is_empty():
-		t += "[color=#5dade2]"
-		for af in item.explicit_affixes:
-			t += "• " + af.display_text + "\n"
-		t += "[/color]"
-
-	_tooltip_text.text = t
+	_tooltip_text.text = item.format_tooltip_bbcode(stats, equipment, action_hint)
 	_tooltip_panel.visible = true
 	_tooltip_panel.reset_size()
+	_reposition_tooltip()
+
+
+func _reposition_tooltip() -> void:
+	if _tooltip_panel == null or not _tooltip_panel.visible:
+		return
 	var mp: Vector2 = get_viewport().get_mouse_position()
 	var vp: Vector2 = get_viewport_rect().size
-	var tx: float = clampf(mp.x + 18.0, 8.0, vp.x - _tooltip_panel.size.x - 8.0)
-	var ty: float = clampf(mp.y + 18.0, 8.0, vp.y - _tooltip_panel.size.y - 8.0)
+	var sz: Vector2 = _tooltip_panel.size
+	var tx: float = mp.x + 18.0
+	if tx + sz.x + 8.0 > vp.x:
+		tx = maxf(8.0, mp.x - sz.x - 14.0)
+	var ty: float = clampf(mp.y + 14.0, 8.0, maxf(8.0, vp.y - sz.y - 8.0))
 	_tooltip_panel.position = Vector2(tx, ty)
 
 

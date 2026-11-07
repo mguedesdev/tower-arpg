@@ -114,32 +114,35 @@ anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 360.0
-offset_top = -56.0
-offset_right = -24.0
-offset_bottom = -15.0
+offset_left = 140.0
+offset_top = -138.0
+offset_right = -140.0
+offset_bottom = -100.0
 grow_horizontal = 2
 grow_vertical = 0
-theme_override_font_sizes/font_size = 17
-text = "Aproxime-se dos Mercadores/Baú e aperte [E], ou abra o Inventário [I]."
+theme_override_colors/font_color = Color(0.98, 0.94, 0.84, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.03, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 16
+text = "Aproxime-se dos Mercadores/Baú e aperte [E] (ou clique neles), ou abra o Inventário [I]."
 horizontal_alignment = 1
 
 [node name="ControlsPlate" type="Panel" parent="HUD"]
-anchors_preset = 12
+anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 27.0
-offset_top = -88.0
-offset_right = 450.0
+offset_left = 18.0
+offset_top = -84.0
+offset_right = 278.0
 offset_bottom = -22.0
 grow_vertical = 0
 theme_override_styles/panel = SubResource("TitleHudPanel")
 
 [node name="ControlsText" type="Label" parent="HUD/ControlsPlate"]
-offset_left = 16.0
-offset_top = 10.0
-offset_right = 430.0
+offset_left = 12.0
+offset_top = 8.0
+offset_right = 250.0
 offset_bottom = 54.0
-theme_override_font_sizes/font_size = 14
-text = "WASD: mover | LMB: ataque/andar | 1 2 3 4: skills
-[I]: Mochila/Equip | [E]: Interagir | [ESC]: Menu"
+theme_override_font_sizes/font_size = 12
+text = "WASD: Mover | LMB: Ataque | 1-4: Skills
+[I]: Mochila | [E]/Clique: NPC | [ESC]: Menu"

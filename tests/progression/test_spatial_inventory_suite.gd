@@ -34,6 +34,7 @@ func _run_all() -> void:
 	_test_stat_requirements_without_manual_points()
 	_test_item_identification_and_rarity()
 	_test_icon_procedural_generation_all_sizes()
+	_test_tooltip_comparison_and_npc_stash()
 	_test_main_scene_inventory_integration()
 
 	print("=== RESULTADO INVENTÁRIO ESPACIAL: %d PASSARAM | %d FALHARAM ===" % [_passed, _failed])
@@ -162,3 +163,28 @@ func _test_main_scene_inventory_integration() -> void:
 	_check(not main_node.inventory_modal.visible, "19c. Inventário fecha com close_inventory()")
 
 	main_node.queue_free()
+
+
+func _test_tooltip_comparison_and_npc_stash() -> void:
+	var equip := CharacterEquipment.new()
+	var stats := CharacterStats.new()
+	stats.set_base_stat(CharacterStats.STAT_STRENGTH, 30.0)
+	stats.set_base_stat(CharacterStats.STAT_AGILITY, 20.0)
+
+	# Equipa uma espada 1H com +20 de Vida
+	var equipped_sword := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "sword_steel")
+	equipped_sword.identify()
+	equipped_sword.explicit_affixes.clear()
+	equipped_sword.explicit_affixes.append(ItemAffix.create("hp_eq", ItemAffix.AffixType.PREFIX, "max_health", 20.0, "+20 de Vida"))
+	equip.equip_item(equipped_sword, ItemDefinition.EquipmentSlot.MAIN_HAND, stats)
+
+	# Inspeciona uma Espada Montante 2H com +8 de Força (maior dano, perde os +20 de Vida da espada equipada!)
+	var candidate_2h := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "greatsword_iron")
+	candidate_2h.identify()
+	candidate_2h.explicit_affixes.clear()
+	candidate_2h.explicit_affixes.append(ItemAffix.create("str_new", ItemAffix.AffixType.SUFFIX, "strength", 8.0, "+8 de Força"))
+
+	var bbcode: String = candidate_2h.format_tooltip_bbcode(stats, equip, "[Clique Direito: Equipar]")
+	_check(bbcode.contains("▲") and bbcode.contains("#4dff6b"), "20a. Tooltip exibe seta verde ▲ nas linhas em que o item é superior")
+	_check(bbcode.contains("▼") and bbcode.contains("#ff4d4d"), "20b. Tooltip exibe seta vermelha ▼ nas linhas/comparações em que perde status")
+	_check(bbcode.contains("Ganha +8 de Força") and bbcode.contains("Perde -20 de Vida Máxima"), "20c. Área dedicada de comparação exibe ganhos (verde) e o atributo perdido que não existe no item novo (vermelho)")

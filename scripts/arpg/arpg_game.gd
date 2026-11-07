@@ -45,6 +45,7 @@ var kills: int = 0
 var enemies_left: int = 0
 var game_over: bool = false
 var area_level: int = 1
+var gold: int = 150
 
 var run_progression: RunProgressionService
 var skill_bar_hud: SkillBarHUD
@@ -118,17 +119,30 @@ func _ready() -> void:
 	# Modal de NPCs e Waypoints da Vila
 	town_npc_modal = TOWN_NPC_MODAL_SCRIPT.new() as TownNpcModal
 	$HUD.add_child(town_npc_modal)
+	town_npc_modal.bind_context(backpack, stash_grid, equipment, player.stats)
+	town_npc_modal.set_gold(gold)
 	town_npc_modal.waypoint_travel_requested.connect(_on_waypoint_travel_requested)
 	town_npc_modal.respec_build_requested.connect(_on_town_respec_build_requested)
 	town_npc_modal.identify_items_requested.connect(_on_town_identify_items_requested)
+	town_npc_modal.heal_player_requested.connect(_on_town_heal_player_requested)
+	town_npc_modal.gold_changed.connect(_on_gold_changed)
+	town_npc_modal.opened.connect(func(_sid: String) -> void: call_deferred("_relayout_open_modals"))
+	town_npc_modal.closed.connect(_on_town_npc_modal_closed)
 	town_npc_modal.add_to_group("blocking_modal")
 
 	# Modal de Inventário em Grade Espacial 10x5 + Equipamento (Paperdoll) + Atributos
 	inventory_modal = INV_MODAL_SCRIPT.new() as InventoryEquipmentModal
 	$HUD.add_child(inventory_modal)
 	inventory_modal.bind_context(backpack, equipment, player.stats)
+	inventory_modal.set_gold(gold)
+	inventory_modal.opened.connect(func() -> void: call_deferred("_relayout_open_modals"))
+	inventory_modal.closed.connect(func() -> void: call_deferred("_relayout_open_modals"))
+	inventory_modal.item_context_action_requested.connect(_on_inventory_context_action)
+	inventory_modal.potion_consumed.connect(_on_potion_consumed)
 	inventory_modal.add_to_group("blocking_modal")
 	_grant_starter_items()
+
+	get_viewport().size_changed.connect(func() -> void: call_deferred("_relayout_open_modals"))
 
 	# Barra de Vida Épica de Chefe no Topo Central
 	boss_health_bar_hud = BOSS_HEALTH_BAR_HUD_SCRIPT.new() as Control
@@ -164,6 +178,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if inventory_modal != null and inventory_modal.visible:
 		return
+
+	if event is InputEventMouseButton and event.pressed:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and camera != null:
+			# Permite clicar em um NPC / Baú / Waypoint com o mouse quando estiver próximo!
+			var ray_origin: Vector3 = camera.project_ray_origin(mb.position)
+			var ray_dir: Vector3 = camera.project_ray_normal(mb.position)
+			if absf(ray_dir.y) > 0.001:
+				var t_hit: float = (0.8 - ray_origin.y) / ray_dir.y
+				if t_hit > 0.0:
+					var hit_pos: Vector3 = ray_origin + ray_dir * t_hit
+					for station in _active_interactables:
+						if is_instance_valid(station) and station.is_player_in_range():
+							var d_xz: float = Vector2(hit_pos.x - station.global_position.x, hit_pos.z - station.global_position.z).length()
+							if d_xz <= 1.45:
+								station.trigger_interaction()
+								get_viewport().set_input_as_handled()
+								return
 
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_E:
@@ -424,8 +456,103 @@ func _update_campaign_world(delta: float) -> void:
 
 
 func _on_town_station_interacted(station_id: String, _station_title: String) -> void:
+	if town_npc_modal == null:
+		return
+	town_npc_modal.set_gold(gold)
+	town_npc_modal.open_station(station_id, unlocked_zones, current_zone_id, area_level)
+	# Quando abre Baú, Ferreiro, Arcanista ou Sábio, abre o Inventário automaticamente ao lado!
+	if station_id != "waypoint" and inventory_modal != null and not inventory_modal.visible:
+		inventory_modal.set_gold(gold)
+		inventory_modal.open_inventory()
+	call_deferred("_relayout_open_modals")
+
+
+func _on_town_npc_modal_closed() -> void:
+	if inventory_modal != null:
+		inventory_modal.set_partner_station("")
+		if inventory_modal.visible:
+			inventory_modal.close_inventory()
+	call_deferred("_relayout_open_modals")
+
+
+func _relayout_open_modals() -> void:
+	var npc_open: bool = town_npc_modal != null and town_npc_modal.visible
+	var inv_open: bool = inventory_modal != null and inventory_modal.visible
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+
+	if npc_open and inv_open:
+		inventory_modal.set_partner_station(town_npc_modal.current_station_id)
+		var npc_sz: Vector2 = town_npc_modal.get_window_size()
+		var inv_sz: Vector2 = inventory_modal.get_window_size()
+		var gap: float = 12.0
+		var total_w: float = npc_sz.x + gap + inv_sz.x
+		var start_x: float = maxf(8.0, (vp.x - total_w) * 0.5)
+		var npc_y: float = maxf(14.0, (vp.y - npc_sz.y) * 0.44)
+		var inv_y: float = maxf(14.0, (vp.y - inv_sz.y) * 0.44)
+		town_npc_modal.set_window_position(Vector2(start_x, npc_y))
+		inventory_modal.set_window_position(Vector2(start_x + npc_sz.x + gap, inv_y))
+	elif inv_open:
+		inventory_modal.set_partner_station("")
+		inventory_modal._center_window_on_screen()
+	elif npc_open:
+		if inventory_modal != null:
+			inventory_modal.set_partner_station("")
+		town_npc_modal.center_on_screen()
+	else:
+		if inventory_modal != null:
+			inventory_modal.set_partner_station("")
+
+
+func _on_gold_changed(new_gold: int) -> void:
+	gold = maxi(0, new_gold)
 	if town_npc_modal != null:
-		town_npc_modal.open_station(station_id, unlocked_zones, current_zone_id)
+		town_npc_modal.set_gold(gold)
+	if inventory_modal != null:
+		inventory_modal.set_gold(gold)
+	_refresh_gold_hud()
+
+
+func _on_inventory_context_action(item: ItemInstance) -> void:
+	if item == null or backpack == null or town_npc_modal == null or not town_npc_modal.visible:
+		return
+	var st_id: String = town_npc_modal.current_station_id
+	if st_id == "stash":
+		if stash_grid == null or stash_grid.find_free_spot_for(item).x < 0:
+			town_npc_modal.show_feedback("⚠ O Baú Pessoal está cheio para um item %dx%d!" % [item.definition.grid_size.x, item.definition.grid_size.y], true)
+			return
+		var name_str: String = item.get_display_name()
+		backpack.remove_item(item)
+		stash_grid.auto_add_item(item)
+		town_npc_modal.show_feedback("✦ Guardado no Baú Pessoal: %s" % name_str, false)
+	elif st_id == "vendor_physical" or st_id == "vendor_magic":
+		var sell_val: int = item.get_sell_value()
+		var name_str: String = item.get_display_name()
+		backpack.remove_item(item)
+		_on_gold_changed(gold + sell_val)
+		town_npc_modal.show_feedback("✦ Vendido: %s por +%d Ouro!" % [name_str, sell_val], false)
+
+
+func _on_potion_consumed(heal_amount: int) -> void:
+	if player == null or not player.alive:
+		return
+	player.health = mini(player.max_health, player.health + heal_amount)
+	_on_health_changed(player.health, player.max_health)
+	VFX_SPAWNER.spin(self as Node3D, player.global_position + Vector3.UP * 0.5, 1.2)
+	if status_label != null:
+		status_label.text = "♥ Poção consumida! +%d de Vida restaurada (%d/%d)." % [heal_amount, player.health, player.max_health]
+		_status_timer = 3.0
+
+
+func _on_town_heal_player_requested() -> void:
+	if player == null:
+		return
+	player.max_health = player.stats.get_max_health() if player.stats != null else player.max_health
+	player.health = player.max_health
+	_on_health_changed(player.health, player.max_health)
+	VFX_SPAWNER.spin(self as Node3D, player.global_position + Vector3.UP * 0.5, 1.5)
+	if status_label != null:
+		status_label.text = "✦ O Sábio restaurou completamente sua Vida (%d/%d)!" % [player.health, player.max_health]
+		_status_timer = 3.5
 
 
 func _on_waypoint_travel_requested(dest_zone_id: String) -> void:
@@ -450,12 +577,16 @@ func _on_zone_gate_crossed(target_zone_id: String, origin_zone_id: String) -> vo
 func _on_enemy_died(_xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 	if not game_over:
 		var xp_val: int = 3
+		var gold_gain: int = randi_range(5, 11)
 		if is_instance_valid(enemy):
 			if enemy.is_mini_boss:
 				xp_val = 28
+				gold_gain = randi_range(32, 50)
 			elif enemy.xp_reward_multiplier > 1:
 				xp_val = 6
+				gold_gain = randi_range(12, 22)
 		run_progression.grant_xp(xp_val)
+		_on_gold_changed(gold + gold_gain)
 
 	if is_instance_valid(enemy):
 		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss)
@@ -613,13 +744,18 @@ func _grant_starter_items() -> void:
 func _on_town_identify_items_requested() -> void:
 	var count: int = 0
 	for it in backpack.items:
-		if not it.is_identified:
+		if it != null and not it.is_identified:
 			it.identify()
 			count += 1
+	if stash_grid != null:
+		for it in stash_grid.items:
+			if it != null and not it.is_identified:
+				it.identify()
+				count += 1
 	if count > 0:
-		status_label.text = "✦ O Sábio identificou %d item(ns) na sua mochila!" % count
+		status_label.text = "✦ O Sábio identificou %d item(ns) na Mochila e no Baú!" % count
 	else:
-		status_label.text = "✦ Todos os itens na mochila já estão identificados."
+		status_label.text = "✦ Todos os seus itens já estão identificados."
 	if inventory_modal != null:
 		inventory_modal._refresh_all()
 
@@ -654,6 +790,11 @@ func notify_inventory_full() -> void:
 func _on_health_changed(current: int, maximum: int) -> void:
 	if health_label != null:
 		health_label.text = "Vida: %d / %d" % [current, maximum]
+	if _arpg_hp_bar != null:
+		_arpg_hp_bar.max_value = float(maxi(1, maximum))
+		_arpg_hp_bar.value = float(clampi(current, 0, maximum))
+	if _arpg_hp_label != null:
+		_arpg_hp_label.text = "♥ Vida: %d / %d" % [current, maximum]
 
 
 func _on_player_died() -> void:
@@ -681,26 +822,30 @@ func _input(event: InputEvent) -> void:
 
 
 # ===============================================================
-# HUD DE EXPERIÊNCIA & NÍVEL DO MODO ARPG (SEM WAVES OU ABATES)
+# HUD DE VIDA, OURO, MOCHILA E EXPERIÊNCIA DO MODO ARPG
 # ===============================================================
 var _arpg_xp_bar: ProgressBar
 var _arpg_xp_label: Label
+var _arpg_hp_bar: ProgressBar
+var _arpg_hp_label: Label
+var _gold_hud_label: Label
 
 func _build_arpg_xp_hud() -> void:
+	# 1. Barra de Experiência Fina no Rodapé Central
 	var xp_container := PanelContainer.new()
 	xp_container.name = "ARPG_XpHUD"
 	xp_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	xp_container.anchors_preset = Control.PRESET_BOTTOM_WIDE
-	xp_container.offset_top = -22.0
-	xp_container.offset_bottom = -6.0
-	xp_container.offset_left = 320.0
-	xp_container.offset_right = -320.0
+	xp_container.offset_top = -20.0
+	xp_container.offset_bottom = -4.0
+	xp_container.offset_left = 300.0
+	xp_container.offset_right = -300.0
 	xp_container.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	xp_container.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.05, 0.07, 0.85)
-	style.border_color = Color(0.65, 0.52, 0.22, 0.70)
+	style.bg_color = Color(0.04, 0.05, 0.07, 0.88)
+	style.border_color = Color(0.65, 0.52, 0.22, 0.75)
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(4)
 	xp_container.add_theme_stylebox_override("panel", style)
@@ -726,9 +871,110 @@ func _build_arpg_xp_hud() -> void:
 	_arpg_xp_label.add_theme_font_size_override("font_size", 11)
 	_arpg_xp_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.82))
 	xp_container.add_child(_arpg_xp_label)
-
 	$HUD.add_child(xp_container)
+
+	# 2. Barra de Vida Carmesim + Ouro + Atalho de Mochila no Canto Direito Inferior
+	var right_hud := PanelContainer.new()
+	right_hud.name = "ARPG_StatusRightHUD"
+	right_hud.anchors_preset = Control.PRESET_BOTTOM_RIGHT
+	right_hud.offset_left = -278.0
+	right_hud.offset_right = -18.0
+	right_hud.offset_top = -94.0
+	right_hud.offset_bottom = -22.0
+	right_hud.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	right_hud.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
+	var r_style := StyleBoxFlat.new()
+	r_style.bg_color = Color(0.045, 0.045, 0.058, 0.94)
+	r_style.border_color = Color(0.65, 0.52, 0.25, 0.85)
+	r_style.set_border_width_all(1)
+	r_style.set_corner_radius_all(8)
+	r_style.content_margin_left = 10
+	r_style.content_margin_right = 10
+	r_style.content_margin_top = 6
+	r_style.content_margin_bottom = 6
+	right_hud.add_theme_stylebox_override("panel", r_style)
+
+	var rv := VBoxContainer.new()
+	rv.add_theme_constant_override("separation", 5)
+	right_hud.add_child(rv)
+
+	# Barra de Vida do Herói
+	var hp_wrap := PanelContainer.new()
+	hp_wrap.custom_minimum_size = Vector2(0, 24)
+	var hp_border := StyleBoxFlat.new()
+	hp_border.bg_color = Color(0.08, 0.03, 0.04, 0.9)
+	hp_border.border_color = Color(0.75, 0.25, 0.25, 0.85)
+	hp_border.set_border_width_all(1)
+	hp_border.set_corner_radius_all(4)
+	hp_wrap.add_theme_stylebox_override("panel", hp_border)
+
+	_arpg_hp_bar = ProgressBar.new()
+	_arpg_hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_arpg_hp_bar.show_percentage = false
+	_arpg_hp_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var hp_fill := StyleBoxFlat.new()
+	hp_fill.bg_color = Color(0.78, 0.16, 0.18, 0.95)
+	hp_fill.set_corner_radius_all(3)
+	var hp_bg := StyleBoxFlat.new()
+	hp_bg.bg_color = Color(0.14, 0.04, 0.05, 0.75)
+	_arpg_hp_bar.add_theme_stylebox_override("fill", hp_fill)
+	_arpg_hp_bar.add_theme_stylebox_override("background", hp_bg)
+	hp_wrap.add_child(_arpg_hp_bar)
+
+	_arpg_hp_label = Label.new()
+	_arpg_hp_label.text = "♥ Vida: 100 / 100"
+	_arpg_hp_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_arpg_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_arpg_hp_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_arpg_hp_label.add_theme_font_size_override("font_size", 12)
+	_arpg_hp_label.add_theme_color_override("font_color", Color(0.98, 0.94, 0.92))
+	hp_wrap.add_child(_arpg_hp_label)
+	rv.add_child(hp_wrap)
+
+	# Linha de Ouro + Botão Rápido de Mochila [I]
+	var bottom_row := HBoxContainer.new()
+	bottom_row.add_theme_constant_override("separation", 8)
+	rv.add_child(bottom_row)
+
+	_gold_hud_label = Label.new()
+	_gold_hud_label.text = "🪙 %d Ouro" % gold
+	_gold_hud_label.add_theme_font_size_override("font_size", 13)
+	_gold_hud_label.add_theme_color_override("font_color", Color(0.98, 0.84, 0.36))
+	bottom_row.add_child(_gold_hud_label)
+	bottom_row.add_spacer(false)
+
+	var bag_btn := Button.new()
+	bag_btn.text = "🎒 Mochila [I]"
+	bag_btn.custom_minimum_size = Vector2(115, 26)
+	bag_btn.focus_mode = Control.FOCUS_NONE
+	bag_btn.add_theme_font_size_override("font_size", 12)
+	bag_btn.add_theme_color_override("font_color", Color(0.95, 0.88, 0.72))
+	var b_st := StyleBoxFlat.new()
+	b_st.bg_color = Color(0.12, 0.10, 0.14, 0.95)
+	b_st.border_color = Color(0.65, 0.50, 0.24, 0.9)
+	b_st.set_border_width_all(1)
+	b_st.set_corner_radius_all(4)
+	bag_btn.add_theme_stylebox_override("normal", b_st)
+	var b_hov := b_st.duplicate() as StyleBoxFlat
+	b_hov.bg_color = b_st.bg_color.lightened(0.14)
+	bag_btn.add_theme_stylebox_override("hover", b_hov)
+	bag_btn.add_theme_stylebox_override("pressed", b_hov)
+	bag_btn.pressed.connect(func() -> void:
+		if inventory_modal != null:
+			inventory_modal.toggle_inventory()
+	)
+	bottom_row.add_child(bag_btn)
+
+	$HUD.add_child(right_hud)
 	_refresh_arpg_xp_hud()
+	_refresh_gold_hud()
+
+
+func _refresh_gold_hud() -> void:
+	if _gold_hud_label != null:
+		_gold_hud_label.text = "🪙 %d Ouro" % gold
+
 
 func _on_arpg_progress_changed(level: int, current_xp: int, xp_required: int) -> void:
 	_update_arpg_xp_display(level, current_xp, xp_required)

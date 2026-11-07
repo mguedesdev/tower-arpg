@@ -128,6 +128,7 @@ func _ready() -> void:
 
 	town_npc_modal = TOWN_NPC_MODAL_SCRIPT.new() as TownNpcModal
 	$HUD.add_child(town_npc_modal)
+	town_npc_modal.bind_context(backpack, stash_grid, equipment, player.stats)
 	town_npc_modal.waypoint_travel_requested.connect(_on_waypoint_travel_requested)
 	town_npc_modal.respec_build_requested.connect(_on_town_respec_build_requested)
 	town_npc_modal.identify_items_requested.connect(_on_town_identify_items_requested)
