@@ -162,6 +162,12 @@ func _ready() -> void:
 	$HUD.add_child(day_night_hud)
 	day_night_hud.bind_world(get_node_or_null("Sun") as DirectionalLight3D, get_node_or_null("WorldEnvironment") as WorldEnvironment)
 
+	if player != null:
+		player.bind_equipment(equipment)
+		if player.belt_lantern != null:
+			player.belt_lantern.bind_day_night(day_night_hud)
+			player.belt_lantern.set_zone_context(current_zone_id)
+
 	world_map_modal = WORLD_MAP_MODAL_SCRIPT.new() as WorldMapModal
 	$HUD.add_child(world_map_modal)
 	world_map_modal.waypoint_travel_requested.connect(_on_waypoint_travel_requested)
@@ -612,6 +618,13 @@ func _grant_starter_items() -> void:
 	var pot: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")
 	backpack.auto_add_item(pot)
 
+	# 10. Cinto de Couro Gasto (2x1)
+	var belt: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "belt_leather")
+	backpack.auto_add_item(belt)
+	if equipment != null and equipment.get_equipped_item(ItemDefinition.EquipmentSlot.BELT) == null:
+		var starter_belt: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "belt_leather")
+		equipment.equip_item(starter_belt, ItemDefinition.EquipmentSlot.BELT, player.stats if player != null else null)
+
 
 func _clear_ground_items() -> void:
 	if _ground_items_root != null:
@@ -734,6 +747,10 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 
 	if arena_art != null and arena_art.has_method("rebuild_campaign_zone"):
 		arena_art.call("rebuild_campaign_zone", zone_def)
+	if day_night_hud != null:
+		day_night_hud.set_zone_context(zone_id)
+	if player != null and player.belt_lantern != null:
+		player.belt_lantern.set_zone_context(zone_id)
 
 	if title_text_label != null:
 		title_text_label.text = zone_def.title.to_upper()

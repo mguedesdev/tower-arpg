@@ -93,8 +93,12 @@ func bind_world(sun: DirectionalLight3D, world_env: WorldEnvironment) -> void:
 
 
 func set_zone_context(zone_id: String) -> void:
-	_is_underground_zone = (zone_id == "zone_3_crypt")
+	_is_underground_zone = (zone_id == "zone_3_crypt" or zone_id == "zone_4_mines" or zone_id.contains("crypt") or zone_id.contains("mine") or zone_id.contains("cave"))
 	_apply_world_lighting(0.0)
+
+
+func is_underground() -> bool:
+	return _is_underground_zone
 
 
 func set_time_of_day(new_time: float) -> void:

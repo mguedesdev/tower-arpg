@@ -174,6 +174,11 @@ func _ready() -> void:
 	player.died.connect(_on_player_died)
 	_on_health_changed(player.health, player.max_health)
 
+	player.bind_equipment(equipment)
+	if player.belt_lantern != null:
+		player.belt_lantern.bind_day_night(day_night_hud)
+		player.belt_lantern.set_zone_context(current_zone_id)
+
 	if camera != null and camera.has_method("set_lobby_mode"):
 		camera.set_lobby_mode(false, true)
 
@@ -360,6 +365,8 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 		arena_art.call("rebuild_campaign_zone", zone_def)
 	if day_night_hud != null:
 		day_night_hud.set_zone_context(zone_id)
+	if player != null and player.belt_lantern != null:
+		player.belt_lantern.set_zone_context(zone_id)
 
 	if title_text_label != null:
 		title_text_label.text = zone_def.title.to_upper()
@@ -781,6 +788,10 @@ func _grant_starter_items() -> void:
 	var boots = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "boots_plate")
 	if equipment != null and boots != null:
 		equipment.equip_item(boots, ItemDefinition.EquipmentSlot.BOOTS, player_stats)
+
+	var starter_belt = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "belt_leather")
+	if equipment != null and starter_belt != null:
+		equipment.equip_item(starter_belt, ItemDefinition.EquipmentSlot.BELT, player_stats)
 
 	var greatsword = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "greatsword_iron")
 	greatsword.identify()
