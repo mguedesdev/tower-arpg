@@ -99,7 +99,11 @@ func _mesh_instance(mesh_label: String, mesh: Mesh, mat: Material, spawn_positio
 	node.mesh = mesh
 	node.material_override = mat
 	node.position = spawn_position
-	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var std_mat := mat as StandardMaterial3D
+	if std_mat != null and (std_mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED or std_mat.emission_enabled):
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	else:
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	add_child(node)
 	return node
 
@@ -140,7 +144,8 @@ func _build_ground(noise_seed: int = 90420) -> void:
 	# Uma unica malha continua substitui os antigos 676 quadrados verdes.
 	# Mantemos a colisao existente em main.tscn, pois esta etapa e SOMENTE visual.
 	# O relevo e sutil e fica abaixo do piso fisico para evitar obstaculos falsos.
-	_box(Vector3(0.0, -0.37, 0.0), Vector3(ARENA_SIZE + 6.0, 0.60, ARENA_SIZE + 6.0), COLOR_SOIL_DARK)
+	var soil_base := _box(Vector3(0.0, -0.37, 0.0), Vector3(ARENA_SIZE + 6.0, 0.60, ARENA_SIZE + 6.0), COLOR_SOIL_DARK)
+	soil_base.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 	var terrain_shader: Shader = load("res://assets/materials/terrain_ground.gdshader") as Shader
 	var grass_texture: Texture2D = load("res://assets/textures/grass_dark_tile.png") as Texture2D
@@ -299,12 +304,14 @@ func _build_altar() -> void:
 	shrine_light.light_energy = 1.55
 	shrine_light.omni_range = 9.0
 	shrine_light.omni_attenuation = 1.35
+	shrine_light.add_to_group("day_night_torch_light")
 	add_child(shrine_light)
 
 func _build_perimeter_ring() -> void:
 	# Base escurecida ao redor da arena para dar contraste e clima.
 	var edge_mat := _material("edge_shadow", Color(0.06, 0.055, 0.055), 1.0)
-	_mesh_instance("EdgeRing", _ring_mesh(21.6, 26.5, 96), edge_mat, Vector3(0.0, -0.11, 0.0))
+	var edge_ring := _mesh_instance("EdgeRing", _ring_mesh(21.6, 26.5, 96), edge_mat, Vector3(0.0, -0.11, 0.0))
+	edge_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 func _build_ruins() -> void:
 	_ruin(Vector3(-14.0, 0.0, -13.5), 0.0)
@@ -481,6 +488,15 @@ func _brazier(pos: Vector3) -> void:
 	var flame_mat := _material("ghost_fire", COLOR_FLAME, 0.2, true, 1.3)
 	_mesh_instance(_unique("FlameBottom"), flame_bottom, flame_mat, pos + Vector3(0.0, 1.08, 0.0))
 	_mesh_instance(_unique("FlameTop"), flame_top, flame_mat, pos + Vector3(0.0, 1.35, 0.0))
+	var brazier_light := OmniLight3D.new()
+	brazier_light.name = "BrazierFireLight"
+	brazier_light.position = Vector3(0.0, 1.45, 0.0)
+	brazier_light.light_color = Color(1.0, 0.56, 0.20)
+	brazier_light.light_energy = 0.95
+	brazier_light.omni_range = 6.2
+	brazier_light.omni_attenuation = 1.35
+	brazier_light.add_to_group("day_night_torch_light")
+	root.add_child(brazier_light)
 
 func _add_box_to(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
 	var mesh := BoxMesh.new()
@@ -490,7 +506,7 @@ func _add_box_to(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> M
 	node.mesh = mesh
 	node.material_override = _material("part_box", color)
 	node.position = pos
-	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	parent.add_child(node)
 	return node
 
@@ -505,7 +521,7 @@ func _add_cylinder_to(parent: Node3D, pos: Vector3, radius: float, height: float
 	node.mesh = mesh
 	node.material_override = _material("part_cyl", color)
 	node.position = pos
-	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	parent.add_child(node)
 	return node
 
@@ -534,6 +550,7 @@ func _build_town_encampment() -> void:
 	camp_light.light_color = Color(1.0, 0.58, 0.22)
 	camp_light.light_energy = 1.85
 	camp_light.omni_range = 14.0
+	camp_light.add_to_group("day_night_torch_light")
 	add_child(camp_light)
 
 	# Muralhas baixas do Acampamento com abertura larga no Portão Norte (Z = -16.5)

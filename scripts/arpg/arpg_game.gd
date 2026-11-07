@@ -11,6 +11,7 @@ const BOSS_MODEL_PATH: String = "res://assets/models/skeleton_boss.glb"
 const MALAKOR_SCENE: PackedScene = preload("res://scenes/enemies/boss_malakor.tscn")
 const MALAKOR_MODEL_PATH: String = "res://assets/models/boss_malakor.glb"
 const BOSS_HEALTH_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/boss_health_bar_hud.gd")
+const DAY_NIGHT_HUD_SCRIPT: Script = preload("res://game/ui/campaign/day_night_cycle_hud.gd")
 
 const RUN_PROGRESSION_SCRIPT: Script = preload("res://core/progression/run_progression_service.gd")
 const CAMPAIGN_ZONE_DEF_SCRIPT = preload("res://game/campaign/campaign_zone_definition.gd")
@@ -52,6 +53,7 @@ var skill_bar_hud: SkillBarHUD
 var town_npc_modal: TownNpcModal
 var inventory_modal: InventoryEquipmentModal
 var boss_health_bar_hud: Control = null
+var day_night_hud: DayNightCycleHUD = null
 
 var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
@@ -148,6 +150,11 @@ func _ready() -> void:
 	boss_health_bar_hud = BOSS_HEALTH_BAR_HUD_SCRIPT.new() as Control
 	$HUD.add_child(boss_health_bar_hud)
 
+	# Relógio de Sol e Lua no HUD + Sistema de Dia/Noite, Luz Direcional e Sombras 3D
+	day_night_hud = DAY_NIGHT_HUD_SCRIPT.new() as DayNightCycleHUD
+	$HUD.add_child(day_night_hud)
+	day_night_hud.bind_world(get_node_or_null("Sun") as DirectionalLight3D, get_node_or_null("WorldEnvironment") as WorldEnvironment)
+
 	# Menu de Pausa / Retornar ao Launcher
 	_build_pause_menu()
 
@@ -209,6 +216,9 @@ func _unhandled_input(event: InputEvent) -> void:
 					station.trigger_interaction()
 					get_viewport().set_input_as_handled()
 					return
+		elif event.keycode == KEY_T and day_night_hud != null:
+			day_night_hud.advance_to_next_phase()
+			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_ESCAPE:
 			_toggle_pause_menu()
 			get_viewport().set_input_as_handled()
@@ -329,6 +339,8 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 
 	if arena_art != null and arena_art.has_method("rebuild_campaign_zone"):
 		arena_art.call("rebuild_campaign_zone", zone_def)
+	if day_night_hud != null:
+		day_night_hud.set_zone_context(zone_id)
 
 	if title_text_label != null:
 		title_text_label.text = zone_def.title.to_upper()

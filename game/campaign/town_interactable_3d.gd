@@ -205,7 +205,7 @@ func _add_box(parent: Node3D, pos: Vector3, size: Vector3, col: Color, rough: fl
 	mi.mesh = m
 	mi.position = pos
 	mi.material_override = _make_mat(col, rough, emission)
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if (emission > 0.0 or size.y <= 0.06) else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	parent.add_child(mi)
 	return mi
 
@@ -226,7 +226,7 @@ func _add_cyl(parent: Node3D, pos: Vector3, rad: float, h: float, col: Color, se
 	mi.mesh = m
 	mi.position = pos
 	mi.material_override = _make_mat(col, rough, emission)
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if (emission > 0.0 or h <= 0.12) else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	parent.add_child(mi)
 	return mi
 

@@ -18,6 +18,7 @@ const TOWN_INTERACTABLE_SCRIPT = preload("res://game/campaign/town_interactable_
 const ZONE_PORTAL_SCRIPT = preload("res://game/campaign/zone_portal_3d.gd")
 const TOWN_NPC_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/town_npc_modal.gd")
 const SKILL_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/skill_bar_hud.gd")
+const DAY_NIGHT_HUD_SCRIPT: Script = preload("res://game/ui/campaign/day_night_cycle_hud.gd")
 const ITEM_DEF_SCRIPT = preload("res://core/items/item_definition.gd")
 const ITEM_INST_SCRIPT = preload("res://core/items/item_instance.gd")
 const ITEM_DB_SCRIPT = preload("res://core/items/item_database.gd")
@@ -62,6 +63,7 @@ var lobby_hud: SanctuaryLobbyHUD
 var town_npc_modal: TownNpcModal
 var skill_bar_hud: SkillBarHUD
 var inventory_modal: InventoryEquipmentModal
+var day_night_hud: DayNightCycleHUD = null
 var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var equipment: CharacterEquipment = CharacterEquipment.new()
@@ -153,6 +155,10 @@ func _ready() -> void:
 	$HUD.add_child(inventory_modal)
 	inventory_modal.bind_context(backpack, equipment, player.stats)
 	_grant_starter_items()
+
+	day_night_hud = DAY_NIGHT_HUD_SCRIPT.new() as DayNightCycleHUD
+	$HUD.add_child(day_night_hud)
+	day_night_hud.bind_world(get_node_or_null("Sun") as DirectionalLight3D, get_node_or_null("WorldEnvironment") as WorldEnvironment)
 
 	_campaign_props_root = Node3D.new()
 	_campaign_props_root.name = "CampaignInteractiveProps"

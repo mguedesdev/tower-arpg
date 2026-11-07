@@ -8,8 +8,8 @@ uniform sampler2D grass_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D dirt_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D blend_noise_tex : filter_linear_mipmap, repeat_enable;
 
-uniform float color_boost : hint_range(0.8, 2.5, 0.05) = 1.55;
-uniform float ambient_fill : hint_range(0.0, 1.5, 0.05) = 0.85;
+uniform float color_boost : hint_range(0.8, 2.5, 0.05) = 1.45;
+uniform float ambient_fill : hint_range(0.0, 1.5, 0.02) = 0.14;
 uniform float dirt_mix_width : hint_range(0.0, 0.3, 0.01) = 0.25;
 
 void fragment() {
