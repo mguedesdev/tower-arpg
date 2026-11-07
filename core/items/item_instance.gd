@@ -11,6 +11,12 @@ enum ItemRarity {
 	UNCOMMON   ## 4 - Verde (#58BC76): 1 modificador aleatório (no final da enum para preservar índices serializados)
 }
 
+enum CraftState {
+	NORMAL = 0,          ## 0 - Estado normal de crafting
+	RECONSTRUCTING = 1,  ## 1 - Raro incompleto (ex.: 2P+0S após Rasura em 2P+1S) aguardando afixo complementar
+	VERDICT_SEALED = 2   ## 2 - Lacrado permanentemente pelo Veredito (bloqueia todas as operações futuras)
+}
+
 const COLOR_NORMAL := Color("#E8E6E2")
 const COLOR_UNCOMMON := Color("#58BC76")
 const COLOR_MAGIC := Color("#5596E6")
@@ -29,6 +35,11 @@ var explicit_affixes: Array[ItemAffix] = []
 var custom_name: String = ""
 var unique_id: String = ""
 var unique_display_name: String = ""
+
+# Estado de Escrituras Arcanas / Crafting e Lacre do Veredito
+var craft_state: CraftState = CraftState.NORMAL
+var verdict_mode: String = ""
+var craft_history: Array[Dictionary] = []
 
 # Posição de inventário e orientação (deitado ↔ em pé)
 var grid_position: Vector2i = Vector2i(-1, -1)
@@ -68,6 +79,10 @@ static func get_rarity_name_pt(r: ItemRarity) -> String:
 	return "Normal"
 
 
+static func get_rarity_name(r: ItemRarity) -> String:
+	return get_rarity_name_pt(r)
+
+
 static func rarity_from_id(rarity_id: String) -> ItemRarity:
 	match rarity_id.to_lower().strip_edges():
 		"uncommon", "verde", "incomum":
@@ -96,6 +111,25 @@ func can_rotate() -> bool:
 	if not definition.rotatable:
 		return false
 	return definition.grid_size.x != definition.grid_size.y
+
+
+func is_sealed() -> bool:
+	return craft_state == CraftState.VERDICT_SEALED
+
+
+func is_reconstructing() -> bool:
+	return craft_state == CraftState.RECONSTRUCTING
+
+
+func add_craft_event(action_id: String, details: Dictionary = {}) -> void:
+	var event := {
+		"action": action_id,
+		"timestamp": Time.get_ticks_msec(),
+		"details": details
+	}
+	craft_history.append(event)
+	if craft_history.size() > 20:
+		craft_history.pop_front()
 
 
 func toggle_rotation() -> bool:
@@ -358,6 +392,11 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 	var t: String = "[center][b][color=#%s]%s[/color][/b]\n" % [r_col, get_display_name()]
 	t += "[color=#9a9284]%s • %s (Nv. %d)[/color][/center]\n" % [get_slot_display_name(), r_name, item_level]
 
+	if is_sealed():
+		t += "[center][color=#c084fc]✦ LACRADO PELO VEREDITO ✦[/color]\n[color=#b39ddb][i]Inscrição definitiva — não pode mais ser alterado[/i][/color][/center]\n"
+	elif is_reconstructing():
+		t += "[center][color=#f59e0b][i]✦ Em Reconstrução ✦\n(Requer Cláusula Áurea para novo afixo)[/i][/color][/center]\n"
+
 	if not is_identified:
 		t += "[center][color=#ff5555][b]❓ Item Não-Identificado[/b]\nLeve ao Sábio na Vila para revelar seus poderes[/color][/center]\n"
 
@@ -587,6 +626,9 @@ func to_dictionary() -> Dictionary:
 		"grid_position": {"x": grid_position.x, "y": grid_position.y},
 		"is_rotated": is_rotated,
 		"equipped_slot": int(equipped_slot),
+		"craft_state": int(craft_state),
+		"verdict_mode": verdict_mode,
+		"craft_history": craft_history,
 		"explicit_affixes": affixes_arr,
 	}
 
@@ -624,6 +666,11 @@ static func from_dictionary(data: Dictionary) -> ItemInstance:
 	inst.unique_display_name = String(data.get("unique_display_name", ""))
 	inst.is_rotated = bool(data.get("is_rotated", false))
 	inst.equipped_slot = clampi(int(data.get("equipped_slot", ItemDefinition.EquipmentSlot.NONE)), ItemDefinition.EquipmentSlot.NONE, ItemDefinition.EquipmentSlot.RING_2) as ItemDefinition.EquipmentSlot
+	inst.craft_state = clampi(int(data.get("craft_state", CraftState.NORMAL)), CraftState.NORMAL, CraftState.VERDICT_SEALED) as CraftState
+	inst.verdict_mode = String(data.get("verdict_mode", ""))
+	var raw_history: Variant = data.get("craft_history", [])
+	if typeof(raw_history) == TYPE_ARRAY:
+		inst.craft_history = (raw_history as Array).duplicate()
 
 	if data.has("grid_position") and typeof(data["grid_position"]) == TYPE_DICTIONARY:
 		var gp: Dictionary = data["grid_position"]

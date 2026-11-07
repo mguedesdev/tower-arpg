@@ -404,11 +404,12 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 			zone_info_label.text = "Zona: Vila Segura"
 		status_label.text = "Vila Segura: aproxime-se dos Mercadores/Baú e aperte [E], ou saia pelo Portão Norte!"
 
-		# Os 4 Interagíveis solicitados: Baú, Vendedor Físico, Vendedor Mágico e Sábio de Identificar/Reset
+		# Interagíveis da Vila: Baú, Ferreiro, Arcanista, Sábio e Mesa do Escriba (Escrituras Arcanas)
 		_spawn_town_station("stash", "📦 Baú Pessoal (Stash)", "[E] Abrir Baú", Vector3(-5.8, 0.0, -3.5), 25.0)
 		_spawn_town_station("vendor_physical", "⚒ Ferreiro (Itens Físicos)", "[E] Negociar Armas & Armaduras", Vector3(-7.4, 0.0, 3.2), 65.0)
 		_spawn_town_station("vendor_magic", "🔮 Arcanista (Itens Mágicos)", "[E] Negociar Relíquias Mágicas", Vector3(7.4, 0.0, -3.2), -55.0)
 		_spawn_town_station("identifier_respec", "📜 Sábio (Identificar & Resetar)", "[E] Identificar Itens / Resetar Build", Vector3(-2.6, 0.0, -5.2), 15.0)
+		_spawn_town_station("scribe_crafting", "✒️ Mesa do Escriba (Escrituras Arcanas)", "[E] Inscrever & Fabricar Itens", Vector3(2.6, 0.0, -5.2), -15.0)
 
 		# Portão Norte saindo da Vila para a Zona 1
 		_spawn_zone_gate(zone_def.zone_id, zone_def.next_zone_id, zone_def.next_zone_label, zone_def.next_gate_pos, false)
@@ -531,8 +532,8 @@ func _on_town_station_interacted(station_id: String, _station_title: String) -> 
 		return
 	town_npc_modal.set_gold(gold)
 	town_npc_modal.open_station(station_id, unlocked_zones, current_zone_id, area_level)
-	# No Baú Pessoal (stash), abre a Mochila automaticamente ao lado; nas lojas, abre centralizada (e acopla lado a lado se apertar [I])!
-	if station_id == "stash" and inventory_modal != null and not inventory_modal.visible:
+	# No Baú Pessoal (stash) ou Mesa do Escriba (scribe_crafting), abre a Mochila automaticamente ao lado; nas lojas, abre centralizada!
+	if (station_id == "stash" or station_id == "scribe_crafting") and inventory_modal != null and not inventory_modal.visible:
 		inventory_modal.set_gold(gold)
 		inventory_modal.open_inventory()
 	call_deferred("_relayout_open_modals")
@@ -584,7 +585,12 @@ func _on_gold_changed(new_gold: int) -> void:
 
 
 func _on_inventory_context_action(item: ItemInstance) -> void:
-	if item == null or backpack == null or town_npc_modal == null or not town_npc_modal.visible:
+	if item == null or backpack == null:
+		return
+	if town_npc_modal == null or not town_npc_modal.visible:
+		if item.definition != null and ItemDatabase.is_crafting_consumable(item.definition.id):
+			_on_town_station_interacted("scribe_crafting", "Mesa do Escriba")
+			town_npc_modal.select_crafting_item(item)
 		return
 	var st_id: String = town_npc_modal.current_station_id
 	if st_id == "stash":
@@ -603,6 +609,8 @@ func _on_inventory_context_action(item: ItemInstance) -> void:
 		town_npc_modal.register_sold_item(item, sell_val)
 		_on_gold_changed(gold + sell_val)
 		town_npc_modal.show_feedback("✦ Vendido: %s por +%d Ouro! (Disponível na aba ↩ Recomprar)" % [name_str, sell_val], false)
+	elif st_id == "scribe_crafting":
+		town_npc_modal.select_crafting_item(item)
 
 
 func _on_potion_consumed(heal_amount: int) -> void:
@@ -745,7 +753,7 @@ func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false, monster_class: int
 	if resolved_class == LootBalanceConfig.MonsterClass.BOSS:
 		profile = {"enemy_id": "boss_malakor", "guaranteed_min_equipment_drops": 1}
 	var dropped_items: Array[ItemInstance] = LootGenerationService.generate_monster_loot_drops(
-		monster_lvl, resolved_class, current_zone_id, null, profile
+		monster_lvl, resolved_class, current_zone_id, null, profile, true
 	)
 	for item in dropped_items:
 		if item == null:

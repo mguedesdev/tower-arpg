@@ -18,6 +18,14 @@ const ACT1_EQUIPMENT_IDS: Array[String] = [
 	"dagger_sharp",
 ]
 
+const CRAFTING_CONSUMABLE_IDS: Array[String] = [
+	"scroll_first_mark",
+	"scroll_counterseal",
+	"scroll_golden_clause",
+	"stone_eraser",
+	"stone_verdict",
+]
+
 static var _catalog: Dictionary = {}
 
 
@@ -34,6 +42,14 @@ static func get_catalog() -> Dictionary:
 static func get_act1_equipment_ids() -> Array[String]:
 	ensure_initialized()
 	return ACT1_EQUIPMENT_IDS.duplicate()
+
+
+static func get_crafting_consumable_ids() -> Array[String]:
+	return CRAFTING_CONSUMABLE_IDS.duplicate()
+
+
+static func is_crafting_consumable(base_id: String) -> bool:
+	return CRAFTING_CONSUMABLE_IDS.has(base_id)
 
 
 static func get_definition(base_id: String) -> ItemDefinition:
@@ -282,6 +298,69 @@ static func _initialize_catalog() -> void:
 		"example_affixes": []
 	})
 
+	# ===============================================================
+	# CONSUMÍVEIS DE CRAFTING: ESCRITURAS ARCANAS (V1 OBRIGATÓRIA)
+	# ===============================================================
+	# 1. Pergaminho da Primeira Marca
+	_register("scroll_first_mark", "Pergaminho da Primeira Marca", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 1, "req_lvl": 1,
+		"gold": 25,
+		"icon": "res://assets/items/crafting/scroll_first_mark.png",
+		"desc": "Escreve o primeiro atributo (prefixo ou sufixo) de um equipamento normal, tornando-o Incomum (Verde).",
+		"source": "crafting",
+		"example_rarity": "normal",
+		"example_affixes": []
+	})
+
+	# 2. Pergaminho do Contrasselo
+	_register("scroll_counterseal", "Pergaminho do Contrasselo", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 1, "req_lvl": 1,
+		"gold": 60,
+		"icon": "res://assets/items/crafting/scroll_counterseal.png",
+		"desc": "Inscreve o contraponto complementar que falta a um equipamento incomum, tornando-o Mágico (Azul 1P+1S).",
+		"source": "crafting",
+		"example_rarity": "normal",
+		"example_affixes": []
+	})
+
+	# 3. Pergaminho da Cláusula Áurea
+	_register("scroll_golden_clause", "Pergaminho da Cláusula Áurea", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 8, "req_lvl": 1,
+		"gold": 160,
+		"icon": "res://assets/items/crafting/scroll_golden_clause.png",
+		"desc": "Abre ou completa a escrita rara do equipamento, adicionando o 3º ou 4º atributo explícito (máx 2P+2S).",
+		"source": "crafting",
+		"example_rarity": "normal",
+		"example_affixes": []
+	})
+
+	# 4. Pedra da Rasura
+	_register("stone_eraser", "Pedra da Rasura", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 12, "req_lvl": 1,
+		"gold": 220,
+		"icon": "res://assets/items/crafting/stone_eraser.png",
+		"desc": "Apaga uma linha inscrita aleatória, abrindo espaço para nova reescrita arcana.",
+		"source": "crafting",
+		"example_rarity": "normal",
+		"example_affixes": []
+	})
+
+	# 5. Pedra do Veredito
+	_register("stone_verdict", "Pedra do Veredito", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 45, "req_lvl": 1,
+		"gold": 650,
+		"icon": "res://assets/items/crafting/stone_verdict.png",
+		"desc": "Aplica a sentença final irreversível ao equipamento e o lacra permanentemente para novos rituais de escrita.",
+		"source": "crafting",
+		"example_rarity": "normal",
+		"example_affixes": []
+	})
+
 
 static func _register(id: String, name: String, cat: ItemDefinition.ItemCategory, slot: ItemDefinition.EquipmentSlot, sz: Vector2i, props: Dictionary) -> void:
 	var def := ItemDefinition.new()
@@ -340,6 +419,17 @@ static func instantiate_act1_catalog_example(base_id: String) -> ItemInstance:
 		if ex != null:
 			inst.explicit_affixes.append(ex.duplicate_affix())
 	return inst
+
+
+## Cria uma nova instancia de um item do catalogo com raridade e ilvl especificados
+static func create_instance(base_id: String, rarity: ItemInstance.ItemRarity = ItemInstance.ItemRarity.NORMAL, ilvl: int = 1) -> ItemInstance:
+	var def: ItemDefinition = get_definition(base_id)
+	if def == null:
+		return null
+	var inst := ItemInstance.new(def, rarity, ilvl)
+	inst.is_identified = true
+	return inst
+
 
 
 ## Retorna todas as 13 instancias-exemplo de equipamentos do catalogo do Ato 1

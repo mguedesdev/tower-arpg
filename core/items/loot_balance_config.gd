@@ -678,3 +678,92 @@ static func _interpolate_vector_table(level: int, table: Dictionary, vec_size: i
 	for j in range(vec_size):
 		result[j] = float(v_end[j])
 	return result
+
+## ---------------------------------------------------------------------------
+## 8. DROP DE CONSUMÍVEIS DE CRAFTING (ESCRITURAS ARCANAS)
+## ---------------------------------------------------------------------------
+## Conforme Seção 9 do documento `06_estudo_escrituras_arcanas_crafting.md`:
+## - Probabilidade separada de drop por abate.
+## - Gating por nível: Primeira Marca (Lv 1+), Contrasselo (Lv 1+), Cláusula Áurea (Lv 8+),
+##   Pedra da Rasura (Lv 12+), Pedra do Veredito (Lv 45+ ou Chefes).
+const CRAFTING_CONSUMABLE_BASE_DROP_CHANCE_BY_LEVEL: Dictionary = {
+	1:   0.050,
+	5:   0.060,
+	10:  0.075,
+	15:  0.090,
+	20:  0.110,
+	25:  0.130,
+	40:  0.150,
+	60:  0.170,
+	80:  0.190,
+	90:  0.200,
+	100: 0.210,
+}
+
+static func get_crafting_drop_chance(enemy_level: int, monster_class: int = MonsterClass.NORMAL) -> float:
+	var base_chance: float = _interpolate_scalar_dict(enemy_level, CRAFTING_CONSUMABLE_BASE_DROP_CHANCE_BY_LEVEL)
+	var mult: float = 1.0
+	match monster_class:
+		MonsterClass.NORMAL:
+			mult = 1.0
+		MonsterClass.MAGIC:
+			mult = 1.6
+		MonsterClass.RARE:
+			mult = 2.4
+		MonsterClass.HERO:
+			mult = 3.0
+		MonsterClass.BOSS:
+			return 1.0 # 100% garantido pelo menos 1 drop de crafting em Chefes
+	return clampf(base_chance * mult, 0.0, 1.0)
+
+static func get_crafting_consumable_weights(enemy_level: int, monster_class: int = MonsterClass.NORMAL) -> Dictionary:
+	var weights: Dictionary = {}
+	var lv: int = maxi(1, enemy_level)
+	var is_boss: bool = (monster_class == MonsterClass.BOSS)
+	var is_rare_or_above: bool = (monster_class == MonsterClass.RARE or monster_class == MonsterClass.HERO or is_boss)
+
+	# 1. Pergaminho da Primeira Marca (Lv 1+)
+	weights["scroll_first_mark"] = 60.0
+
+	# 2. Pergaminho do Contrasselo (Lv 1+)
+	weights["scroll_counterseal"] = 35.0
+
+	# 3. Pergaminho da Cláusula Áurea (Lv 8+)
+	if lv >= 8 or is_rare_or_above:
+		var w_clause: float = 16.0
+		if is_rare_or_above:
+			w_clause *= 1.8
+		weights["scroll_golden_clause"] = w_clause
+
+	# 4. Pedra da Rasura (Lv 12+)
+	if lv >= 12 or is_rare_or_above:
+		var w_eraser: float = 9.0
+		if is_rare_or_above:
+			w_eraser *= 2.0
+		weights["stone_eraser"] = w_eraser
+
+	# 5. Pedra do Veredito (Lv 45+ ou Chefes em qualquer nível)
+	if lv >= 45 or is_boss:
+		var w_verdict: float = 3.0
+		if is_boss:
+			w_verdict *= 4.0
+		weights["stone_verdict"] = w_verdict
+
+	return weights
+
+static func roll_crafting_consumable_id(
+	enemy_level: int,
+	monster_class: int = MonsterClass.NORMAL,
+	rng: RandomNumberGenerator = null
+) -> String:
+	var weights_dict: Dictionary = get_crafting_consumable_weights(enemy_level, monster_class)
+	if weights_dict.is_empty():
+		return "scroll_first_mark"
+	var keys: Array[String] = []
+	var weights: Array[float] = []
+	for k in weights_dict.keys():
+		keys.append(String(k))
+		weights.append(float(weights_dict[k]))
+	var chosen_idx: int = roll_weighted_index(weights, rng)
+	return keys[chosen_idx]
+

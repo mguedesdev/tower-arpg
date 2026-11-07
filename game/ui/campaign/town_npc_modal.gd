@@ -29,12 +29,22 @@ const RED_ALERT := Color(1.0, 0.35, 0.35)
 const CELL_SIZE := 36
 const ITEMS_PER_PAGE := 6
 
+const Eligibility = preload("res://core/items/crafting_eligibility_service.gd")
+const CraftingService = preload("res://core/items/item_crafting_service.gd")
+
 var backpack: SpatialInventoryGrid
 var stash: SpatialInventoryGrid
 var equipment: CharacterEquipment
 var stats: CharacterStats
 var current_gold: int = 150
 var area_level: int = 1
+
+# Estado da Mesa do Escriba (Escrituras Arcanas & Veredito)
+var _selected_craft_target: ItemInstance = null
+var _selected_craft_consumable: String = "scroll_first_mark"
+var _selected_verdict_mode: String = "rewrite"
+var _selected_preserve_idx: int = 0
+var _last_craft_feedback: String = ""
 
 var current_station_id: String = ""
 var _unlocked_zones: Array[String] = ["town", "zone_1_road"]
@@ -383,6 +393,10 @@ func open_station(station_id: String, unlocked_zones: Array[String], current_zon
 		_window_panel.custom_minimum_size = Vector2(860, 540)
 		_subtitle_label.visible = false
 		_bottom_close_btn.visible = true
+	elif station_id == "scribe_crafting":
+		_window_panel.custom_minimum_size = Vector2(940, 560)
+		_subtitle_label.visible = false
+		_bottom_close_btn.visible = true
 	else:
 		_window_panel.custom_minimum_size = Vector2(540, 510)
 		_subtitle_label.visible = true
@@ -420,7 +434,7 @@ func _on_inventories_changed() -> void:
 		return
 	if current_station_id == "stash" and _stash_grid_container != null:
 		_rebuild_stash_cells()
-	elif current_station_id == "identifier_respec":
+	elif current_station_id == "identifier_respec" or current_station_id == "scribe_crafting":
 		_refresh_current_station_content()
 	elif _is_vendor_station():
 		_refresh_vendor_catalog_and_inspector()
@@ -431,6 +445,8 @@ func _on_equipment_changed(_slot: ItemDefinition.EquipmentSlot, _item: ItemInsta
 		return
 	if current_station_id == "stash" and _stash_grid_container != null:
 		_rebuild_stash_cells()
+	elif current_station_id == "scribe_crafting":
+		_refresh_current_station_content()
 	elif _is_vendor_station():
 		_refresh_vendor_catalog_and_inspector()
 
@@ -453,6 +469,8 @@ func _refresh_current_station_content() -> void:
 			_populate_vendor_magic()
 		"identifier_respec":
 			_populate_identifier_respec()
+		"scribe_crafting":
+			_populate_scribe_crafting()
 		"waypoint":
 			_populate_waypoint()
 
@@ -1731,6 +1749,592 @@ func _make_sage_service_card(
 	vb.add_child(act_btn)
 
 	return card
+
+
+# ===============================================================
+# 3.5 MESA DO ESCRIBA — ESCRITURAS ARCANAS & RITUAL DO VEREDITO
+# ===============================================================
+
+func select_crafting_item(item: ItemInstance) -> void:
+	if item == null:
+		return
+	if item.definition != null and item.definition.is_equippable():
+		_selected_craft_target = item
+	elif item.definition != null and ItemDatabase.is_crafting_consumable(item.definition.id):
+		_selected_craft_consumable = item.definition.id
+	if visible and current_station_id == "scribe_crafting":
+		_refresh_current_station_content()
+
+
+func _count_crafting_consumable(consumable_id: String) -> int:
+	var total: int = 0
+	if backpack != null:
+		for it in backpack.items:
+			if it != null and it.definition != null and it.definition.id == consumable_id:
+				total += 1
+	if stash != null:
+		for it in stash.items:
+			if it != null and it.definition != null and it.definition.id == consumable_id:
+				total += 1
+	return total
+
+
+func _consume_crafting_material(consumable_id: String) -> bool:
+	if backpack != null:
+		for it in backpack.items:
+			if it != null and it.definition != null and it.definition.id == consumable_id:
+				backpack.remove_item(it)
+				return true
+	if stash != null:
+		for it in stash.items:
+			if it != null and it.definition != null and it.definition.id == consumable_id:
+				stash.remove_item(it)
+				return true
+	return false
+
+
+func _get_available_craft_targets() -> Array[Dictionary]:
+	var list: Array[Dictionary] = []
+	if equipment != null:
+		for slot in equipment.equipped.keys():
+			var eq_item: ItemInstance = equipment.get_equipped_item(slot)
+			if eq_item != null and eq_item.definition != null:
+				list.append({"item": eq_item, "source": "Equipado", "slot": slot})
+	if backpack != null:
+		for it in backpack.items:
+			if it != null and it.definition != null and it.definition.is_equippable():
+				list.append({"item": it, "source": "Mochila", "slot": -1})
+	return list
+
+
+func _populate_scribe_crafting() -> void:
+	_title_label.text = "✒️   MESA DO ESCRIBA  —  ESCRITURAS ARCANAS & RITUAL DO VEREDITO"
+
+	var targets: Array[Dictionary] = _get_available_craft_targets()
+	if _selected_craft_target == null and not targets.is_empty():
+		_selected_craft_target = targets[0]["item"]
+
+	# Container principal de 3 colunas
+	var main_hbox := HBoxContainer.new()
+	main_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main_hbox.add_theme_constant_override("separation", 14)
+	_content_box.add_child(main_hbox)
+
+	# ---------------------------------------------------------------
+	# COLUNA 1 (ESQUERDA): EQUIPAMENTO ALVO & ANÁLISE DE AFIXOS
+	# ---------------------------------------------------------------
+	var col_left := PanelContainer.new()
+	col_left.custom_minimum_size = Vector2(285, 420)
+	col_left.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var left_st := _slot_style(Color(0.065, 0.055, 0.075, 0.98), COLOR_BRONZE_BORDER, 2)
+	left_st.set_corner_radius_all(6)
+	left_st.content_margin_left = 10
+	left_st.content_margin_right = 10
+	left_st.content_margin_top = 8
+	left_st.content_margin_bottom = 8
+	col_left.add_theme_stylebox_override("panel", left_st)
+	main_hbox.add_child(col_left)
+
+	var left_vbox := VBoxContainer.new()
+	left_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left_vbox.add_theme_constant_override("separation", 8)
+	col_left.add_child(left_vbox)
+
+	var left_title := Label.new()
+	left_title.text = "✦  EQUIPAMENTO ALVO"
+	left_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	left_title.add_theme_font_size_override("font_size", 14)
+	left_title.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	left_vbox.add_child(left_title)
+
+	var target_picker := OptionButton.new()
+	target_picker.custom_minimum_size = Vector2(0, 32)
+	target_picker.focus_mode = Control.FOCUS_NONE
+	var cur_sel_idx: int = 0
+	for i in range(targets.size()):
+		var t_entry: Dictionary = targets[i]
+		var it: ItemInstance = t_entry["item"]
+		var label_str: String = "[%s] %s (ilvl %d)" % [t_entry["source"], it.get_display_name(), it.item_level]
+		target_picker.add_item(label_str, i)
+		if it == _selected_craft_target:
+			cur_sel_idx = i
+	if not targets.is_empty():
+		target_picker.selected = cur_sel_idx
+	target_picker.item_selected.connect(func(idx: int) -> void:
+		if idx >= 0 and idx < targets.size():
+			_selected_craft_target = targets[idx]["item"]
+			_refresh_current_station_content()
+	)
+	left_vbox.add_child(target_picker)
+
+	var left_sep := HSeparator.new()
+	left_sep.add_theme_color_override("separator", COLOR_BORDER_SUBTLE)
+	left_vbox.add_child(left_sep)
+
+	# Card visual do Equipamento
+	var item_card := VBoxContainer.new()
+	item_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	item_card.add_theme_constant_override("separation", 6)
+	left_vbox.add_child(item_card)
+
+	if _selected_craft_target == null:
+		var empty_lbl := Label.new()
+		empty_lbl.text = "Nenhum equipamento selecionado.\nClique com o Botão Direito em um item da sua Mochila para inspecioná-lo aqui!"
+		empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_lbl.add_theme_color_override("font_color", COLOR_MUTED)
+		item_card.add_child(empty_lbl)
+	else:
+		var it := _selected_craft_target
+		var name_lbl := Label.new()
+		name_lbl.text = it.get_display_name()
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.add_theme_font_size_override("font_size", 15)
+		name_lbl.add_theme_color_override("font_color", it.get_rarity_color())
+		item_card.add_child(name_lbl)
+
+		var meta_lbl := Label.new()
+		meta_lbl.text = "ilvl %d  •  %s" % [it.item_level, ItemDefinition.get_category_name(it.definition.category)]
+		meta_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		meta_lbl.add_theme_font_size_override("font_size", 12)
+		meta_lbl.add_theme_color_override("font_color", COLOR_PARCHMENT)
+		item_card.add_child(meta_lbl)
+
+		# Badge de Raridade e Estados Especiais
+		var badge_panel := PanelContainer.new()
+		var badge_bg: Color = it.get_rarity_color() * 0.25
+		badge_bg.a = 0.95
+		var badge_st := _slot_style(badge_bg, it.get_rarity_color(), 1)
+		badge_st.set_corner_radius_all(3)
+		badge_st.content_margin_top = 2
+		badge_st.content_margin_bottom = 2
+		badge_panel.add_theme_stylebox_override("panel", badge_st)
+
+		var badge_lbl := Label.new()
+		var r_name: String = ItemInstance.get_rarity_name(it.rarity).to_upper()
+		if it.is_sealed():
+			badge_lbl.text = "✦ LACRADO PELO VEREDITO ✦"
+			badge_lbl.add_theme_color_override("font_color", Color(0.92, 0.72, 1.0))
+		elif it.is_reconstructing():
+			badge_lbl.text = "%s  [EM RECONSTRUÇÃO]" % r_name
+			badge_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.40))
+		else:
+			badge_lbl.text = "%s  (%d AFIXOS)" % [r_name, it.explicit_affixes.size()]
+			badge_lbl.add_theme_color_override("font_color", it.get_rarity_color())
+		badge_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		badge_lbl.add_theme_font_size_override("font_size", 11)
+		badge_panel.add_child(badge_lbl)
+		item_card.add_child(badge_panel)
+
+		# Modificadores Implícitos (se existirem na base)
+		if not it.implicit_modifiers.is_empty():
+			var imp_title := Label.new()
+			imp_title.text = "Implicits da Base:"
+			imp_title.add_theme_font_size_override("font_size", 11)
+			imp_title.add_theme_color_override("font_color", COLOR_MUTED)
+			item_card.add_child(imp_title)
+			for imp in it.implicit_modifiers:
+				var imp_lbl := Label.new()
+				imp_lbl.text = "  • %s" % String(imp.get("text", ""))
+				imp_lbl.add_theme_font_size_override("font_size", 11)
+				imp_lbl.add_theme_color_override("font_color", Color(0.80, 0.88, 0.95))
+				item_card.add_child(imp_lbl)
+
+		# Vagas de Afixos Explícitos (4 slots estruturados P1, P2, S1, S2)
+		var aff_title := Label.new()
+		aff_title.text = "Afixos Explícitos (Máx 2P + 2S):"
+		aff_title.add_theme_font_size_override("font_size", 11)
+		aff_title.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+		item_card.add_child(aff_title)
+
+		var prefixes: Array[ItemAffix] = []
+		var suffixes: Array[ItemAffix] = []
+		for af in it.explicit_affixes:
+			if af.affix_type == ItemAffix.AffixType.PREFIX:
+				prefixes.append(af)
+			else:
+				suffixes.append(af)
+
+		for p_idx in range(2):
+			var slot_lbl := Label.new()
+			if p_idx < prefixes.size():
+				var af: ItemAffix = prefixes[p_idx]
+				slot_lbl.text = "P%d: [T%d] %s" % [p_idx + 1, af.tier, af.display_text]
+				slot_lbl.add_theme_color_override("font_color", Color(0.95, 0.90, 0.70))
+			else:
+				slot_lbl.text = "P%d: [Vaga de Prefixo Livre]" % [p_idx + 1]
+				slot_lbl.add_theme_color_override("font_color", Color(0.42, 0.40, 0.45))
+			slot_lbl.add_theme_font_size_override("font_size", 11)
+			item_card.add_child(slot_lbl)
+
+		for s_idx in range(2):
+			var slot_lbl := Label.new()
+			if s_idx < suffixes.size():
+				var af: ItemAffix = suffixes[s_idx]
+				slot_lbl.text = "S%d: [T%d] %s" % [s_idx + 1, af.tier, af.display_text]
+				slot_lbl.add_theme_color_override("font_color", Color(0.70, 0.88, 0.98))
+			else:
+				slot_lbl.text = "S%d: [Vaga de Sufixo Livre]" % [s_idx + 1]
+				slot_lbl.add_theme_color_override("font_color", Color(0.42, 0.40, 0.45))
+			slot_lbl.add_theme_font_size_override("font_size", 11)
+			item_card.add_child(slot_lbl)
+
+	# ---------------------------------------------------------------
+	# COLUNA 2 (CENTRO): CONSUMÍVEIS DE CRAFTING & INTENÇÃO DO VEREDITO
+	# ---------------------------------------------------------------
+	var col_center := PanelContainer.new()
+	col_center.custom_minimum_size = Vector2(305, 420)
+	col_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var center_st := _slot_style(Color(0.065, 0.055, 0.075, 0.98), COLOR_BRONZE_BORDER, 2)
+	center_st.set_corner_radius_all(6)
+	center_st.content_margin_left = 10
+	center_st.content_margin_right = 10
+	center_st.content_margin_top = 8
+	center_st.content_margin_bottom = 8
+	col_center.add_theme_stylebox_override("panel", center_st)
+	main_hbox.add_child(col_center)
+
+	var center_vbox := VBoxContainer.new()
+	center_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	center_vbox.add_theme_constant_override("separation", 6)
+	col_center.add_child(center_vbox)
+
+	var center_title := Label.new()
+	center_title.text = "✦  CONSUMÍVEL DE ESCRITA"
+	center_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	center_title.add_theme_font_size_override("font_size", 14)
+	center_title.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	center_vbox.add_child(center_title)
+
+	var consum_defs: Array[Dictionary] = [
+		{"id": "scroll_first_mark", "name": "Primeira Marca", "desc": "Branco 0 → Verde 1"},
+		{"id": "scroll_counterseal", "name": "Contrasselo", "desc": "Verde 1 → Azul 2 (1P+1S)"},
+		{"id": "scroll_golden_clause", "name": "Cláusula Áurea", "desc": "Azul 2 → Raro 3 | 3 → 4"},
+		{"id": "stone_eraser", "name": "Pedra da Rasura", "desc": "Apaga 1 afixo aleatório"},
+		{"id": "stone_verdict", "name": "Pedra do Veredito", "desc": "Ritual final • Lacra 100%"},
+	]
+
+	for c_data in consum_defs:
+		var c_id: String = c_data["id"]
+		var c_name: String = c_data["name"]
+		var c_desc: String = c_data["desc"]
+		var count: int = _count_crafting_consumable(c_id)
+		var is_selected: bool = (_selected_craft_consumable == c_id)
+
+		var c_btn := Button.new()
+		c_btn.custom_minimum_size = Vector2(0, 38)
+		c_btn.focus_mode = Control.FOCUS_NONE
+
+		var btn_style := StyleBoxFlat.new()
+		if is_selected:
+			btn_style.bg_color = Color(0.28, 0.18, 0.36, 0.98) if c_id == "stone_verdict" else Color(0.22, 0.18, 0.12, 0.98)
+			btn_style.border_color = COLOR_GOLD_BRIGHT
+			btn_style.set_border_width_all(2)
+		else:
+			btn_style.bg_color = Color(0.09, 0.08, 0.11, 0.95)
+			btn_style.border_color = COLOR_BORDER_SUBTLE
+			btn_style.set_border_width_all(1)
+		btn_style.set_corner_radius_all(4)
+		c_btn.add_theme_stylebox_override("normal", btn_style)
+
+		var hover_style := btn_style.duplicate() as StyleBoxFlat
+		hover_style.border_color = COLOR_GOLD_TITLE
+		c_btn.add_theme_stylebox_override("hover", hover_style)
+		c_btn.add_theme_stylebox_override("pressed", hover_style)
+
+		# Layout interno do botão (Ícone + Título + Quantidade)
+		var btn_hbox := HBoxContainer.new()
+		btn_hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		btn_hbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+		btn_hbox.offset_left = 6
+		btn_hbox.offset_right = -6
+		btn_hbox.add_theme_constant_override("separation", 8)
+		c_btn.add_child(btn_hbox)
+
+		var icon_rect := TextureRect.new()
+		var c_def: ItemDefinition = ItemDatabase.get_definition(c_id)
+		if c_def != null and c_def.icon != null:
+			icon_rect.texture = c_def.icon
+		icon_rect.custom_minimum_size = Vector2(26, 26)
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		btn_hbox.add_child(icon_rect)
+
+		var text_vb := VBoxContainer.new()
+		text_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		text_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		btn_hbox.add_child(text_vb)
+
+		var top_lbl := Label.new()
+		top_lbl.text = c_name
+		top_lbl.add_theme_font_size_override("font_size", 12)
+		top_lbl.add_theme_color_override("font_color", COLOR_GOLD_BRIGHT if is_selected else COLOR_PARCHMENT)
+		text_vb.add_child(top_lbl)
+
+		var sub_lbl := Label.new()
+		sub_lbl.text = c_desc
+		sub_lbl.add_theme_font_size_override("font_size", 10)
+		sub_lbl.add_theme_color_override("font_color", COLOR_MUTED)
+		text_vb.add_child(sub_lbl)
+
+		var count_lbl := Label.new()
+		count_lbl.text = "x%d" % count
+		count_lbl.add_theme_font_size_override("font_size", 13)
+		count_lbl.add_theme_color_override("font_color", COLOR_GOLD_TITLE if count > 0 else RED_ALERT)
+		btn_hbox.add_child(count_lbl)
+
+		c_btn.pressed.connect(func() -> void:
+			_selected_craft_consumable = c_id
+			_refresh_current_station_content()
+		)
+		center_vbox.add_child(c_btn)
+
+	# Seção de Intenções do Veredito (quando Pedra do Veredito estiver ativa)
+	if _selected_craft_consumable == "stone_verdict":
+		var v_sep := HSeparator.new()
+		v_sep.add_theme_color_override("separator", Color(0.70, 0.45, 0.90, 0.6))
+		center_vbox.add_child(v_sep)
+
+		var int_title := Label.new()
+		int_title.text = "✦  ESCOLHA A INTENÇÃO DO VEREDITO  ✦"
+		int_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		int_title.add_theme_font_size_override("font_size", 11)
+		int_title.add_theme_color_override("font_color", Color(0.92, 0.75, 1.0))
+		center_vbox.add_child(int_title)
+
+		var int_hbox := HBoxContainer.new()
+		int_hbox.add_theme_constant_override("separation", 6)
+		center_vbox.add_child(int_hbox)
+
+		var modes: Array[Dictionary] = [
+			{"id": "rewrite", "label": "Reescrever"},
+			{"id": "preserve", "label": "Conservar"},
+			{"id": "elevate", "label": "Elevar"},
+		]
+		for m in modes:
+			var m_id: String = m["id"]
+			var m_lbl: String = m["label"]
+			var m_btn := Button.new()
+			m_btn.text = m_lbl
+			m_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			m_btn.custom_minimum_size = Vector2(0, 28)
+			m_btn.focus_mode = Control.FOCUS_NONE
+			var m_is_sel: bool = (_selected_verdict_mode == m_id)
+			var m_st := StyleBoxFlat.new()
+			m_st.bg_color = Color(0.38, 0.16, 0.48, 0.98) if m_is_sel else Color(0.12, 0.10, 0.15, 0.95)
+			m_st.border_color = Color(0.95, 0.78, 1.0) if m_is_sel else COLOR_BORDER_SUBTLE
+			m_st.set_border_width_all(2 if m_is_sel else 1)
+			m_st.set_corner_radius_all(3)
+			m_btn.add_theme_stylebox_override("normal", m_st)
+			m_btn.pressed.connect(func() -> void:
+				_selected_verdict_mode = m_id
+				_refresh_current_station_content()
+			)
+			int_hbox.add_child(m_btn)
+
+		if _selected_verdict_mode == "preserve" and _selected_craft_target != null:
+			var prot_lbl := Label.new()
+			prot_lbl.text = "Afixo a proteger com o selo:"
+			prot_lbl.add_theme_font_size_override("font_size", 11)
+			prot_lbl.add_theme_color_override("font_color", COLOR_PARCHMENT)
+			center_vbox.add_child(prot_lbl)
+
+			var aff_picker := OptionButton.new()
+			aff_picker.custom_minimum_size = Vector2(0, 26)
+			aff_picker.focus_mode = Control.FOCUS_NONE
+			for a_idx in range(_selected_craft_target.explicit_affixes.size()):
+				var af: ItemAffix = _selected_craft_target.explicit_affixes[a_idx]
+				aff_picker.add_item("%s (T%d)" % [af.display_text, af.tier], a_idx)
+			if _selected_craft_target.explicit_affixes.size() > 0:
+				_selected_preserve_idx = clampi(_selected_preserve_idx, 0, _selected_craft_target.explicit_affixes.size() - 1)
+				aff_picker.selected = _selected_preserve_idx
+			aff_picker.item_selected.connect(func(sel_idx: int) -> void:
+				_selected_preserve_idx = sel_idx
+			)
+			center_vbox.add_child(aff_picker)
+
+	# ---------------------------------------------------------------
+	# COLUNA 3 (DIREITA): PRÉVIA, ELEGIBILIDADE & EXECUÇÃO ATÔMICA
+	# ---------------------------------------------------------------
+	var col_right := PanelContainer.new()
+	col_right.custom_minimum_size = Vector2(305, 420)
+	col_right.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var right_st := _slot_style(Color(0.065, 0.055, 0.075, 0.98), COLOR_BRONZE_BORDER, 2)
+	right_st.set_corner_radius_all(6)
+	right_st.content_margin_left = 10
+	right_st.content_margin_right = 10
+	right_st.content_margin_top = 8
+	right_st.content_margin_bottom = 8
+	col_right.add_theme_stylebox_override("panel", right_st)
+	main_hbox.add_child(col_right)
+
+	var right_vbox := VBoxContainer.new()
+	right_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right_vbox.add_theme_constant_override("separation", 8)
+	col_right.add_child(right_vbox)
+
+	var right_title := Label.new()
+	right_title.text = "✦  PRÉVIA & SENTENÇA"
+	right_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	right_title.add_theme_font_size_override("font_size", 14)
+	right_title.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	right_vbox.add_child(right_title)
+
+	var craft_options: Dictionary = {
+		"verdict_mode": _selected_verdict_mode,
+		"preserve_index": _selected_preserve_idx,
+	}
+	var elig: Dictionary = Eligibility.check_eligibility(_selected_craft_target, _selected_craft_consumable, craft_options)
+	var can_craft: bool = bool(elig.get("can_craft", false))
+	var player_count: int = _count_crafting_consumable(_selected_craft_consumable)
+
+	# Painel de Status de Elegibilidade
+	var status_panel := PanelContainer.new()
+	var sp_bg: Color = Color(0.10, 0.22, 0.12, 0.95) if (can_craft and player_count > 0) else Color(0.24, 0.09, 0.09, 0.95)
+	var sp_border: Color = Color(0.35, 0.85, 0.40) if (can_craft and player_count > 0) else RED_ALERT
+	var sp_st := _slot_style(sp_bg, sp_border, 1)
+	sp_st.set_corner_radius_all(4)
+	sp_st.content_margin_left = 8
+	sp_st.content_margin_right = 8
+	sp_st.content_margin_top = 6
+	sp_st.content_margin_bottom = 6
+	status_panel.add_theme_stylebox_override("panel", sp_st)
+	right_vbox.add_child(status_panel)
+
+	var status_vb := VBoxContainer.new()
+	status_vb.add_theme_constant_override("separation", 3)
+	status_panel.add_child(status_vb)
+
+	var st_badge := Label.new()
+	st_badge.text = "✔  AÇÃO ELEGÍVEL" if can_craft else "✖  AÇÃO BLOQUEADA"
+	st_badge.add_theme_font_size_override("font_size", 12)
+	st_badge.add_theme_color_override("font_color", sp_border)
+	status_vb.add_child(st_badge)
+
+	var act_name_lbl := Label.new()
+	act_name_lbl.text = "Ação: %s" % elig.get("action_name", "")
+	act_name_lbl.add_theme_font_size_override("font_size", 11)
+	act_name_lbl.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	status_vb.add_child(act_name_lbl)
+
+	if not can_craft:
+		var reason_lbl := Label.new()
+		reason_lbl.text = "Motivo: %s" % elig.get("reason", "")
+		reason_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		reason_lbl.add_theme_font_size_override("font_size", 11)
+		reason_lbl.add_theme_color_override("font_color", Color(1.0, 0.70, 0.70))
+		status_vb.add_child(reason_lbl)
+
+	# Caixa de Risco e Alertas Sanitários
+	var warn_box := PanelContainer.new()
+	var wb_st := _slot_style(Color(0.15, 0.12, 0.08, 0.95), Color(0.85, 0.65, 0.25, 0.8), 1)
+	wb_st.set_corner_radius_all(4)
+	wb_st.content_margin_left = 8
+	wb_st.content_margin_right = 8
+	wb_st.content_margin_top = 6
+	wb_st.content_margin_bottom = 6
+	warn_box.add_theme_stylebox_override("panel", wb_st)
+	right_vbox.add_child(warn_box)
+
+	var warn_lbl := Label.new()
+	warn_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	warn_lbl.add_theme_font_size_override("font_size", 11)
+
+	if _selected_craft_consumable == "stone_verdict":
+		warn_lbl.text = "✦ ATENÇÃO: O Veredito é 100% irreversível e LACRA o equipamento para sempre em todos os resultados. Não aceitará novas alterações!"
+		warn_lbl.add_theme_color_override("font_color", Color(1.0, 0.75, 0.95))
+	elif _selected_craft_consumable == "stone_eraser":
+		warn_lbl.text = "⚠ RISCO: Remoção uniforme (1/N) entre todos os afixos explícitos. Pode apagar o melhor afixo T1 do item!"
+		warn_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.40))
+	elif _selected_craft_consumable == "scroll_golden_clause":
+		warn_lbl.text = "✦ Conserva integralmente os afixos existentes e expande o item para 3 ou 4 modificadores raros."
+		warn_lbl.add_theme_color_override("font_color", Color(0.85, 0.95, 0.75))
+	else:
+		warn_lbl.text = "✦ A inscrição sorteia família, tier e valor conforme o ilvl (%d) da base." % (_selected_craft_target.item_level if _selected_craft_target != null else 1)
+		warn_lbl.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	warn_box.add_child(warn_lbl)
+
+	# Informações de Custo e Disponibilidade
+	var cost_lbl := Label.new()
+	cost_lbl.text = "Consumo: 1x  •  Disponível no Inventário: %d" % player_count
+	cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cost_lbl.add_theme_font_size_override("font_size", 12)
+	cost_lbl.add_theme_color_override("font_color", COLOR_GOLD_BRIGHT if player_count > 0 else RED_ALERT)
+	right_vbox.add_child(cost_lbl)
+
+	# Botão de Ação Atômica
+	var is_verdict: bool = (_selected_craft_consumable == "stone_verdict")
+	var btn_label: String = "✦  EXECUTAR VEREDITO FINAL  ✦" if is_verdict else "✒️  INSCREVER NO EQUIPAMENTO"
+	var execute_btn := _make_gothic_button(btn_label, is_verdict)
+	execute_btn.custom_minimum_size = Vector2(0, 42)
+	execute_btn.disabled = (not can_craft or player_count <= 0)
+	execute_btn.pressed.connect(func() -> void:
+		_on_execute_scribe_craft(craft_options)
+	)
+	right_vbox.add_child(execute_btn)
+
+	# Histórico e Resultado da Última Operação
+	var feedback_panel := PanelContainer.new()
+	feedback_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var fb_st := _slot_style(Color(0.05, 0.04, 0.06, 0.95), COLOR_BORDER_SUBTLE, 1)
+	fb_st.set_corner_radius_all(4)
+	fb_st.content_margin_left = 6
+	fb_st.content_margin_right = 6
+	fb_st.content_margin_top = 4
+	fb_st.content_margin_bottom = 4
+	feedback_panel.add_theme_stylebox_override("panel", fb_st)
+	right_vbox.add_child(feedback_panel)
+
+	var fb_lbl := Label.new()
+	fb_lbl.text = _last_craft_feedback if not _last_craft_feedback.is_empty() else "Selecione o equipamento e o consumível, confira a prévia e clique para executar a transação."
+	fb_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	fb_lbl.add_theme_font_size_override("font_size", 11)
+	fb_lbl.add_theme_color_override("font_color", COLOR_PARCHMENT if not _last_craft_feedback.is_empty() else COLOR_MUTED)
+	feedback_panel.add_child(fb_lbl)
+
+
+func _on_execute_scribe_craft(options: Dictionary) -> void:
+	if _selected_craft_target == null:
+		show_feedback("Selecione um equipamento alvo primeiro!", true)
+		return
+
+	var count: int = _count_crafting_consumable(_selected_craft_consumable)
+	if count <= 0:
+		show_feedback("Você não possui este consumível no inventário!", true)
+		return
+
+	var elig: Dictionary = Eligibility.check_eligibility(_selected_craft_target, _selected_craft_consumable, options)
+	if not bool(elig.get("can_craft", false)):
+		show_feedback("Ação inválida: %s" % elig.get("reason", "Inelegível"), true)
+		return
+
+	# Consome 1 material
+	if not _consume_crafting_material(_selected_craft_consumable):
+		show_feedback("Erro ao debitar consumível!", true)
+		return
+
+	# Aplica a operação atômica via ItemCraftingService
+	var craft_res: Dictionary = CraftingService.apply_craft(_selected_craft_target, _selected_craft_consumable, options)
+	if not bool(craft_res.get("ok", false)):
+		show_feedback("Falha na operação: %s" % craft_res.get("reason", "Erro"), true)
+		_refresh_current_station_content()
+		return
+
+	# Se o item estava equipado, sincroniza os bônus com os atributos do personagem
+	if equipment != null and _selected_craft_target.equipped_slot != ItemDefinition.EquipmentSlot.NONE:
+		equipment.sync_to_character_stats(stats)
+		equipment.equipment_changed.emit(_selected_craft_target.equipped_slot, _selected_craft_target)
+
+	var act_name: String = String(craft_res.get("action", "Inscrição"))
+	if _selected_craft_consumable == "stone_verdict":
+		_last_craft_feedback = "✦ VEREDITO EXECUTADO: %s foi LACRADO PELO VEREDITO permanentemente!" % _selected_craft_target.get_display_name()
+	elif _selected_craft_consumable == "stone_eraser":
+		_last_craft_feedback = "✦ RASURA CONCLUÍDA: 1 afixo explícito foi apagado de %s!" % _selected_craft_target.get_display_name()
+	else:
+		_last_craft_feedback = "✦ %s concluída com sucesso em %s!" % [act_name, _selected_craft_target.get_display_name()]
+
+	show_feedback(_last_craft_feedback, false)
+	_refresh_current_station_content()
 
 
 # ===============================================================

@@ -237,7 +237,8 @@ static func generate_monster_loot_drops(
 	monster_class: int = LootBalanceConfig.MonsterClass.NORMAL,
 	zone_id: String = "act1",
 	rng: RandomNumberGenerator = null,
-	loot_profile: Dictionary = {}
+	loot_profile: Dictionary = {},
+	include_crafting: bool = false
 ) -> Array[ItemInstance]:
 	var drops: Array[ItemInstance] = []
 	var enemy_id: String = String(loot_profile.get("enemy_id", ""))
@@ -258,7 +259,43 @@ static func generate_monster_loot_drops(
 			break
 		drops.append(guaranteed_item)
 
+	# Sorteio independente de consumíveis de crafting das Escrituras Arcanas (Seção 9)
+	if include_crafting:
+		var crafting_items: Array[ItemInstance] = generate_monster_crafting_drops(enemy_level, monster_class, rng)
+		for c_item in crafting_items:
+			if c_item != null:
+				drops.append(c_item)
+
 	return drops
+
+## ---------------------------------------------------------------------------
+## DROP DE CONSUMÍVEIS DE CRAFTING (ESCRITURAS ARCANAS)
+## ---------------------------------------------------------------------------
+static func generate_monster_crafting_drops(
+	enemy_level: int,
+	monster_class: int = LootBalanceConfig.MonsterClass.NORMAL,
+	rng: RandomNumberGenerator = null
+) -> Array[ItemInstance]:
+	var results: Array[ItemInstance] = []
+	var drop_chance: float = LootBalanceConfig.get_crafting_drop_chance(enemy_level, monster_class)
+	var roll: float = rng.randf() if rng != null else randf()
+
+	if roll <= drop_chance:
+		var consumable_id: String = LootBalanceConfig.roll_crafting_consumable_id(enemy_level, monster_class, rng)
+		var item: ItemInstance = ItemDatabase.create_instance(consumable_id)
+		if item != null:
+			results.append(item)
+
+	# Chefes ou Inimigos Raros em níveis altos têm chance de um drop extra de crafting
+	if monster_class == LootBalanceConfig.MonsterClass.BOSS:
+		var extra_roll: float = rng.randf() if rng != null else randf()
+		if extra_roll < 0.45:
+			var extra_id: String = LootBalanceConfig.roll_crafting_consumable_id(enemy_level, monster_class, rng)
+			var extra_item: ItemInstance = ItemDatabase.create_instance(extra_id)
+			if extra_item != null:
+				results.append(extra_item)
+
+	return results
 
 static func generate_single_equipment_drop(
 	enemy_level: int,

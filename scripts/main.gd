@@ -578,7 +578,7 @@ func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false, monster_class: int
 	if resolved_class < 0:
 		resolved_class = LootBalanceConfig.MonsterClass.BOSS if is_boss else LootBalanceConfig.MonsterClass.NORMAL
 	var monster_lvl: int = enemy_level if enemy_level > 0 else maxi(1, current_wave)
-	var dropped_items: Array[ItemInstance] = LootGenerationService.generate_monster_loot_drops(monster_lvl, resolved_class, "act1")
+	var dropped_items: Array[ItemInstance] = LootGenerationService.generate_monster_loot_drops(monster_lvl, resolved_class, "act1", null, {}, true)
 	for item in dropped_items:
 		if item == null:
 			continue
@@ -815,11 +815,12 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 		wave_label.text = "Zona: Vila Segura"
 		status_label.text = "Vila: aproxime-se do Baú/Mercadores e aperte [E], ou saia pelo Portão Norte!"
 
-		# Os 4 Interagíveis da Vila solicitados: Baú, Vendedor Físico, Vendedor Mágico e Identificador/Reset
+		# Interagíveis da Vila: Baú, Ferreiro, Arcanista, Sábio e Mesa do Escriba (Escrituras Arcanas)
 		_spawn_town_station("stash", "📦 Baú Pessoal (Stash)", "[E] Abrir Baú", Vector3(-5.8, 0.0, -3.5), 25.0)
 		_spawn_town_station("vendor_physical", "⚒ Ferreiro (Itens Físicos)", "[E] Negociar Armas & Armaduras", Vector3(-7.4, 0.0, 3.2), 65.0)
 		_spawn_town_station("vendor_magic", "🔮 Arcanista (Itens Mágicos)", "[E] Negociar Relíquias Mágicas", Vector3(7.4, 0.0, -3.2), -55.0)
 		_spawn_town_station("identifier_respec", "📜 Sábio (Identificar & Resetar Build)", "[E] Identificar Itens / Resetar Build", Vector3(-2.6, 0.0, -5.2), 15.0)
+		_spawn_town_station("scribe_crafting", "✒️ Mesa do Escriba (Escrituras Arcanas)", "[E] Inscrever & Fabricar Itens", Vector3(2.6, 0.0, -5.2), -15.0)
 
 		# Portão Norte saindo da Vila para a Zona 1 (Estrada Profanada)
 		_spawn_zone_gate(zone_def.zone_id, zone_def.next_zone_id, zone_def.next_zone_label, zone_def.next_gate_pos, false)

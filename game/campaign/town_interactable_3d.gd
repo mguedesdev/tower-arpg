@@ -82,10 +82,12 @@ func _build_visuals() -> void:
 			_build_npc_figure(Color(0.14, 0.18, 0.38), Color(0.38, 0.72, 1.0), false, true)
 		"identifier_respec":
 			_build_npc_figure(Color(0.24, 0.22, 0.19), Color(0.95, 0.78, 0.36), false, false)
+		"scribe_crafting":
+			_build_scribe_desk()
 		"waypoint":
 			_build_waypoint_pad()
 
-	var label_height: float = 1.95 if (station_id == "stash" or station_id == "waypoint") else 2.55
+	var label_height: float = 1.95 if (station_id == "stash" or station_id == "waypoint" or station_id == "scribe_crafting") else 2.55
 
 	_label_title = Label3D.new()
 	_label_title.text = "✦ %s ✦" % station_title
@@ -127,9 +129,30 @@ func _get_accent_color() -> Color:
 			return Color(0.42, 0.76, 1.0)
 		"identifier_respec":
 			return Color(0.92, 0.84, 0.52)
+		"scribe_crafting":
+			return Color(0.88, 0.65, 0.98)
 		"waypoint":
 			return Color(0.36, 0.84, 1.0)
 	return Color(0.86, 0.72, 0.38)
+
+
+func _build_scribe_desk() -> void:
+	# Tapete violeta arcano + Mesa de mogno do escriba + Pergaminhos, cinzel e tinteiro
+	_add_box(self, Vector3(0.0, 0.02, 0.0), Vector3(2.1, 0.04, 1.55), Color(0.28, 0.14, 0.38), 0.9)
+	# Pedestal de pedra escura
+	_add_box(self, Vector3(0.0, 0.12, 0.0), Vector3(1.68, 0.20, 1.15), Color(0.16, 0.16, 0.19))
+	# Tampo e corpo da mesa de escrita
+	_add_box(self, Vector3(0.0, 0.56, 0.0), Vector3(1.42, 0.68, 0.86), Color(0.24, 0.13, 0.08), 0.75)
+	_add_box(self, Vector3(0.0, 0.92, 0.0), Vector3(1.48, 0.10, 0.92), Color(0.32, 0.17, 0.10), 0.70)
+	# Manuscrito aberto com runas arcanas brilhantes
+	_add_box(self, Vector3(-0.20, 0.98, 0.05), Vector3(0.55, 0.03, 0.42), Color(0.92, 0.88, 0.78), 0.4, 0.2)
+	# Lacre de cera carmesim no manuscrito
+	_add_box(self, Vector3(-0.20, 1.00, 0.16), Vector3(0.09, 0.02, 0.09), Color(0.78, 0.12, 0.14), 0.2, 0.6)
+	# Rolo de pergaminho fechado ao lado
+	_add_cyl(self, Vector3(0.35, 1.00, -0.15), 0.07, 0.45, Color(0.88, 0.82, 0.70), 10)
+	# Tinteiro com pena e cinzel de pedra
+	_add_cyl(self, Vector3(0.42, 1.00, 0.20), 0.08, 0.14, Color(0.12, 0.12, 0.14), 8)
+	_add_box(self, Vector3(0.15, 0.98, -0.22), Vector3(0.26, 0.04, 0.08), Color(0.42, 0.42, 0.48), 0.1, 0.5)
 
 
 func _build_stash_chest() -> void:

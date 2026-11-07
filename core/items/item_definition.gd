@@ -81,3 +81,31 @@ func is_two_handed() -> bool:
 
 func is_equippable() -> bool:
 	return equip_slot != EquipmentSlot.NONE
+
+
+static func get_category_name(cat: ItemCategory) -> String:
+	match cat:
+		ItemCategory.WEAPON_1H:
+			return "Arma de Uma Mão"
+		ItemCategory.WEAPON_2H:
+			return "Arma de Duas Mãos"
+		ItemCategory.SHIELD:
+			return "Escudo"
+		ItemCategory.HELMET:
+			return "Elmo"
+		ItemCategory.CHEST:
+			return "Peitoral"
+		ItemCategory.GLOVES:
+			return "Luvas"
+		ItemCategory.BOOTS:
+			return "Botas"
+		ItemCategory.BELT:
+			return "Cinto"
+		ItemCategory.AMULET:
+			return "Amuleto"
+		ItemCategory.RING:
+			return "Anel"
+		ItemCategory.CONSUMABLE:
+			return "Consumível"
+	return "Equipamento"
+

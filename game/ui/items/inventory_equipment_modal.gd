@@ -966,11 +966,15 @@ func _on_item_panel_input(item: ItemInstance, event: InputEvent) -> void:
 			if _held_item != null:
 				return
 			_hide_tooltip()
-			if active_partner_station == "stash" or active_partner_station == "vendor_physical" or active_partner_station == "vendor_magic":
+			if active_partner_station == "stash" or active_partner_station == "vendor_physical" or active_partner_station == "vendor_magic" or active_partner_station == "scribe_crafting":
 				item_context_action_requested.emit(item)
 				return
 
 			if item.definition.category == ItemDefinition.ItemCategory.CONSUMABLE:
+				if ItemDatabase.is_crafting_consumable(item.definition.id):
+					# Consumível de fabricação arcana (Pergaminhos / Pedras) — emite ação de contexto ou abre mesa
+					item_context_action_requested.emit(item)
+					return
 				var heal_val: int = maxi(25, item.definition.base_health)
 				inventory.remove_item(item)
 				potion_consumed.emit(heal_val)
