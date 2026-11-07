@@ -244,7 +244,8 @@ func _build_ground(noise_seed: int = 90420) -> void:
 			var gradient_z: float = (heights[down_z * side + xi] - heights[up_z * side + xi]) / (maxi(up_z - down_z, 1) * spacing)
 			normals.append(Vector3(gradient_x, 1.0, gradient_z).normalized())
 
-	# Indices com winding para normais voltadas para cima.
+	# Indices com winding frontal (CW no ArrayMesh do Godot 4) voltado para cima (+Y),
+	# garantindo que o terreno receba luz direcional e sombras 3D perfeitamente.
 	for zi in range(TERRAIN_STEPS):
 		for xi in range(TERRAIN_STEPS):
 			var a: int = zi * side + xi
@@ -252,11 +253,11 @@ func _build_ground(noise_seed: int = 90420) -> void:
 			var c: int = a + side
 			var d: int = c + 1
 			indices.append(a)
-			indices.append(c)
-			indices.append(b)
 			indices.append(b)
 			indices.append(c)
+			indices.append(b)
 			indices.append(d)
+			indices.append(c)
 
 	var arrays: Array = []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -274,11 +275,14 @@ func _build_ground(noise_seed: int = 90420) -> void:
 func _build_altar() -> void:
 	# Degraus baixos nivelados com o piso fisico (y ~ 0.0) para que o personagem
 	# nunca fique afundado na pedra e todas as runas e aneis dourados fiquem visiveis no topo!
-	_cylinder(Vector3(0.0, -0.050, 0.0), 4.85, 0.10, COLOR_STONE_DARK, 32, 0.96)
-	_cylinder(Vector3(0.0, -0.042, 0.0), 4.05, 0.09, COLOR_STONE, 32, 0.95)
-	_cylinder(Vector3(0.0, -0.034, 0.0), 3.15, 0.08, COLOR_STONE_LIGHT, 32, 0.92)
-	_cylinder(Vector3(0.0, -0.026, 0.0), 2.55, 0.07, Color(0.41, 0.42, 0.46), 32, 0.88)
-	_cylinder(Vector3(0.0, -0.018, 0.0), 0.96, 0.06, Color(0.34, 0.36, 0.42), 24, 0.85)
+	for step_cyl in [
+		_cylinder(Vector3(0.0, -0.050, 0.0), 4.85, 0.10, COLOR_STONE_DARK, 32, 0.96),
+		_cylinder(Vector3(0.0, -0.042, 0.0), 4.05, 0.09, COLOR_STONE, 32, 0.95),
+		_cylinder(Vector3(0.0, -0.034, 0.0), 3.15, 0.08, COLOR_STONE_LIGHT, 32, 0.92),
+		_cylinder(Vector3(0.0, -0.026, 0.0), 2.55, 0.07, Color(0.41, 0.42, 0.46), 32, 0.88),
+		_cylinder(Vector3(0.0, -0.018, 0.0), 0.96, 0.06, Color(0.34, 0.36, 0.42), 24, 0.85),
+	]:
+		step_cyl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 	var rune_mat := _material("rune_glow", COLOR_RUNE, 0.65, true, 0.8)
 	rune_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -491,10 +495,10 @@ func _brazier(pos: Vector3) -> void:
 	var brazier_light := OmniLight3D.new()
 	brazier_light.name = "BrazierFireLight"
 	brazier_light.position = Vector3(0.0, 1.45, 0.0)
-	brazier_light.light_color = Color(1.0, 0.56, 0.20)
-	brazier_light.light_energy = 0.95
-	brazier_light.omni_range = 6.2
-	brazier_light.omni_attenuation = 1.35
+	brazier_light.light_color = Color(1.0, 0.62, 0.28)
+	brazier_light.light_energy = 0.65
+	brazier_light.omni_range = 4.5
+	brazier_light.omni_attenuation = 1.45
 	brazier_light.add_to_group("day_night_torch_light")
 	root.add_child(brazier_light)
 
@@ -528,7 +532,8 @@ func _add_cylinder_to(parent: Node3D, pos: Vector3, radius: float, height: float
 
 func _build_town_encampment() -> void:
 	# Fogueira Central do Acampamento dos Exilados (estilo Rogue Encampment - Diablo 2)
-	_cylinder(Vector3(0.0, 0.04, 0.0), 1.45, 0.08, COLOR_STONE_DARK, 16)
+	var camp_base := _cylinder(Vector3(0.0, 0.04, 0.0), 1.45, 0.08, COLOR_STONE_DARK, 16)
+	camp_base.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for i in range(10):
 		var a := TAU * float(i) / 10.0
 		_box(Vector3(cos(a) * 1.10, 0.14, sin(a) * 1.10), Vector3(0.36, 0.24, 0.28), COLOR_STONE_LIGHT)
@@ -546,10 +551,11 @@ func _build_town_encampment() -> void:
 
 	var camp_light := OmniLight3D.new()
 	camp_light.name = "TownCampfireLight"
-	camp_light.position = Vector3(0.0, 2.35, 0.0)
-	camp_light.light_color = Color(1.0, 0.58, 0.22)
-	camp_light.light_energy = 1.85
-	camp_light.omni_range = 14.0
+	camp_light.position = Vector3(0.0, 2.15, 0.0)
+	camp_light.light_color = Color(1.0, 0.64, 0.30)
+	camp_light.light_energy = 1.15
+	camp_light.omni_range = 7.5
+	camp_light.omni_attenuation = 1.45
 	camp_light.add_to_group("day_night_torch_light")
 	add_child(camp_light)
 

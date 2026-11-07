@@ -225,6 +225,8 @@ static func _merge_skeleton_meshes(skeleton: Skeleton3D) -> void:
 	if combined_mesh.get_surface_count() == 0:
 		return
 
+	combined_mesh.custom_aabb = AABB(Vector3(-4.0, -2.0, -4.0), Vector3(8.0, 6.0, 8.0))
+
 	for mi in candidates:
 		skeleton.remove_child(mi)
 		mi.free()
@@ -234,4 +236,6 @@ static func _merge_skeleton_meshes(skeleton: Skeleton3D) -> void:
 	combined_instance.mesh = combined_mesh
 	combined_instance.skin = shared_skin
 	combined_instance.skeleton = NodePath("..")
+	combined_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	combined_instance.extra_cull_margin = 4.0
 	skeleton.add_child(combined_instance)

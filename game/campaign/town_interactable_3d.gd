@@ -62,12 +62,15 @@ func _build_visuals() -> void:
 	_highlight_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_highlight_ring)
 
-	# Iluminação atmosférica quente/arcana por estação
+	# Iluminação atmosférica suave por estação (sincronizada com Dia/Noite para não lavar as sombras de dia)
 	_station_light = OmniLight3D.new()
+	_station_light.name = "StationFireLight"
 	_station_light.light_color = accent_color
-	_station_light.light_energy = 1.15
-	_station_light.omni_range = 4.5
+	_station_light.light_energy = 0.55
+	_station_light.omni_range = 3.2
+	_station_light.omni_attenuation = 1.5
 	_station_light.position = Vector3(0.0, 1.8, 0.3)
+	_station_light.add_to_group("day_night_torch_light")
 	add_child(_station_light)
 
 	match station_id:
@@ -265,9 +268,6 @@ func update_proximity(player_pos: Vector3, delta: float) -> bool:
 			_animated_prop.position.y = 1.35 + sin(_pulse_time * 1.1) * 0.06
 		elif station_id == "waypoint":
 			_animated_prop.rotation.y += delta * 0.8
-
-	if _station_light != null:
-		_station_light.light_energy = 1.10 + 0.25 * sin(_pulse_time * 1.5)
 
 	return _player_in_range
 

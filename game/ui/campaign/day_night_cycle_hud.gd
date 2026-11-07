@@ -18,7 +18,7 @@ const ORBIT_RADIUS_RATIO: float = 144.5 / 440.0
 ## Duração completa de um ciclo de Dia e Noite (em segundos reais)
 @export var cycle_duration_seconds: float = 160.0
 ## Progresso do ciclo [0.0 .. 1.0): 0.0 = Meia-Noite, 0.25 = Amanhecer, 0.50 = Meio-Dia, 0.75 = Entardecer
-@export var time_of_day: float = 0.36
+@export var time_of_day: float = 0.48
 @export var cycle_paused: bool = false
 
 var _sun_light: DirectionalLight3D = null
@@ -77,11 +77,11 @@ func bind_world(sun: DirectionalLight3D, world_env: WorldEnvironment) -> void:
 	_world_env = world_env
 	if _sun_light != null:
 		_sun_light.shadow_enabled = true
-		_sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-		_sun_light.directional_shadow_max_distance = 48.0
-		_sun_light.shadow_bias = 0.03
-		_sun_light.shadow_normal_bias = 1.15
-		_sun_light.shadow_blur = 1.2
+		_sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+		_sun_light.directional_shadow_max_distance = 28.0
+		_sun_light.shadow_bias = 0.005
+		_sun_light.shadow_normal_bias = 0.35
+		_sun_light.shadow_blur = 0.75
 	if _world_env != null and _world_env.environment != null:
 		_env_instance = _world_env.environment.duplicate() as Environment
 		_world_env.environment = _env_instance
@@ -193,80 +193,96 @@ func _apply_world_lighting(_delta: float) -> void:
 	# Ajusta o brilho das tochas, braseiros e fogueira da vila conforme escurece
 	if is_inside_tree():
 		var torch_mult: float = float(state["torch_multiplier"])
-		var flicker: float = 1.0 + 0.07 * sin(_pulse_time * 5.2) + 0.04 * cos(_pulse_time * 8.7)
+		var flicker: float = 1.0 + 0.06 * sin(_pulse_time * 5.2) + 0.03 * cos(_pulse_time * 8.7)
 		for node in get_tree().get_nodes_in_group("day_night_torch_light"):
 			if node is OmniLight3D and is_instance_valid(node):
 				var light := node as OmniLight3D
-				var base_e: float = 1.85 if light.name == "TownCampfireLight" else (1.55 if light.name == "ShrineFireLight" else 0.95)
+				var base_e: float = 1.15 if light.name == "TownCampfireLight" else (0.95 if light.name == "ShrineFireLight" else (0.45 if light.name == "StationFireLight" else 0.65))
 				light.light_energy = base_e * torch_mult * flicker
 
 
 func _evaluate_lighting_state(t: float) -> Dictionary:
-	# 4 Keyframes de iluminação (0.0=Noite, 0.25=Amanhecer, 0.50=Meio-Dia, 0.75=Entardecer)
+	# 5 Keyframes com platô amplo de Dia Claro Natural (t = 0.32 .. 0.66) em luz branca/neutra (sem amarelado!)
+	# e alto contraste entre luz solar e ambiente para sombras 3D escuras e nítidas no terreno.
 	var kf_night := {
-		"sun_color": Color(0.44, 0.58, 0.94),
-		"sun_energy": 0.58,
-		"shadow_opacity": 0.66,
-		"ambient_color": Color(0.16, 0.20, 0.36),
-		"ambient_energy": 0.42,
+		"sun_color": Color(0.52, 0.66, 0.96),
+		"sun_energy": 0.60,
+		"shadow_opacity": 0.78,
+		"ambient_color": Color(0.18, 0.23, 0.38),
+		"ambient_energy": 0.25,
 		"bg_color": Color(0.02, 0.025, 0.05),
-		"pitch": -0.82,
-		"yaw": 0.65,
-		"torch_multiplier": 1.42,
+		"pitch": -0.76,
+		"yaw": 0.45,
+		"torch_multiplier": 1.25,
 	}
 	var kf_dawn := {
-		"sun_color": Color(1.0, 0.66, 0.38),
-		"sun_energy": 1.38,
-		"shadow_opacity": 0.84,
-		"ambient_color": Color(0.46, 0.36, 0.44),
-		"ambient_energy": 0.68,
-		"bg_color": Color(0.08, 0.06, 0.10),
-		"pitch": -0.58,
-		"yaw": 1.12,
-		"torch_multiplier": 1.08,
+		"sun_color": Color(0.98, 0.88, 0.80),
+		"sun_energy": 1.06,
+		"shadow_opacity": 0.86,
+		"ambient_color": Color(0.52, 0.56, 0.66),
+		"ambient_energy": 0.30,
+		"bg_color": Color(0.08, 0.09, 0.14),
+		"pitch": -0.62,
+		"yaw": 0.82,
+		"torch_multiplier": 0.42,
 	}
-	var kf_noon := {
-		"sun_color": Color(1.0, 0.96, 0.86),
-		"sun_energy": 1.82,
+	var kf_morning := {
+		"sun_color": Color(0.97, 0.98, 1.0),
+		"sun_energy": 1.24,
 		"shadow_opacity": 0.90,
-		"ambient_color": Color(0.56, 0.62, 0.72),
-		"ambient_energy": 0.92,
-		"bg_color": Color(0.09, 0.12, 0.18),
-		"pitch": -1.16,
-		"yaw": 0.0,
-		"torch_multiplier": 0.72,
+		"ambient_color": Color(0.60, 0.67, 0.78),
+		"ambient_energy": 0.32,
+		"bg_color": Color(0.10, 0.14, 0.20),
+		"pitch": -0.76,
+		"yaw": 0.52,
+		"torch_multiplier": 0.12,
+	}
+	var kf_afternoon := {
+		"sun_color": Color(0.97, 0.98, 1.0),
+		"sun_energy": 1.24,
+		"shadow_opacity": 0.90,
+		"ambient_color": Color(0.60, 0.67, 0.78),
+		"ambient_energy": 0.32,
+		"bg_color": Color(0.10, 0.14, 0.20),
+		"pitch": -0.78,
+		"yaw": -0.42,
+		"torch_multiplier": 0.12,
 	}
 	var kf_dusk := {
-		"sun_color": Color(1.0, 0.50, 0.28),
-		"sun_energy": 1.32,
-		"shadow_opacity": 0.84,
-		"ambient_color": Color(0.45, 0.30, 0.38),
-		"ambient_energy": 0.62,
-		"bg_color": Color(0.08, 0.045, 0.08),
-		"pitch": -0.56,
-		"yaw": -1.12,
-		"torch_multiplier": 1.22,
+		"sun_color": Color(0.98, 0.78, 0.64),
+		"sun_energy": 1.02,
+		"shadow_opacity": 0.86,
+		"ambient_color": Color(0.48, 0.46, 0.58),
+		"ambient_energy": 0.28,
+		"bg_color": Color(0.08, 0.06, 0.11),
+		"pitch": -0.60,
+		"yaw": -0.82,
+		"torch_multiplier": 0.62,
 	}
 
 	var a: Dictionary
 	var b: Dictionary
 	var local_t: float = 0.0
-	if t < 0.25:
+	if t < 0.22:
 		a = kf_night
 		b = kf_dawn
-		local_t = smoothstep(0.0, 1.0, t / 0.25)
-	elif t < 0.50:
+		local_t = smoothstep(0.0, 1.0, t / 0.22)
+	elif t < 0.33:
 		a = kf_dawn
-		b = kf_noon
-		local_t = smoothstep(0.0, 1.0, (t - 0.25) / 0.25)
-	elif t < 0.75:
-		a = kf_noon
+		b = kf_morning
+		local_t = smoothstep(0.0, 1.0, (t - 0.22) / 0.11)
+	elif t < 0.66:
+		a = kf_morning
+		b = kf_afternoon
+		local_t = smoothstep(0.0, 1.0, (t - 0.33) / 0.33)
+	elif t < 0.78:
+		a = kf_afternoon
 		b = kf_dusk
-		local_t = smoothstep(0.0, 1.0, (t - 0.50) / 0.25)
+		local_t = smoothstep(0.0, 1.0, (t - 0.66) / 0.12)
 	else:
 		a = kf_dusk
 		b = kf_night
-		local_t = smoothstep(0.0, 1.0, (t - 0.75) / 0.25)
+		local_t = smoothstep(0.0, 1.0, (t - 0.78) / 0.22)
 
 	var pitch: float = lerpf(float(a["pitch"]), float(b["pitch"]), local_t)
 	var yaw: float = lerpf(float(a["yaw"]), float(b["yaw"]), local_t)
