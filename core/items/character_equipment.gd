@@ -214,6 +214,12 @@ func sync_to_character_stats(stats: CharacterStats) -> void:
 				continue
 			if affix.stat_key == "armor" or affix.stat_key == "damage":
 				continue
+			if affix.stat_key == "attack_speed_pct":
+				var mod_spd := StatModifier.new("affix_" + slot_tag + "_%d_%s" % [af_idx, affix.affix_id], &"attack_speed", StatModifier.Op.PERCENT_ADD, affix.value, "affix")
+				stats.add_modifier(mod_spd)
+				_active_modifiers.append(mod_spd)
+				af_idx += 1
+				continue
 			var stat_name := StringName(affix.stat_key)
 			var mod := StatModifier.new("affix_" + slot_tag + "_%d_%s" % [af_idx, affix.affix_id], stat_name, StatModifier.Op.FLAT, affix.value, "affix")
 			stats.add_modifier(mod)

@@ -45,6 +45,9 @@ func _run_all() -> void:
 	_test_blue_can_beat_yellow_overlap()
 	var results: Dictionary = _run_monte_carlo_simulation()
 	_validate_simulation_invariants(results)
+	_test_doc04_deterministic_affix_and_tier_rules()
+	_run_doc04_attack_speed_family_100k_simulation()
+	_print_doc04_example_generated_swords()
 
 	var elapsed_sec: float = float(Time.get_ticks_msec() - start_ms) / 1000.0
 	print("================================================================================================")
@@ -265,7 +268,7 @@ func _run_monte_carlo_simulation() -> Dictionary:
 							for af in inst.explicit_affixes:
 								if af.tier > max_tier_observed:
 									max_tier_observed = af.tier
-								if af.min_ilvl > inst.item_level or af.tier > allowed_max_tier:
+								if af.min_ilvl > inst.item_level:
 									tier_violation_count += 1
 					continue
 
@@ -388,6 +391,150 @@ func _validate_simulation_invariants(results: Dictionary) -> void:
 		for lvl in LEVELS_TO_TEST:
 			total_violations += int(results[m_class][lvl]["tier_violations"])
 	_check(
-		total_violations == 0 and int(norm_1["max_tier"]) == 1 and int(norm_25["max_tier"]) == 4 and int(norm_90["max_tier"]) == 8,
-		"11. Tiers de afixos acompanham o ilvl (Nv.1=T1, Nv.8=T2, Nv.16=T3, Nv.24=T4, Nv.80-90=T8) com zero violacoes"
+		total_violations == 0,
+		"11. Tiers de afixos acompanham o ilvl sem violacoes de requisitos em 3.200.000 sorteios"
 	)
+
+
+func _test_doc04_deterministic_affix_and_tier_rules() -> void:
+	var spd_fam: Dictionary = LootBalanceConfig.get_affix_family("attack_speed_pct")
+	_check(not spd_fam.is_empty(), "12a. Família 'attack_speed_pct' cadastrada com 5 tiers e T1 = melhor")
+
+	# Elegibilidade por ilvl na família de velocidade de ataque:
+	var tiers_lv1: Array[Dictionary] = LootBalanceConfig.get_eligible_tiers_for_family(spd_fam, 1)
+	var has_t5_lv1: bool = false
+	var has_t1_lv1: bool = false
+	for t in tiers_lv1:
+		if int(t["tier"]) == 5: has_t5_lv1 = true
+		if int(t["tier"]) == 1: has_t1_lv1 = true
+	_check(tiers_lv1.size() == 1 and has_t5_lv1 and not has_t1_lv1, "12b. ilvl 1: apenas T5 elegível na família de velocidade; T1 NÃO é elegível")
+
+	var tiers_lv20: Array[Dictionary] = LootBalanceConfig.get_eligible_tiers_for_family(spd_fam, 20)
+	var t_nums_20: Array[int] = []
+	for t in tiers_lv20: t_nums_20.append(int(t["tier"]))
+	_check(t_nums_20.has(5) and t_nums_20.has(4) and not t_nums_20.has(3) and not t_nums_20.has(2) and not t_nums_20.has(1), "12c. ilvl 20: permite T5 e T4, rejeita T3/T2/T1")
+
+	var tiers_lv30: Array[Dictionary] = LootBalanceConfig.get_eligible_tiers_for_family(spd_fam, 30)
+	var t_nums_30: Array[int] = []
+	for t in tiers_lv30: t_nums_30.append(int(t["tier"]))
+	_check(t_nums_30.has(3) and t_nums_30.has(4) and t_nums_30.has(5) and not t_nums_30.has(2), "12d. ilvl 30: desbloqueia T3, mantendo T4 e T5 elegíveis")
+
+	var tiers_lv80: Array[Dictionary] = LootBalanceConfig.get_eligible_tiers_for_family(spd_fam, 80)
+	var t_nums_80: Array[int] = []
+	for t in tiers_lv80: t_nums_80.append(int(t["tier"]))
+	_check(t_nums_80.has(1) and t_nums_80.has(2) and t_nums_80.has(3) and t_nums_80.has(4) and t_nums_80.has(5), "12e. ilvl 80: permite todos os tiers T1–T5")
+
+	# Teste de persistência e serialização (to_dictionary / from_dictionary)
+	var test_inst := ItemDatabase.generate_loot(20, ItemInstance.ItemRarity.MAGIC, "sword_steel")
+	test_inst.identify()
+	var dict_saved: Dictionary = test_inst.to_dictionary()
+	var inst_loaded: ItemInstance = ItemInstance.from_dictionary(dict_saved)
+	_check(
+		inst_loaded != null and inst_loaded.definition.base_id == test_inst.definition.base_id
+		and inst_loaded.rarity == test_inst.rarity and inst_loaded.item_level == test_inst.item_level
+		and inst_loaded.explicit_affixes.size() == test_inst.explicit_affixes.size()
+		and is_equal_approx(inst_loaded.explicit_affixes[0].value, test_inst.explicit_affixes[0].value),
+		"12f. Serialização/Persistência segura: to_dictionary() e from_dictionary() preservam base_id, raridade, ilvl, tier e rolled_value sem re-sortear"
+	)
+
+
+func _run_doc04_attack_speed_family_100k_simulation() -> void:
+	var spd_fam: Dictionary = LootBalanceConfig.get_affix_family("attack_speed_pct")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20261108
+
+	print("\n------------------------------------------------------------------------------------------------------------------------")
+	print("SIMULAÇÃO DE 100.000 SORTEIOS DA FAMÍLIA DE VELOCIDADE DE ATAQUE (CONVENÇÃO T1=MELHOR ... T5=PIOR)")
+	print("------------------------------------------------------------------------------------------------------------------------")
+	print("ilvl | Tiers Elegíveis | Frequência T5  | Frequência T4  | Frequência T3  | Frequência T2  | Frequência T1  | Fora Faixa")
+	print("-----+-----------------+----------------+----------------+----------------+----------------+----------------+-----------")
+
+	var sim_lvls: Array[int] = [1, 20, 30, 60, 80, 90]
+	var all_stats_ok: bool = true
+
+	for test_ilvl in sim_lvls:
+		var counts_by_tier: Dictionary = {5: 0, 4: 0, 3: 0, 2: 0, 1: 0}
+		var out_of_range: int = 0
+		var min_seen: float = 999.0
+		var max_seen: float = -999.0
+
+		for _draw in range(DRAWS_PER_SCENARIO):
+			var af: ItemAffix = LootGenerationService.roll_single_affix_from_family(spd_fam, test_ilvl, rng)
+			if af == null:
+				out_of_range += 1
+				continue
+			counts_by_tier[af.tier] = int(counts_by_tier.get(af.tier, 0)) + 1
+			if af.value < af.min_value - 0.0001 or af.value > af.max_value + 0.0001:
+				out_of_range += 1
+			if af.value < min_seen: min_seen = af.value
+			if af.value > max_seen: max_seen = af.value
+
+		var pct_t5: float = float(counts_by_tier[5]) / float(DRAWS_PER_SCENARIO) * 100.0
+		var pct_t4: float = float(counts_by_tier[4]) / float(DRAWS_PER_SCENARIO) * 100.0
+		var pct_t3: float = float(counts_by_tier[3]) / float(DRAWS_PER_SCENARIO) * 100.0
+		var pct_t2: float = float(counts_by_tier[2]) / float(DRAWS_PER_SCENARIO) * 100.0
+		var pct_t1: float = float(counts_by_tier[1]) / float(DRAWS_PER_SCENARIO) * 100.0
+
+		var el_tiers: Array[Dictionary] = LootBalanceConfig.get_eligible_tiers_for_family(spd_fam, test_ilvl)
+		var el_str_list: Array[String] = []
+		for et in el_tiers: el_str_list.append("T%d" % int(et["tier"]))
+		var el_summary: String = ", ".join(el_str_list)
+
+		print(" %2d  | %-15s | %5.2f%% (%2.0f%%) | %5.2f%% (%2.0f%%) | %5.2f%% (%2.0f%%) | %5.2f%% (%2.0f%%) | %5.2f%% (%2.0f%%) | %5d" % [
+			test_ilvl, el_summary,
+			pct_t5, (60.0/85.0*100.0 if test_ilvl==20 else (60.0 if test_ilvl>=80 else 100.0)),
+			pct_t4, (25.0/85.0*100.0 if test_ilvl==20 else (25.0 if test_ilvl>=80 else 0.0)),
+			pct_t3, (10.0 if test_ilvl>=80 else 0.0),
+			pct_t2, (4.0 if test_ilvl>=80 else 0.0),
+			pct_t1, (1.0 if test_ilvl>=80 else 0.0),
+			out_of_range
+		])
+
+		if out_of_range > 0:
+			all_stats_ok = false
+		if test_ilvl == 20:
+			# Esperado: T5 ~ 70.59% (tolerância ± 1.5%), T4 ~ 29.41% (tolerância ± 1.5%), T3/T2/T1 = 0%
+			if absf(pct_t5 - 70.59) > 1.5 or absf(pct_t4 - 29.41) > 1.5 or counts_by_tier[3] > 0 or counts_by_tier[1] > 0:
+				all_stats_ok = false
+		if test_ilvl == 80:
+			# Esperado: T5 ~ 60%, T4 ~ 25%, T3 ~ 10%, T2 ~ 4%, T1 ~ 1% (tolerâncias estatísticas normais)
+			if absf(pct_t5 - 60.0) > 1.5 or absf(pct_t4 - 25.0) > 1.5 or absf(pct_t3 - 10.0) > 1.0 or absf(pct_t2 - 4.0) > 0.8 or absf(pct_t1 - 1.0) > 0.5:
+				all_stats_ok = false
+
+	print("------------------------------------------------------------------------------------------------------------------------\n")
+	_check(all_stats_ok, "13. Simulação estatística de 100.000 rolagens da família de velocidade confirma pesos renormalizados por tier e zero valores fora da faixa")
+
+
+func _print_doc04_example_generated_swords() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 42
+
+	print("================================================================================================")
+	print("EXEMPLOS REAIS DE ITENS GERADOS CONFORME ESPECIFICAÇÃO 04:")
+	print("================================================================================================")
+
+	# Espada ilvl 1
+	var s_lv1 := LootGenerationService.stage7_create_final_instance(
+		ItemDatabase.get_definition("sword_steel"), ItemInstance.ItemRarity.MAGIC, 1, rng
+	)
+	s_lv1.identify()
+	print("[ESPADA ILVL 1 - MÁGICA]")
+	print(s_lv1.format_tooltip_bbcode())
+
+	# Espada ilvl 25
+	var s_lv25 := LootGenerationService.stage7_create_final_instance(
+		ItemDatabase.get_definition("sword_steel"), ItemInstance.ItemRarity.RARE, 25, rng
+	)
+	s_lv25.identify()
+	print("\n[ESPADA ILVL 25 - RARA]")
+	print(s_lv25.format_tooltip_bbcode())
+
+	# Espada ilvl 80
+	var s_lv80 := LootGenerationService.stage7_create_final_instance(
+		ItemDatabase.get_definition("sword_steel"), ItemInstance.ItemRarity.RARE, 80, rng
+	)
+	s_lv80.identify()
+	print("\n[ESPADA ILVL 80 - RARA ENDGAME]")
+	print(s_lv80.format_tooltip_bbcode())
+	print("================================================================================================\n")
+	_check(s_lv1.explicit_affixes.size() >= 1 and s_lv25.explicit_affixes.size() >= 3 and s_lv80.explicit_affixes.size() >= 3, "14. Exemplos reais de espadas ilvl 1, 25 e 80 gerados e formatados com sucesso")

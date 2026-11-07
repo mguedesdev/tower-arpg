@@ -179,32 +179,35 @@ static func get_unique_item_definitions() -> Array[Dictionary]:
 	]
 
 ## ---------------------------------------------------------------------------
-## 6. TABELA DE TIERS DE AFIXOS (T1 A T8 — NÍVEIS 1 A 90+) (Seção 6 e Seção 8)
+## 6. FAMÍLIAS E TIERS DE AFIXOS (CONVENÇÃO OBRIGATÓRIA: T1 = MELHOR, MAIOR = PIOR)
 ## ---------------------------------------------------------------------------
-## Marcos de ilvl mínimo por Tier:
-## - Ato 1 (Níveis 1–25): T1 (ilvl 1), T2 (ilvl 8), T3 (ilvl 16), T4 (ilvl 24)
-## - Expansão Endgame (Níveis 26–90+): T5 (ilvl 36), T6 (ilvl 50), T7 (ilvl 65), T8 (ilvl 80)
-## Nenhum valor usa multiplicação bruta `roll * ilvl`; todos possuem faixas [min, max] explícitas
-## e `exclusion_group` para impedir dois afixos da mesma família no mesmo item.
-const AFFIX_TIER_MIN_ILVL: Dictionary = {
-	1: 1,
-	2: 8,
-	3: 16,
-	4: 24,
-	5: 36,
-	6: 50,
-	7: 65,
-	8: 80,
+## Implementa a especificação `04_especificacao_prefixos_sufixos_tiers_afixos.md`:
+## - Em TODAS as famílias, T1 (tier = 1) é o tier mais poderoso (maior min_ilvl).
+## - O maior número de tier da família (ex.: T5 ou T6) é o mais fraco (min_ilvl = 1).
+## - Não há obrigação de 5 degraus globais: `flat_damage` e `flat_max_health` possuem 6 tiers (T6→T1),
+##   enquanto `attack_speed_pct`, `flat_armor`, atributos e `crit_chance` possuem 5 tiers (T5→T1).
+## - Desbloquear tiers superiores NÃO elimina os tiers inferiores: o sorteio é ponderado pelos pesos
+##   de cada tier elegível na família (ex.: em ilvl 80-90, T5 continua elegível e mais provável que T1).
+
+## Limites de quantidade de prefixos e sufixos por raridade (Seção 5):
+## - Branco (NORMAL):   0 afixos (0P, 0S)
+## - Verde (UNCOMMON):  1 afixo  (1P ou 1S)
+## - Azul (MAGIC):      2 afixos (máx 1P + 1S)
+## - Amarelo (RARE):  3-4 afixos (máx 2P + 2S)
+const RARITY_AFFIX_LIMITS: Dictionary = {
+	ItemInstance.ItemRarity.NORMAL:   {"min_total": 0, "max_total": 0, "max_prefixes": 0, "max_suffixes": 0},
+	ItemInstance.ItemRarity.UNCOMMON: {"min_total": 1, "max_total": 1, "max_prefixes": 1, "max_suffixes": 1},
+	ItemInstance.ItemRarity.MAGIC:    {"min_total": 2, "max_total": 2, "max_prefixes": 1, "max_suffixes": 1},
+	ItemInstance.ItemRarity.RARE:     {"min_total": 3, "max_total": 4, "max_prefixes": 2, "max_suffixes": 2},
+	ItemInstance.ItemRarity.UNIQUE:   {"min_total": 0, "max_total": 0, "max_prefixes": 0, "max_suffixes": 0},
 }
 
-static func get_max_unlocked_affix_tier_for_ilvl(ilvl: int) -> int:
-	var best_tier: int = 1
-	for t in [1, 2, 3, 4, 5, 6, 7, 8]:
-		if ilvl >= int(AFFIX_TIER_MIN_ILVL[t]):
-			best_tier = t
-	return best_tier
+static var _cached_families: Array[Dictionary] = []
+static var _cached_family_by_id: Dictionary = {}
 
-static func get_progressive_affix_pool() -> Array[Dictionary]:
+static func _ensure_families_loaded() -> void:
+	if not _cached_families.is_empty():
+		return
 	var C := ItemDefinition.ItemCategory
 	var A := ItemAffix.AffixType
 	var all_equip: Array[int] = [
@@ -216,77 +219,248 @@ static func get_progressive_affix_pool() -> Array[Dictionary]:
 	var vitality_gear: Array[int] = [C.SHIELD, C.HELMET, C.CHEST, C.BELT, C.RING, C.AMULET, C.GLOVES, C.BOOTS]
 	var crit_gear: Array[int] = [C.WEAPON_1H, C.WEAPON_2H, C.RING, C.AMULET, C.GLOVES]
 
-	return [
-		# ===================== PREFIXOS: FAMÍLIA "flat_damage" (ARMAS) =====================
-		{"id": "pref_dmg_t1", "name": "Afiado",       "type": A.PREFIX, "stat": "damage", "group": "flat_damage", "fmt": "+%d de Dano", "min": 1.0,  "max": 3.0,  "tier": 1, "min_ilvl": 1,  "weight": 100.0, "slots": weapons},
-		{"id": "pref_dmg_t2", "name": "Talhante",     "type": A.PREFIX, "stat": "damage", "group": "flat_damage", "fmt": "+%d de Dano", "min": 3.0,  "max": 5.0,  "tier": 2, "min_ilvl": 8,  "weight": 92.0,  "slots": weapons},
-		{"id": "pref_dmg_t3", "name": "Cruel",        "type": A.PREFIX, "stat": "damage", "group": "flat_damage", "fmt": "+%d de Dano", "min": 5.0,  "max": 8.0,  "tier": 3, "min_ilvl": 16, "weight": 84.0,  "slots": weapons},
-		{"id": "pref_dmg_t4", "name": "Impiedoso",    "type": A.PREFIX, "stat": "damage", "group": "flat_damage", "fmt": "+%d de Dano", "min": 8.0,  "max": 12.0, "tier": 4, "min_ilvl": 24, "weight": 75.0,  "slots": weapons},
-		{"id": "pref_dmg_t5", "name": "Tirânico",     "type": A.PREFIX, "stat": "damage", "group": "flat_damage", "fmt": "+%d de Dano", "min": 12.0, "max": 17.0, "tier": 5, "min_ilvl": 36, "weight": 66.0,  "slots": weapons},
-		{"id": "pref_dmg_t6", "name": "Sanguinário",  "type": A.PREFIX, "stat": "damage", "group": "flat_damage", "fmt": "+%d de Dano", "min": 17.0, "max": 23.0, "tier": 6, "min_ilvl": 50, "weight": 58.0,  "slots": weapons},
-		{"id": "pref_dmg_t7", "name": "Conquistador", "type": A.PREFIX, "stat": "damage", "group": "flat_damage", "fmt": "+%d de Dano", "min": 23.0, "max": 30.0, "tier": 7, "min_ilvl": 65, "weight": 50.0,  "slots": weapons},
-		{"id": "pref_dmg_t8", "name": "Abissal",      "type": A.PREFIX, "stat": "damage", "group": "flat_damage", "fmt": "+%d de Dano", "min": 30.0, "max": 38.0, "tier": 8, "min_ilvl": 80, "weight": 42.0,  "slots": weapons},
-
-		# ===================== PREFIXOS: FAMÍLIA "flat_armor" (ARMADURAS/ESCUDOS/CINTOS) =====================
-		{"id": "pref_arm_t1", "name": "Reforçado",    "type": A.PREFIX, "stat": "armor", "group": "flat_armor", "fmt": "+%d de Armadura", "min": 2.0,  "max": 4.0,  "tier": 1, "min_ilvl": 1,  "weight": 100.0, "slots": armors},
-		{"id": "pref_arm_t2", "name": "Blindado",     "type": A.PREFIX, "stat": "armor", "group": "flat_armor", "fmt": "+%d de Armadura", "min": 4.0,  "max": 7.0,  "tier": 2, "min_ilvl": 8,  "weight": 92.0,  "slots": armors},
-		{"id": "pref_arm_t3", "name": "Murado",       "type": A.PREFIX, "stat": "armor", "group": "flat_armor", "fmt": "+%d de Armadura", "min": 7.0,  "max": 11.0, "tier": 3, "min_ilvl": 16, "weight": 84.0,  "slots": armors},
-		{"id": "pref_arm_t4", "name": "Inabalável",   "type": A.PREFIX, "stat": "armor", "group": "flat_armor", "fmt": "+%d de Armadura", "min": 11.0, "max": 16.0, "tier": 4, "min_ilvl": 24, "weight": 75.0,  "slots": armors},
-		{"id": "pref_arm_t5", "name": "Impenetrável", "type": A.PREFIX, "stat": "armor", "group": "flat_armor", "fmt": "+%d de Armadura", "min": 16.0, "max": 22.0, "tier": 5, "min_ilvl": 36, "weight": 66.0,  "slots": armors},
-		{"id": "pref_arm_t6", "name": "Bastilha",     "type": A.PREFIX, "stat": "armor", "group": "flat_armor", "fmt": "+%d de Armadura", "min": 22.0, "max": 30.0, "tier": 6, "min_ilvl": 50, "weight": 58.0,  "slots": armors},
-		{"id": "pref_arm_t7", "name": "Colossal",     "type": A.PREFIX, "stat": "armor", "group": "flat_armor", "fmt": "+%d de Armadura", "min": 30.0, "max": 40.0, "tier": 7, "min_ilvl": 65, "weight": 50.0,  "slots": armors},
-		{"id": "pref_arm_t8", "name": "Eterno",       "type": A.PREFIX, "stat": "armor", "group": "flat_armor", "fmt": "+%d de Armadura", "min": 40.0, "max": 52.0, "tier": 8, "min_ilvl": 80, "weight": 42.0,  "slots": armors},
-
-		# ===================== PREFIXOS: FAMÍLIA "flat_max_health" (VIDA MÁXIMA) =====================
-		{"id": "pref_hp_t1",  "name": "Saudável",     "type": A.PREFIX, "stat": "max_health", "group": "flat_max_health", "fmt": "+%d de Vida", "min": 3.0,  "max": 6.0,  "tier": 1, "min_ilvl": 1,  "weight": 100.0, "slots": vitality_gear},
-		{"id": "pref_hp_t2",  "name": "Robusto",      "type": A.PREFIX, "stat": "max_health", "group": "flat_max_health", "fmt": "+%d de Vida", "min": 6.0,  "max": 10.0, "tier": 2, "min_ilvl": 8,  "weight": 92.0,  "slots": vitality_gear},
-		{"id": "pref_hp_t3",  "name": "Vigoroso",     "type": A.PREFIX, "stat": "max_health", "group": "flat_max_health", "fmt": "+%d de Vida", "min": 10.0, "max": 15.0, "tier": 3, "min_ilvl": 16, "weight": 84.0,  "slots": vitality_gear},
-		{"id": "pref_hp_t4",  "name": "Vital",        "type": A.PREFIX, "stat": "max_health", "group": "flat_max_health", "fmt": "+%d de Vida", "min": 15.0, "max": 22.0, "tier": 4, "min_ilvl": 24, "weight": 75.0,  "slots": vitality_gear},
-		{"id": "pref_hp_t5",  "name": "Imortal",      "type": A.PREFIX, "stat": "max_health", "group": "flat_max_health", "fmt": "+%d de Vida", "min": 22.0, "max": 32.0, "tier": 5, "min_ilvl": 36, "weight": 66.0,  "slots": vitality_gear},
-		{"id": "pref_hp_t6",  "name": "Titânico",     "type": A.PREFIX, "stat": "max_health", "group": "flat_max_health", "fmt": "+%d de Vida", "min": 32.0, "max": 45.0, "tier": 6, "min_ilvl": 50, "weight": 58.0,  "slots": vitality_gear},
-		{"id": "pref_hp_t7",  "name": "Ancestral",    "type": A.PREFIX, "stat": "max_health", "group": "flat_max_health", "fmt": "+%d de Vida", "min": 45.0, "max": 62.0, "tier": 7, "min_ilvl": 65, "weight": 50.0,  "slots": vitality_gear},
-		{"id": "pref_hp_t8",  "name": "Primordial",   "type": A.PREFIX, "stat": "max_health", "group": "flat_max_health", "fmt": "+%d de Vida", "min": 62.0, "max": 82.0, "tier": 8, "min_ilvl": 80, "weight": 42.0,  "slots": vitality_gear},
-
-		# ===================== SUFIXOS: FAMÍLIA "attr_strength" (FORÇA) =====================
-		{"id": "suff_str_t1", "name": "do Bruto",     "type": A.SUFFIX, "stat": "strength", "group": "attr_strength", "fmt": "+%d de Força", "min": 1.0,  "max": 2.0,  "tier": 1, "min_ilvl": 1,  "weight": 100.0, "slots": all_equip},
-		{"id": "suff_str_t2", "name": "do Guerreiro", "type": A.SUFFIX, "stat": "strength", "group": "attr_strength", "fmt": "+%d de Força", "min": 2.0,  "max": 4.0,  "tier": 2, "min_ilvl": 8,  "weight": 92.0,  "slots": all_equip},
-		{"id": "suff_str_t3", "name": "do Urso",      "type": A.SUFFIX, "stat": "strength", "group": "attr_strength", "fmt": "+%d de Força", "min": 4.0,  "max": 6.0,  "tier": 3, "min_ilvl": 16, "weight": 84.0,  "slots": all_equip},
-		{"id": "suff_str_t4", "name": "do Golias",    "type": A.SUFFIX, "stat": "strength", "group": "attr_strength", "fmt": "+%d de Força", "min": 6.0,  "max": 9.0,  "tier": 4, "min_ilvl": 24, "weight": 75.0,  "slots": all_equip},
-		{"id": "suff_str_t5", "name": "do Titã",      "type": A.SUFFIX, "stat": "strength", "group": "attr_strength", "fmt": "+%d de Força", "min": 9.0,  "max": 13.0, "tier": 5, "min_ilvl": 36, "weight": 66.0,  "slots": all_equip},
-		{"id": "suff_str_t6", "name": "do Colosso",   "type": A.SUFFIX, "stat": "strength", "group": "attr_strength", "fmt": "+%d de Força", "min": 13.0, "max": 18.0, "tier": 6, "min_ilvl": 50, "weight": 58.0,  "slots": all_equip},
-		{"id": "suff_str_t7", "name": "do Leviatã",   "type": A.SUFFIX, "stat": "strength", "group": "attr_strength", "fmt": "+%d de Força", "min": 18.0, "max": 24.0, "tier": 7, "min_ilvl": 65, "weight": 50.0,  "slots": all_equip},
-		{"id": "suff_str_t8", "name": "do Deus-Guerreiro", "type": A.SUFFIX, "stat": "strength", "group": "attr_strength", "fmt": "+%d de Força", "min": 24.0, "max": 32.0, "tier": 8, "min_ilvl": 80, "weight": 42.0,  "slots": all_equip},
-
-		# ===================== SUFIXOS: FAMÍLIA "attr_agility" (AGILIDADE) =====================
-		{"id": "suff_agi_t1", "name": "da Raposa",    "type": A.SUFFIX, "stat": "agility", "group": "attr_agility", "fmt": "+%d de Agilidade", "min": 1.0,  "max": 2.0,  "tier": 1, "min_ilvl": 1,  "weight": 100.0, "slots": all_equip},
-		{"id": "suff_agi_t2", "name": "do Caçador",   "type": A.SUFFIX, "stat": "agility", "group": "attr_agility", "fmt": "+%d de Agilidade", "min": 2.0,  "max": 4.0,  "tier": 2, "min_ilvl": 8,  "weight": 92.0,  "slots": all_equip},
-		{"id": "suff_agi_t3", "name": "do Falcão",    "type": A.SUFFIX, "stat": "agility", "group": "attr_agility", "fmt": "+%d de Agilidade", "min": 4.0,  "max": 6.0,  "tier": 3, "min_ilvl": 16, "weight": 84.0,  "slots": all_equip},
-		{"id": "suff_agi_t4", "name": "do Lince",     "type": A.SUFFIX, "stat": "agility", "group": "attr_agility", "fmt": "+%d de Agilidade", "min": 6.0,  "max": 9.0,  "tier": 4, "min_ilvl": 24, "weight": 75.0,  "slots": all_equip},
-		{"id": "suff_agi_t5", "name": "do Vento",     "type": A.SUFFIX, "stat": "agility", "group": "attr_agility", "fmt": "+%d de Agilidade", "min": 9.0,  "max": 13.0, "tier": 5, "min_ilvl": 36, "weight": 66.0,  "slots": all_equip},
-		{"id": "suff_agi_t6", "name": "da Tempestade","type": A.SUFFIX, "stat": "agility", "group": "attr_agility", "fmt": "+%d de Agilidade", "min": 13.0, "max": 18.0, "tier": 6, "min_ilvl": 50, "weight": 58.0,  "slots": all_equip},
-		{"id": "suff_agi_t7", "name": "do Relâmpago", "type": A.SUFFIX, "stat": "agility", "group": "attr_agility", "fmt": "+%d de Agilidade", "min": 18.0, "max": 24.0, "tier": 7, "min_ilvl": 65, "weight": 50.0,  "slots": all_equip},
-		{"id": "suff_agi_t8", "name": "do Espectro",  "type": A.SUFFIX, "stat": "agility", "group": "attr_agility", "fmt": "+%d de Agilidade", "min": 24.0, "max": 32.0, "tier": 8, "min_ilvl": 80, "weight": 42.0,  "slots": all_equip},
-
-		# ===================== SUFIXOS: FAMÍLIA "attr_intelligence" (INTELIGÊNCIA) =====================
-		{"id": "suff_int_t1", "name": "do Aprendiz",  "type": A.SUFFIX, "stat": "intelligence", "group": "attr_intelligence", "fmt": "+%d de Inteligência", "min": 1.0,  "max": 2.0,  "tier": 1, "min_ilvl": 1,  "weight": 95.0,  "slots": all_equip},
-		{"id": "suff_int_t2", "name": "do Acólito",   "type": A.SUFFIX, "stat": "intelligence", "group": "attr_intelligence", "fmt": "+%d de Inteligência", "min": 2.0,  "max": 4.0,  "tier": 2, "min_ilvl": 8,  "weight": 88.0,  "slots": all_equip},
-		{"id": "suff_int_t3", "name": "da Coruja",    "type": A.SUFFIX, "stat": "intelligence", "group": "attr_intelligence", "fmt": "+%d de Inteligência", "min": 4.0,  "max": 6.0,  "tier": 3, "min_ilvl": 16, "weight": 80.0,  "slots": all_equip},
-		{"id": "suff_int_t4", "name": "do Sábio",     "type": A.SUFFIX, "stat": "intelligence", "group": "attr_intelligence", "fmt": "+%d de Inteligência", "min": 6.0,  "max": 9.0,  "tier": 4, "min_ilvl": 24, "weight": 72.0,  "slots": all_equip},
-		{"id": "suff_int_t5", "name": "do Oráculo",   "type": A.SUFFIX, "stat": "intelligence", "group": "attr_intelligence", "fmt": "+%d de Inteligência", "min": 9.0,  "max": 13.0, "tier": 5, "min_ilvl": 36, "weight": 64.0,  "slots": all_equip},
-		{"id": "suff_int_t6", "name": "do Arquimago", "type": A.SUFFIX, "stat": "intelligence", "group": "attr_intelligence", "fmt": "+%d de Inteligência", "min": 13.0, "max": 18.0, "tier": 6, "min_ilvl": 50, "weight": 56.0,  "slots": all_equip},
-		{"id": "suff_int_t7", "name": "do Astral",    "type": A.SUFFIX, "stat": "intelligence", "group": "attr_intelligence", "fmt": "+%d de Inteligência", "min": 18.0, "max": 24.0, "tier": 7, "min_ilvl": 65, "weight": 48.0,  "slots": all_equip},
-		{"id": "suff_int_t8", "name": "do Onisciente","type": A.SUFFIX, "stat": "intelligence", "group": "attr_intelligence", "fmt": "+%d de Inteligência", "min": 24.0, "max": 32.0, "tier": 8, "min_ilvl": 80, "weight": 40.0,  "slots": all_equip},
-
-		# ===================== SUFIXOS: FAMÍLIA "crit_chance" (CHANCE CRÍTICA) =====================
-		{"id": "suff_crit_t1", "name": "da Precisão",   "type": A.SUFFIX, "stat": "crit_chance", "group": "crit_chance", "fmt": "+%d%% de Crítico", "min": 0.01, "max": 0.02, "tier": 1, "min_ilvl": 1,  "weight": 75.0, "slots": crit_gear},
-		{"id": "suff_crit_t2", "name": "do Golpe",      "type": A.SUFFIX, "stat": "crit_chance", "group": "crit_chance", "fmt": "+%d%% de Crítico", "min": 0.02, "max": 0.03, "tier": 2, "min_ilvl": 8,  "weight": 68.0, "slots": crit_gear},
-		{"id": "suff_crit_t3", "name": "da Ferocidade", "type": A.SUFFIX, "stat": "crit_chance", "group": "crit_chance", "fmt": "+%d%% de Crítico", "min": 0.02, "max": 0.04, "tier": 3, "min_ilvl": 16, "weight": 62.0, "slots": crit_gear},
-		{"id": "suff_crit_t4", "name": "da Ruína",      "type": A.SUFFIX, "stat": "crit_chance", "group": "crit_chance", "fmt": "+%d%% de Crítico", "min": 0.03, "max": 0.05, "tier": 4, "min_ilvl": 24, "weight": 55.0, "slots": crit_gear},
-		{"id": "suff_crit_t5", "name": "da Execução",   "type": A.SUFFIX, "stat": "crit_chance", "group": "crit_chance", "fmt": "+%d%% de Crítico", "min": 0.04, "max": 0.06, "tier": 5, "min_ilvl": 36, "weight": 48.0, "slots": crit_gear},
-		{"id": "suff_crit_t6", "name": "da Aniquilação","type": A.SUFFIX, "stat": "crit_chance", "group": "crit_chance", "fmt": "+%d%% de Crítico", "min": 0.05, "max": 0.07, "tier": 6, "min_ilvl": 50, "weight": 42.0, "slots": crit_gear},
-		{"id": "suff_crit_t7", "name": "da Fatalidade", "type": A.SUFFIX, "stat": "crit_chance", "group": "crit_chance", "fmt": "+%d%% de Crítico", "min": 0.06, "max": 0.08, "tier": 7, "min_ilvl": 65, "weight": 36.0, "slots": crit_gear},
-		{"id": "suff_crit_t8", "name": "do Apocalipse", "type": A.SUFFIX, "stat": "crit_chance", "group": "crit_chance", "fmt": "+%d%% de Crítico", "min": 0.07, "max": 0.10, "tier": 8, "min_ilvl": 80, "weight": 30.0, "slots": crit_gear},
+	_cached_families = [
+		# 1. PREFIXO: Velocidade de Ataque (5 tiers: T5 -> T1, contrato exato das Seções 3, 7, 9 e 16)
+		{
+			"id": "attack_speed_pct",
+			"display_name": "Velocidade de Ataque",
+			"kind": A.PREFIX,
+			"stat_id": "attack_speed_pct",
+			"value_kind": "percentage_fraction",
+			"valid_categories": weapons,
+			"exclusive_group": "attack_speed",
+			"family_weight": 30.0,
+			"roll_step": 0.01,
+			"format_template": "+%d%% Velocidade de Ataque",
+			"tiers": [
+				{"tier": 5, "min_ilvl": 1,  "min_value": 0.01, "max_value": 0.05, "weight": 60.0},
+				{"tier": 4, "min_ilvl": 15, "min_value": 0.06, "max_value": 0.09, "weight": 25.0},
+				{"tier": 3, "min_ilvl": 30, "min_value": 0.10, "max_value": 0.14, "weight": 10.0},
+				{"tier": 2, "min_ilvl": 55, "min_value": 0.15, "max_value": 0.19, "weight": 4.0},
+				{"tier": 1, "min_ilvl": 75, "min_value": 0.20, "max_value": 0.25, "weight": 1.0},
+			],
+		},
+		# 2. PREFIXO: Dano Físico Adicional (6 tiers: T6 -> T1, cobrindo Ato 1 [1, 8, 16, 24] e Endgame [50, 75])
+		{
+			"id": "flat_damage",
+			"display_name": "Dano Físico",
+			"kind": A.PREFIX,
+			"stat_id": "damage",
+			"value_kind": "integer",
+			"valid_categories": weapons,
+			"exclusive_group": "flat_damage",
+			"family_weight": 45.0,
+			"roll_step": 1.0,
+			"format_template": "+%d de Dano",
+			"tiers": [
+				{"tier": 6, "min_ilvl": 1,  "min_value": 1.0,  "max_value": 3.0,  "weight": 55.0},
+				{"tier": 5, "min_ilvl": 8,  "min_value": 4.0,  "max_value": 6.0,  "weight": 25.0},
+				{"tier": 4, "min_ilvl": 16, "min_value": 7.0,  "max_value": 10.0, "weight": 12.0},
+				{"tier": 3, "min_ilvl": 24, "min_value": 11.0, "max_value": 15.0, "weight": 5.0},
+				{"tier": 2, "min_ilvl": 50, "min_value": 16.0, "max_value": 22.0, "weight": 2.0},
+				{"tier": 1, "min_ilvl": 75, "min_value": 23.0, "max_value": 30.0, "weight": 1.0},
+			],
+		},
+		# 3. PREFIXO: Armadura (5 tiers: T5 -> T1)
+		{
+			"id": "flat_armor",
+			"display_name": "Armadura",
+			"kind": A.PREFIX,
+			"stat_id": "armor",
+			"value_kind": "integer",
+			"valid_categories": armors,
+			"exclusive_group": "flat_armor",
+			"family_weight": 45.0,
+			"roll_step": 1.0,
+			"format_template": "+%d de Armadura",
+			"tiers": [
+				{"tier": 5, "min_ilvl": 1,  "min_value": 2.0,  "max_value": 5.0,  "weight": 60.0},
+				{"tier": 4, "min_ilvl": 12, "min_value": 6.0,  "max_value": 10.0, "weight": 25.0},
+				{"tier": 3, "min_ilvl": 24, "min_value": 11.0, "max_value": 17.0, "weight": 10.0},
+				{"tier": 2, "min_ilvl": 50, "min_value": 18.0, "max_value": 28.0, "weight": 4.0},
+				{"tier": 1, "min_ilvl": 75, "min_value": 29.0, "max_value": 42.0, "weight": 1.0},
+			],
+		},
+		# 4. PREFIXO: Vida Máxima (6 tiers: T6 -> T1, demonstrando família com mais degraus conforme Seção 3)
+		{
+			"id": "flat_max_health",
+			"display_name": "Vida Máxima",
+			"kind": A.PREFIX,
+			"stat_id": "max_health",
+			"value_kind": "integer",
+			"valid_categories": vitality_gear,
+			"exclusive_group": "flat_max_health",
+			"family_weight": 50.0,
+			"roll_step": 1.0,
+			"format_template": "+%d de Vida",
+			"tiers": [
+				{"tier": 6, "min_ilvl": 1,  "min_value": 4.0,  "max_value": 8.0,  "weight": 55.0},
+				{"tier": 5, "min_ilvl": 8,  "min_value": 9.0,  "max_value": 14.0, "weight": 25.0},
+				{"tier": 4, "min_ilvl": 16, "min_value": 15.0, "max_value": 22.0, "weight": 12.0},
+				{"tier": 3, "min_ilvl": 24, "min_value": 23.0, "max_value": 32.0, "weight": 5.0},
+				{"tier": 2, "min_ilvl": 50, "min_value": 33.0, "max_value": 48.0, "weight": 2.0},
+				{"tier": 1, "min_ilvl": 75, "min_value": 49.0, "max_value": 68.0, "weight": 1.0},
+			],
+		},
+		# 5. SUFIXO: Força (5 tiers: T5 -> T1)
+		{
+			"id": "attr_strength",
+			"display_name": "Força",
+			"kind": A.SUFFIX,
+			"stat_id": "strength",
+			"value_kind": "integer",
+			"valid_categories": all_equip,
+			"exclusive_group": "attr_strength",
+			"family_weight": 40.0,
+			"roll_step": 1.0,
+			"format_template": "+%d de Força",
+			"tiers": [
+				{"tier": 5, "min_ilvl": 1,  "min_value": 1.0,  "max_value": 2.0,  "weight": 60.0},
+				{"tier": 4, "min_ilvl": 12, "min_value": 3.0,  "max_value": 5.0,  "weight": 25.0},
+				{"tier": 3, "min_ilvl": 24, "min_value": 6.0,  "max_value": 8.0,  "weight": 10.0},
+				{"tier": 2, "min_ilvl": 50, "min_value": 9.0,  "max_value": 12.0, "weight": 4.0},
+				{"tier": 1, "min_ilvl": 75, "min_value": 13.0, "max_value": 16.0, "weight": 1.0},
+			],
+		},
+		# 6. SUFIXO: Agilidade (5 tiers: T5 -> T1)
+		{
+			"id": "attr_agility",
+			"display_name": "Agilidade",
+			"kind": A.SUFFIX,
+			"stat_id": "agility",
+			"value_kind": "integer",
+			"valid_categories": all_equip,
+			"exclusive_group": "attr_agility",
+			"family_weight": 40.0,
+			"roll_step": 1.0,
+			"format_template": "+%d de Agilidade",
+			"tiers": [
+				{"tier": 5, "min_ilvl": 1,  "min_value": 1.0,  "max_value": 2.0,  "weight": 60.0},
+				{"tier": 4, "min_ilvl": 12, "min_value": 3.0,  "max_value": 5.0,  "weight": 25.0},
+				{"tier": 3, "min_ilvl": 24, "min_value": 6.0,  "max_value": 8.0,  "weight": 10.0},
+				{"tier": 2, "min_ilvl": 50, "min_value": 9.0,  "max_value": 12.0, "weight": 4.0},
+				{"tier": 1, "min_ilvl": 75, "min_value": 13.0, "max_value": 16.0, "weight": 1.0},
+			],
+		},
+		# 7. SUFIXO: Inteligência (5 tiers: T5 -> T1)
+		{
+			"id": "attr_intelligence",
+			"display_name": "Inteligência",
+			"kind": A.SUFFIX,
+			"stat_id": "intelligence",
+			"value_kind": "integer",
+			"valid_categories": all_equip,
+			"exclusive_group": "attr_intelligence",
+			"family_weight": 38.0,
+			"roll_step": 1.0,
+			"format_template": "+%d de Inteligência",
+			"tiers": [
+				{"tier": 5, "min_ilvl": 1,  "min_value": 1.0,  "max_value": 2.0,  "weight": 60.0},
+				{"tier": 4, "min_ilvl": 12, "min_value": 3.0,  "max_value": 5.0,  "weight": 25.0},
+				{"tier": 3, "min_ilvl": 24, "min_value": 6.0,  "max_value": 8.0,  "weight": 10.0},
+				{"tier": 2, "min_ilvl": 50, "min_value": 9.0,  "max_value": 12.0, "weight": 4.0},
+				{"tier": 1, "min_ilvl": 75, "min_value": 13.0, "max_value": 16.0, "weight": 1.0},
+			],
+		},
+		# 8. SUFIXO: Chance de Crítico (5 tiers: T5 -> T1)
+		{
+			"id": "crit_chance",
+			"display_name": "Chance de Crítico",
+			"kind": A.SUFFIX,
+			"stat_id": "crit_chance",
+			"value_kind": "percentage_fraction",
+			"valid_categories": crit_gear,
+			"exclusive_group": "crit_chance",
+			"family_weight": 28.0,
+			"roll_step": 0.01,
+			"format_template": "+%d%% de Crítico",
+			"tiers": [
+				{"tier": 5, "min_ilvl": 1,  "min_value": 0.01, "max_value": 0.02, "weight": 60.0},
+				{"tier": 4, "min_ilvl": 15, "min_value": 0.02, "max_value": 0.03, "weight": 25.0},
+				{"tier": 3, "min_ilvl": 30, "min_value": 0.03, "max_value": 0.04, "weight": 10.0},
+				{"tier": 2, "min_ilvl": 55, "min_value": 0.04, "max_value": 0.05, "weight": 4.0},
+				{"tier": 1, "min_ilvl": 75, "min_value": 0.05, "max_value": 0.06, "weight": 1.0},
+			],
+		},
 	]
+
+	_cached_family_by_id.clear()
+	for fam in _cached_families:
+		_cached_family_by_id[String(fam["id"])] = fam
+
+static func get_affix_families() -> Array[Dictionary]:
+	_ensure_families_loaded()
+	return _cached_families
+
+static func get_affix_family(family_id: String) -> Dictionary:
+	_ensure_families_loaded()
+	return _cached_family_by_id.get(family_id, {})
+
+static func get_eligible_tiers_for_family(family: Dictionary, ilvl: int) -> Array[Dictionary]:
+	var eligible: Array[Dictionary] = []
+	var tiers_list: Array = family.get("tiers", [])
+	for t_entry in tiers_list:
+		if ilvl >= int(t_entry.get("min_ilvl", 1)):
+			eligible.append(t_entry)
+	return eligible
+
+## Retorna o MELHOR (menor número, pois T1 = melhor) tier desbloqueado na família para o `ilvl` informado.
+static func get_best_unlocked_tier_for_family(family: Dictionary, ilvl: int) -> int:
+	var eligible: Array[Dictionary] = get_eligible_tiers_for_family(family, ilvl)
+	if eligible.is_empty():
+		return 99
+	var best_tier: int = int(eligible[0].get("tier", 5))
+	for t_entry in eligible:
+		var t_num: int = int(t_entry.get("tier", 5))
+		if t_num < best_tier:
+			best_tier = t_num
+	return best_tier
+
+## Retorna o melhor tier de referência desbloqueado para um `ilvl` (baseado na escala de 5 tiers T5->T1 da Seção 3).
+static func get_max_unlocked_affix_tier_for_ilvl(ilvl: int) -> int:
+	var spd_fam: Dictionary = get_affix_family("attack_speed_pct")
+	return get_best_unlocked_tier_for_family(spd_fam, ilvl)
+
+static func format_affix_value_text(family: Dictionary, rolled_val: float) -> String:
+	var tmpl: String = String(family.get("format_template", "+%d"))
+	var v_kind: String = String(family.get("value_kind", "integer"))
+	if v_kind == "percentage_fraction":
+		var pct_val: float = rolled_val * 100.0
+		var step_pct: float = float(family.get("roll_step", 0.01)) * 100.0
+		if step_pct < 0.99 and absf(pct_val - roundf(pct_val)) > 0.01:
+			var num_str: String = ("%.1f" % pct_val).replace(".", ",")
+			return "+%s%% %s" % [num_str, String(family.get("display_name", ""))]
+		return tmpl % int(roundi(pct_val))
+	return tmpl % int(roundi(rolled_val))
+
+static func get_progressive_affix_pool() -> Array[Dictionary]:
+	_ensure_families_loaded()
+	var flat_pool: Array[Dictionary] = []
+	for fam in _cached_families:
+		var f_id: String = String(fam["id"])
+		var f_name: String = String(fam["display_name"])
+		var f_kind: int = int(fam["kind"])
+		var f_stat: String = String(fam["stat_id"])
+		var f_group: String = String(fam["exclusive_group"])
+		var f_fmt: String = String(fam["format_template"])
+		var f_slots: Array = fam["valid_categories"]
+		for t_entry in fam["tiers"]:
+			flat_pool.append({
+				"id": "%s_t%d" % [f_id, int(t_entry["tier"])],
+				"family_id": f_id,
+				"name": f_name,
+				"type": f_kind,
+				"stat": f_stat,
+				"group": f_group,
+				"fmt": f_fmt,
+				"min": float(t_entry["min_value"]),
+				"max": float(t_entry["max_value"]),
+				"tier": int(t_entry["tier"]),
+				"min_ilvl": int(t_entry["min_ilvl"]),
+				"weight": float(t_entry["weight"]),
+				"slots": f_slots,
+			})
+	return flat_pool
 
 ## ---------------------------------------------------------------------------
 ## CONSULTA DE CURVAS, PESOS NORMALIZADOS E INTERPOLACAO (NIVEIS 1 A 100+)

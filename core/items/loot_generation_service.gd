@@ -304,8 +304,163 @@ static func generate_single_equipment_drop(
 	return stage7_create_final_instance(base_def, rarity, ilvl, rng)
 
 ## ---------------------------------------------------------------------------
-## SORTEIO PONDERADO DE AFIXOS COM EXCLUSION_GROUP, TIERS E RESTRICAO DE SLOT
+## SORTEIO EM TRÊS ETAPAS INDEPENDENTES (FAMÍLIA -> TIER -> VALOR) (Seções 7, 8 e 10)
 ## ---------------------------------------------------------------------------
+## Etapa A: Filtrar famílias elegíveis para (kind, category, ilvl, used_exclusive_groups) e sortear por `family_weight`.
+## Etapa B: Filtrar tiers da família onde `ilvl >= min_ilvl` e sortear por `tier.weight` (T1 = melhor, maior = pior).
+## Etapa C: Sortear valor inclusivo entre `min_value` e `max_value` respeitando `roll_step`.
+
+static func get_eligible_affix_families(
+	target_kind: int,
+	item_category: int,
+	ilvl: int,
+	used_exclusive_groups: Dictionary = {},
+	used_family_ids: Dictionary = {}
+) -> Array[Dictionary]:
+	var eligible: Array[Dictionary] = []
+	for fam in LootBalanceConfig.get_affix_families():
+		if int(fam.get("kind", -1)) != target_kind:
+			continue
+		var valid_cats: Array = fam.get("valid_categories", [])
+		if not valid_cats.has(item_category):
+			continue
+		var f_id: String = String(fam.get("id", ""))
+		if used_family_ids.has(f_id):
+			continue
+		var group_key: String = String(fam.get("exclusive_group", f_id))
+		if used_exclusive_groups.has(group_key):
+			continue
+		var valid_tiers: Array[Dictionary] = LootBalanceConfig.get_eligible_tiers_for_family(fam, ilvl)
+		if valid_tiers.is_empty():
+			continue
+		eligible.append(fam)
+	return eligible
+
+## Monta o layout viável de slots (PREFIX / SUFFIX) antes da rolagem, garantindo que nenhuma vaga fique sem candidatos
+## e respeitando as cotas da raridade (Verde = 1P ou 1S; Azul = 1P + 1S; Amarelo = 3-4 afixos com máx 2P + 2S).
+static func _build_viable_affix_slot_layout(
+	item_category: int,
+	ilvl: int,
+	target_count: int,
+	max_prefixes: int,
+	max_suffixes: int,
+	rng: RandomNumberGenerator = null
+) -> Array[int]:
+	var P: int = ItemAffix.AffixType.PREFIX
+	var S: int = ItemAffix.AffixType.SUFFIX
+
+	# Conta quantas famílias distintas por exclusive_group existem para PREFIX e SUFFIX nesta categoria/ilvl
+	var pref_groups: Dictionary = {}
+	var suff_groups: Dictionary = {}
+	for fam in LootBalanceConfig.get_affix_families():
+		var valid_cats: Array = fam.get("valid_categories", [])
+		if not valid_cats.has(item_category):
+			continue
+		if LootBalanceConfig.get_eligible_tiers_for_family(fam, ilvl).is_empty():
+			continue
+		var grp: String = String(fam.get("exclusive_group", fam.get("id", "")))
+		if int(fam.get("kind", -1)) == P:
+			pref_groups[grp] = true
+		elif int(fam.get("kind", -1)) == S:
+			suff_groups[grp] = true
+
+	var cap_p: int = mini(max_prefixes, pref_groups.size())
+	var cap_s: int = mini(max_suffixes, suff_groups.size())
+	var max_viable_total: int = cap_p + cap_s
+	var final_total: int = mini(target_count, max_viable_total)
+
+	# Se um item Amarelo (RARE) pediu 4 afixos mas a categoria só possui 1 família de prefixo + 2 de sufixos (ex.: Anéis/Amuletos),
+	# gera 3 afixos válidos (1P + 2S), cumprindo a regra de 3–4 afixos de Amarelo sem erro nem slot vazio!
+	var layout: Array[int] = []
+	if final_total <= 0:
+		return layout
+
+	if final_total == 1:
+		if cap_p > 0 and cap_s > 0:
+			var pick_p: bool = (rng.randf() if rng != null else randf()) < 0.5
+			layout.append(P if pick_p else S)
+		elif cap_p > 0:
+			layout.append(P)
+		else:
+			layout.append(S)
+		return layout
+
+	if final_total == 2:
+		if cap_p >= 1 and cap_s >= 1:
+			layout = [P, S]
+		elif cap_p >= 2:
+			layout = [P, P]
+		elif cap_s >= 2:
+			layout = [S, S]
+		elif cap_p == 1:
+			layout = [P]
+		elif cap_s == 1:
+			layout = [S]
+		return layout
+
+	# Para 3 ou 4 afixos (Amarelo / RARE):
+	var min_p: int = maxi(0, final_total - cap_s)
+	var max_p: int = mini(cap_p, final_total)
+	var chosen_p: int = min_p
+	if max_p > min_p:
+		chosen_p = rng.randi_range(min_p, max_p) if rng != null else randi_range(min_p, max_p)
+	var chosen_s: int = final_total - chosen_p
+
+	for _i in range(chosen_p):
+		layout.append(P)
+	for _j in range(chosen_s):
+		layout.append(S)
+	return layout
+
+## Sorteia um único afixo diretamente de uma família específica (usado na Etapa B+C e nos testes de 100.000 sorteios da Seção 16)
+static func roll_single_affix_from_family(
+	family: Dictionary,
+	ilvl: int,
+	rng: RandomNumberGenerator = null
+) -> ItemAffix:
+	if family.is_empty():
+		return null
+	var eligible_tiers: Array[Dictionary] = LootBalanceConfig.get_eligible_tiers_for_family(family, maxi(1, ilvl))
+	if eligible_tiers.is_empty():
+		return null
+
+	# Etapa B: Sorteio ponderado do tier usando os pesos da própria família
+	var tier_weights: Array[float] = []
+	for t_entry in eligible_tiers:
+		tier_weights.append(float(t_entry.get("weight", 1.0)))
+	var chosen_t_idx: int = LootBalanceConfig.roll_weighted_index(tier_weights, rng)
+	var chosen_tier: Dictionary = eligible_tiers[chosen_t_idx]
+
+	# Etapa C: Sorteio do valor entre min_value e max_value (inclusivo) respeitando roll_step
+	var min_v: float = float(chosen_tier.get("min_value", 0.0))
+	var max_v: float = float(chosen_tier.get("max_value", min_v))
+	var step: float = maxf(0.0001, float(family.get("roll_step", 1.0)))
+	var total_steps: int = maxi(0, int(round((max_v - min_v) / step)))
+	var step_pick: int = rng.randi_range(0, total_steps) if rng != null else randi_range(0, total_steps)
+	var rolled_val: float = snappedf(min_v + float(step_pick) * step, step)
+	rolled_val = clampf(rolled_val, min_v, max_v)
+
+	var f_id: String = String(family.get("id", ""))
+	var f_kind: int = int(family.get("kind", ItemAffix.AffixType.PREFIX))
+	var f_stat: String = String(family.get("stat_id", ""))
+	var f_group: String = String(family.get("exclusive_group", f_stat))
+	var tier_num: int = int(chosen_tier.get("tier", 1))
+	var tier_min_ilvl: int = int(chosen_tier.get("min_ilvl", 1))
+	var display_text: String = LootBalanceConfig.format_affix_value_text(family, rolled_val)
+
+	return ItemAffix.create(
+		f_id,
+		f_kind as ItemAffix.AffixType,
+		f_stat,
+		rolled_val,
+		display_text,
+		tier_num,
+		tier_min_ilvl,
+		f_group,
+		min_v,
+		max_v
+	)
+
 static func _roll_random_affixes_onto_item(
 	item: ItemInstance,
 	target_count: int,
@@ -313,91 +468,42 @@ static func _roll_random_affixes_onto_item(
 	max_suffixes: int,
 	rng: RandomNumberGenerator = null
 ) -> void:
-	_ensure_affix_pool()
+	if item == null or item.definition == null:
+		return
 	var item_cat: int = item.definition.category
 	var ilvl: int = maxi(1, item.item_level)
-	var max_unlocked_tier: int = LootBalanceConfig.get_max_unlocked_affix_tier_for_ilvl(ilvl)
 
-	var used_exclusion_groups: Dictionary = {}
-	var prefix_count: int = 0
-	var suffix_count: int = 0
+	var slot_layout: Array[int] = _build_viable_affix_slot_layout(
+		item_cat, ilvl, target_count, max_prefixes, max_suffixes, rng
+	)
+	var used_exclusive_groups: Dictionary = {}
+	var used_family_ids: Dictionary = {}
 
-	for _step in range(target_count):
-		var candidates: Array[Dictionary] = []
-		var candidate_weights: Array[float] = []
-
-		for entry in _cached_affix_pool:
-			var min_req_ilvl: int = int(entry["min_ilvl"])
-			# Impede estritamente que monstros de nivel baixo gerem tiers de afixos acima do seu ilvl
-			if min_req_ilvl > ilvl:
-				continue
-			var slots: Array = entry["slots"]
-			if not slots.has(item_cat):
-				continue
-			var group_key: String = String(entry.get("group", entry["stat"]))
-			if used_exclusion_groups.has(group_key):
-				continue
-			var affix_type: int = int(entry["type"])
-			if affix_type == ItemAffix.AffixType.PREFIX and prefix_count >= max_prefixes:
-				continue
-			if affix_type == ItemAffix.AffixType.SUFFIX and suffix_count >= max_suffixes:
-				continue
-
-			var tier: int = int(entry["tier"])
-			var weight: float = float(entry["weight"])
-			# Pondera tiers disponiveis favorecendo tiers proximos ao topo desbloqueado pelo ilvl,
-			# mas mantendo tiers anteriores possiveis (permitindo que um Azul com 2 rolls T3 altos supere um Amarelo com 3 rolls T1/T2 baixos)
-			var tier_gap: int = maxi(0, max_unlocked_tier - tier)
-			if tier_gap == 0:
-				weight *= 1.40
-			elif tier_gap == 1:
-				weight *= 1.00
-			else:
-				weight *= maxf(0.22, 0.65 - float(tier_gap - 1) * 0.18)
-
-			candidates.append(entry)
-			candidate_weights.append(weight)
-
-		if candidates.is_empty():
-			break
-
-		var chosen_idx: int = LootBalanceConfig.roll_weighted_index(candidate_weights, rng)
-		var chosen: Dictionary = candidates[chosen_idx]
-		var group_name: String = String(chosen.get("group", chosen["stat"]))
-		var stat_name: String = String(chosen["stat"])
-		used_exclusion_groups[group_name] = true
-
-		var chosen_type: int = int(chosen["type"])
-		if chosen_type == ItemAffix.AffixType.PREFIX:
-			prefix_count += 1
-		elif chosen_type == ItemAffix.AffixType.SUFFIX:
-			suffix_count += 1
-
-		var min_v: float = float(chosen["min"])
-		var max_v: float = float(chosen["max"])
-		var rolled_val: float = min_v
-		var display_text: String = ""
-		if stat_name == "crit_chance" or stat_name == "move_speed":
-			var steps: int = maxi(1, int(round((max_v - min_v) * 100.0)))
-			var step_pick: int = rng.randi_range(0, steps) if rng != null else randi_range(0, steps)
-			rolled_val = snappedf(min_v + float(step_pick) * 0.01, 0.01)
-			display_text = String(chosen["fmt"]) % int(roundi(rolled_val * 100.0))
-		else:
-			var min_i: int = int(round(min_v))
-			var max_i: int = int(round(max_v))
-			rolled_val = float(rng.randi_range(min_i, max_i) if rng != null else randi_range(min_i, max_i))
-			display_text = String(chosen["fmt"]) % int(roundi(rolled_val))
-
-		var affix := ItemAffix.create(
-			String(chosen["id"]),
-			chosen_type as ItemAffix.AffixType,
-			stat_name,
-			rolled_val,
-			display_text,
-			int(chosen["tier"]),
-			int(chosen["min_ilvl"]),
-			group_name,
-			min_v,
-			max_v
+	for kind_slot in slot_layout:
+		# Etapa A: Selecionar família elegível para a vaga (PREFIX ou SUFFIX)
+		var eligible_families: Array[Dictionary] = get_eligible_affix_families(
+			kind_slot, item_cat, ilvl, used_exclusive_groups, used_family_ids
 		)
-		item.explicit_affixes.append(affix)
+		if eligible_families.is_empty():
+			# Fallback seguro caso a combinação tenha esgotado o tipo primário: tenta o tipo complementar dentro do limite global
+			var alt_kind: int = ItemAffix.AffixType.SUFFIX if kind_slot == ItemAffix.AffixType.PREFIX else ItemAffix.AffixType.PREFIX
+			eligible_families = get_eligible_affix_families(
+				alt_kind, item_cat, ilvl, used_exclusive_groups, used_family_ids
+			)
+			if eligible_families.is_empty():
+				break
+
+		var fam_weights: Array[float] = []
+		for fam in eligible_families:
+			fam_weights.append(float(fam.get("family_weight", 10.0)))
+		var chosen_fam_idx: int = LootBalanceConfig.roll_weighted_index(fam_weights, rng)
+		var chosen_family: Dictionary = eligible_families[chosen_fam_idx]
+
+		# Etapas B e C: Selecionar tier elegível da família e valor dentro da faixa do tier
+		var rolled_affix: ItemAffix = roll_single_affix_from_family(chosen_family, ilvl, rng)
+		if rolled_affix == null:
+			continue
+
+		used_exclusive_groups[rolled_affix.exclusion_group] = true
+		used_family_ids[rolled_affix.affix_id] = true
+		item.explicit_affixes.append(rolled_affix)

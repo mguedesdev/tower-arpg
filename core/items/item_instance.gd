@@ -17,6 +17,9 @@ const COLOR_MAGIC := Color("#5596E6")
 const COLOR_RARE := Color("#EBC34D")
 const COLOR_UNIQUE := Color("#E45155")
 
+const CURRENT_SCHEMA_VERSION: int = 2
+static var show_advanced_affix_tier_in_tooltip: bool = true
+
 var uid: String = ""
 var definition: ItemDefinition
 var rarity: ItemRarity = ItemRarity.NORMAL
@@ -263,6 +266,8 @@ func get_total_stat_value(stat_key: String) -> float:
 			return base_hp + get_stat_bonus("max_health")
 		"move_speed_pct":
 			return (definition.base_move_speed_pct * 100.0) + (get_stat_bonus("move_speed") * 100.0)
+		"attack_speed_pct":
+			return get_stat_bonus("attack_speed_pct") * 100.0
 		"crit_chance":
 			return get_stat_bonus("crit_chance") * 100.0
 		_:
@@ -458,11 +463,14 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 			if af == null:
 				continue
 			var af_color: String = "#e45155" if rarity == ItemRarity.UNIQUE else ("#58bc76" if rarity == ItemRarity.UNCOMMON else "#5dade2")
-			var af_line: String = "[color=%s]• %s[/color]" % [af_color, af.display_text]
+			var tier_tag: String = ""
+			if show_advanced_affix_tier_in_tooltip and (af.affix_type == ItemAffix.AffixType.PREFIX or af.affix_type == ItemAffix.AffixType.SUFFIX) and af.tier >= 1:
+				tier_tag = " [color=#8b939c][T%d][/color]" % af.tier
+			var af_line: String = "[color=%s]• %s[/color]%s" % [af_color, af.display_text, tier_tag]
 			if do_compare:
-				if af.stat_key == "crit_chance":
-					var my_c: float = get_stat_bonus("crit_chance") * 100.0
-					var eq_c: float = (eq_item.get_stat_bonus("crit_chance") * 100.0) if eq_item != null else 0.0
+				if af.stat_key == "crit_chance" or af.stat_key == "attack_speed_pct" or af.stat_key == "move_speed":
+					var my_c: float = get_stat_bonus(af.stat_key) * 100.0
+					var eq_c: float = (eq_item.get_stat_bonus(af.stat_key) * 100.0) if eq_item != null else 0.0
 					af_line += _format_inline_diff(my_c - eq_c, false, true)
 				else:
 					var my_v: float = get_stat_bonus(af.stat_key)
@@ -485,7 +493,8 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 
 		var compare_defs: Array[Dictionary] = [
 			{"key": "avg_damage", "label": "de Dano Médio", "float": false, "pct": false},
-			{"key": "attack_speed", "label": "Vel. de Ataque", "float": true, "pct": false},
+			{"key": "attack_speed", "label": "Vel. de Ataque Base", "float": true, "pct": false},
+			{"key": "attack_speed_pct", "label": "Vel. de Ataque", "float": false, "pct": true},
 			{"key": "armor", "label": "de Armadura", "float": false, "pct": false},
 			{"key": "max_health", "label": "de Vida Máxima", "float": false, "pct": false},
 			{"key": "strength", "label": "de Força", "float": false, "pct": false},
@@ -544,3 +553,91 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 		t += "[color=#9ee0a8]%s[/color]" % action_hint
 
 	return t
+
+
+static func rarity_to_id(r: ItemRarity) -> String:
+	match r:
+		ItemRarity.UNCOMMON:
+			return "uncommon"
+		ItemRarity.MAGIC:
+			return "magic"
+		ItemRarity.RARE:
+			return "rare"
+		ItemRarity.UNIQUE:
+			return "unique"
+		_:
+			return "normal"
+
+
+func to_dictionary() -> Dictionary:
+	var affixes_arr: Array[Dictionary] = []
+	for af in explicit_affixes:
+		if af != null:
+			affixes_arr.append(af.to_dictionary())
+	return {
+		"schema_version": CURRENT_SCHEMA_VERSION,
+		"uid": uid,
+		"base_id": definition.base_id if definition != null else "",
+		"ilvl": item_level,
+		"rarity": rarity_to_id(rarity),
+		"rarity_enum": int(rarity),
+		"is_identified": is_identified,
+		"unique_id": unique_id,
+		"unique_display_name": unique_display_name,
+		"grid_position": {"x": grid_position.x, "y": grid_position.y},
+		"is_rotated": is_rotated,
+		"equipped_slot": int(equipped_slot),
+		"explicit_affixes": affixes_arr,
+	}
+
+
+static func from_dictionary(data: Dictionary) -> ItemInstance:
+	if data.is_empty():
+		return null
+	var base_id_str: String = String(data.get("base_id", ""))
+	if base_id_str.is_empty():
+		return null
+	var def: ItemDefinition = ItemDatabase.get_definition(base_id_str)
+	if def == null:
+		return null
+
+	var parsed_rarity: ItemRarity = ItemRarity.NORMAL
+	if data.has("rarity_enum") and (typeof(data["rarity_enum"]) == TYPE_INT or typeof(data["rarity_enum"]) == TYPE_FLOAT):
+		var enum_val: int = int(data["rarity_enum"])
+		if enum_val >= ItemRarity.NORMAL and enum_val <= ItemRarity.UNCOMMON:
+			parsed_rarity = enum_val as ItemRarity
+	elif data.has("rarity"):
+		var raw_r: Variant = data["rarity"]
+		if typeof(raw_r) == TYPE_INT or typeof(raw_r) == TYPE_FLOAT:
+			var r_int: int = int(raw_r)
+			if r_int >= ItemRarity.NORMAL and r_int <= ItemRarity.UNCOMMON:
+				parsed_rarity = r_int as ItemRarity
+		else:
+			parsed_rarity = rarity_from_id(String(raw_r))
+
+	var parsed_ilvl: int = maxi(1, int(data.get("ilvl", data.get("item_level", def.base_item_level))))
+	var inst := ItemInstance.new(def, parsed_rarity, parsed_ilvl)
+	if data.has("uid") and not String(data["uid"]).is_empty():
+		inst.uid = String(data["uid"])
+	inst.is_identified = bool(data.get("is_identified", true))
+	inst.unique_id = String(data.get("unique_id", ""))
+	inst.unique_display_name = String(data.get("unique_display_name", ""))
+	inst.is_rotated = bool(data.get("is_rotated", false))
+	inst.equipped_slot = clampi(int(data.get("equipped_slot", ItemDefinition.EquipmentSlot.NONE)), ItemDefinition.EquipmentSlot.NONE, ItemDefinition.EquipmentSlot.RING_2) as ItemDefinition.EquipmentSlot
+
+	if data.has("grid_position") and typeof(data["grid_position"]) == TYPE_DICTIONARY:
+		var gp: Dictionary = data["grid_position"]
+		inst.grid_position = Vector2i(int(gp.get("x", -1)), int(gp.get("y", -1)))
+
+	inst.explicit_affixes.clear()
+	var raw_affixes: Variant = data.get("explicit_affixes", [])
+	if typeof(raw_affixes) == TYPE_ARRAY:
+		for raw_af in raw_affixes:
+			if typeof(raw_af) == TYPE_DICTIONARY:
+				var af: ItemAffix = ItemAffix.from_dictionary(raw_af as Dictionary)
+				if af != null:
+					inst.explicit_affixes.append(af)
+	elif parsed_rarity == ItemRarity.UNIQUE and inst.explicit_affixes.is_empty():
+		LootGenerationService._apply_unique_fixed_affixes(inst)
+
+	return inst
