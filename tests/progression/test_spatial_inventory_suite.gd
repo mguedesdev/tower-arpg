@@ -232,4 +232,8 @@ func _test_tooltip_comparison_and_npc_stash() -> void:
 	npc_modal._search_query = "Espada"
 	npc_modal._refresh_vendor_catalog_and_inspector()
 	_check(npc_modal._vendor_list_vbox.get_child_count() >= 1 and npc_modal._vendor_list_vbox.get_child_count() <= 4, "21c. Busca textual filtra o catálogo em tempo real")
+
+	# Teste da Janela do Sábio Ancestral (Retrato + 3 Cards Lado a Lado + Dicas do Sábio)
+	npc_modal.open_station("identifier_respec", zones, "town", 1)
+	_check(npc_modal._content_box.get_child_count() == 1 and npc_modal._bottom_close_btn.visible, "22. Janela do Sábio Ancestral exibe layout organizado com retrato, 3 cards de serviço e rodapé")
 	npc_modal.queue_free()

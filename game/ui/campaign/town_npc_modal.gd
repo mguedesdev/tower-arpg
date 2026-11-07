@@ -379,6 +379,10 @@ func open_station(station_id: String, unlocked_zones: Array[String], current_zon
 		_window_panel.custom_minimum_size = Vector2(890, 548)
 		_subtitle_label.visible = false
 		_bottom_close_btn.visible = false
+	elif station_id == "identifier_respec":
+		_window_panel.custom_minimum_size = Vector2(860, 540)
+		_subtitle_label.visible = false
+		_bottom_close_btn.visible = true
 	else:
 		_window_panel.custom_minimum_size = Vector2(540, 510)
 		_subtitle_label.visible = true
@@ -1465,11 +1469,28 @@ func _attempt_buy_item(item: ItemInstance, stock_array: Array[ItemInstance]) -> 
 
 
 # ===============================================================
-# 3. SÁBIO IDENTIFICADOR, CURANDEIRO & RESET DE BUILD
+# 3. SÁBIO IDENTIFICADOR, CURANDEIRO & RESET DE BUILD (FIEL À IMAGEM)
 # ===============================================================
+func _load_ui_texture(res_path: String) -> Texture2D:
+	if _portrait_cache.has(res_path):
+		return _portrait_cache[res_path] as Texture2D
+	var abs_path: String = ProjectSettings.globalize_path(res_path)
+	if FileAccess.file_exists(abs_path):
+		var img := Image.load_from_file(abs_path)
+		if img != null and not img.is_empty():
+			var tex := ImageTexture.create_from_image(img)
+			_portrait_cache[res_path] = tex
+			return tex
+	if ResourceLoader.exists(res_path):
+		var rtex: Texture2D = load(res_path) as Texture2D
+		if rtex != null:
+			_portrait_cache[res_path] = rtex
+			return rtex
+	return null
+
+
 func _populate_identifier_respec() -> void:
-	_title_label.text = "📜  SÁBIO ANCESTRAL — IDENTIFICAR, CURAR & RESETAR"
-	_subtitle_label.text = "\"Fique um instante e escute... Posso revelar o poder oculto das suas relíquias, curar suas feridas ou purificar seus atributos.\""
+	_title_label.text = "📜   SÁBIO ANCESTRAL  —  IDENTIFICAR, CURAR & RESETAR"
 
 	var unid_count: int = 0
 	if backpack != null:
@@ -1481,38 +1502,223 @@ func _populate_identifier_respec() -> void:
 			if it != null and not it.is_identified:
 				unid_count += 1
 
-	var id_txt: String = "🔍 IDENTIFICAR TODOS OS ITENS (%d Pendentes) — GRÁTIS" % unid_count if unid_count > 0 else "🔍 TODOS OS SEUS ITENS JÁ ESTÃO IDENTIFICADOS"
-	var id_btn := _make_gothic_button(id_txt, false)
-	id_btn.pressed.connect(func() -> void:
-		identify_items_requested.emit()
-		_refresh_current_station_content()
-		show_feedback("✦ Todos os itens na Mochila e no Baú foram identificados pelo Sábio!", false)
-	)
-	_content_box.add_child(id_btn)
+	var body_hbox := HBoxContainer.new()
+	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body_hbox.add_theme_constant_override("separation", 16)
+	_content_box.add_child(body_hbox)
 
-	var heal_btn := _make_gothic_button("♥ BÊNÇÃO DE CURA COMPLETA (RESTAURAR 100% DA VIDA) — GRÁTIS", false)
-	heal_btn.pressed.connect(func() -> void:
-		heal_player_requested.emit()
-		show_feedback("✦ A luz ancestral restaurou toda a sua Vida!", false)
-	)
-	_content_box.add_child(heal_btn)
+	# ---------------------------------------------------------------
+	# COLUNA ESQUERDA: RETRATO ILUSTRADO DO SÁBIO NO ALTAR ARCANO
+	# ---------------------------------------------------------------
+	var portrait_frame := PanelContainer.new()
+	portrait_frame.custom_minimum_size = Vector2(236, 392)
+	portrait_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var pf_style := _slot_style(Color(0.06, 0.05, 0.075, 0.98), COLOR_BRONZE_BORDER, 2)
+	pf_style.set_corner_radius_all(6)
+	pf_style.content_margin_left = 3
+	pf_style.content_margin_right = 3
+	pf_style.content_margin_top = 3
+	pf_style.content_margin_bottom = 3
+	portrait_frame.add_theme_stylebox_override("panel", pf_style)
+	body_hbox.add_child(portrait_frame)
 
-	var respec_btn := _make_gothic_button("↺ PURIFICAR & RESETAR ATRIBUTOS BASE", true)
-	respec_btn.pressed.connect(func() -> void:
-		respec_build_requested.emit()
-		show_feedback("✦ Seus atributos base foram restaurados ao estado original!", false)
-	)
-	_content_box.add_child(respec_btn)
+	var portrait_tex := TextureRect.new()
+	portrait_tex.texture = _load_ui_texture("res://assets/ui/sage_portrait.png")
+	portrait_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	portrait_frame.add_child(portrait_tex)
 
-	var lore_panel := PanelContainer.new()
-	lore_panel.add_theme_stylebox_override("panel", _slot_style(Color(0.07, 0.065, 0.085, 0.92), COLOR_BRONZE_BORDER, 1))
-	var lore := Label.new()
-	lore.text = "✦ Dicas do Sábio de Velen:\n• Passe o mouse sobre qualquer item na Mochila, Baú ou Mercador para ver as setas de comparação (▲ verde = melhora / ▼ vermelho = piora).\n• Requisitos de Força, Agilidade e Inteligência são cumpridos equipando Anéis, Amuletos e subindo de Nível em combate."
-	lore.add_theme_font_size_override("font_size", 12)
-	lore.add_theme_color_override("font_color", COLOR_PARCHMENT)
-	lore.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lore_panel.add_child(lore)
-	_content_box.add_child(lore_panel)
+	# ---------------------------------------------------------------
+	# COLUNA DIREITA: CITAÇÃO + 3 CARDS DE SERVIÇO + DICAS DO SÁBIO
+	# ---------------------------------------------------------------
+	var right_vbox := VBoxContainer.new()
+	right_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right_vbox.add_theme_constant_override("separation", 12)
+	body_hbox.add_child(right_vbox)
+
+	# 1. Citação Superior Centralizada
+	var quote_lbl := Label.new()
+	quote_lbl.text = "\"Fique um instante e escute... Posso revelar o poder oculto das suas relíquias,\ncurar suas feridas ou purificar seus atributos.\""
+	quote_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	quote_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	quote_lbl.add_theme_font_size_override("font_size", 13)
+	quote_lbl.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	right_vbox.add_child(quote_lbl)
+
+	var sep_quote := HSeparator.new()
+	sep_quote.add_theme_color_override("separator", COLOR_BORDER_SUBTLE)
+	right_vbox.add_child(sep_quote)
+
+	# 2. Linha dos 3 Cards Verticais Lado a Lado
+	var cards_hbox := HBoxContainer.new()
+	cards_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cards_hbox.add_theme_constant_override("separation", 12)
+	right_vbox.add_child(cards_hbox)
+
+	# Card 1: IDENTIFICAR ITENS
+	var id_desc: String = "Revela o poder oculto dos\nitens não identificados."
+	if unid_count > 0:
+		id_desc += "\n(%d pendente(s))" % unid_count
+	var id_btn_txt: String = "GRÁTIS" if unid_count == 0 else "GRÁTIS (%d)" % unid_count
+	cards_hbox.add_child(_make_sage_service_card(
+		"res://assets/ui/sage_icon_identify.png",
+		"IDENTIFICAR ITENS",
+		id_desc,
+		id_btn_txt,
+		Color(0.085, 0.055, 0.135, 0.97),
+		Color(0.24, 0.14, 0.36, 0.98),
+		Color(0.68, 0.48, 0.90, 0.95),
+		func() -> void:
+			identify_items_requested.emit()
+			_refresh_current_station_content()
+			show_feedback("✦ Todos os itens na Mochila e no Baú foram identificados pelo Sábio!", false)
+	))
+
+	# Card 2: BÊNÇÃO DE CURA
+	cards_hbox.add_child(_make_sage_service_card(
+		"res://assets/ui/sage_icon_heal.png",
+		"BÊNÇÃO DE CURA",
+		"Restaura 100% da\nsua Vida.",
+		"GRÁTIS",
+		Color(0.055, 0.095, 0.08, 0.97),
+		Color(0.20, 0.14, 0.32, 0.98),
+		Color(0.62, 0.45, 0.85, 0.95),
+		func() -> void:
+			heal_player_requested.emit()
+			show_feedback("✦ A luz ancestral restaurou toda a sua Vida!", false)
+	))
+
+	# Card 3: PURIFICAR & RESETAR
+	cards_hbox.add_child(_make_sage_service_card(
+		"res://assets/ui/sage_icon_respec.png",
+		"PURIFICAR & RESETAR",
+		"Redefine os\natributos base do seu\npersonagem.",
+		"RESETAR",
+		Color(0.14, 0.045, 0.055, 0.97),
+		Color(0.42, 0.10, 0.11, 0.98),
+		Color(0.88, 0.32, 0.30, 0.95),
+		func() -> void:
+			respec_build_requested.emit()
+			show_feedback("✦ Seus atributos base foram restaurados ao estado original!", false)
+	))
+
+	# 3. Quadro Inferior: "📖 DICAS DO SÁBIO DE VELEN"
+	var tips_panel := PanelContainer.new()
+	var tp_style := _slot_style(Color(0.06, 0.058, 0.078, 0.96), COLOR_BRONZE_BORDER, 1)
+	tp_style.set_corner_radius_all(5)
+	tp_style.content_margin_left = 14
+	tp_style.content_margin_right = 14
+	tp_style.content_margin_top = 10
+	tp_style.content_margin_bottom = 10
+	tips_panel.add_theme_stylebox_override("panel", tp_style)
+	right_vbox.add_child(tips_panel)
+
+	var tips_vbox := VBoxContainer.new()
+	tips_vbox.add_theme_constant_override("separation", 6)
+	tips_panel.add_child(tips_vbox)
+
+	var tips_title := Label.new()
+	tips_title.text = "📖   DICAS DO SÁBIO DE VELEN"
+	tips_title.add_theme_font_size_override("font_size", 13)
+	tips_title.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	tips_vbox.add_child(tips_title)
+
+	var sep_tips := HSeparator.new()
+	sep_tips.add_theme_color_override("separator", COLOR_BORDER_SUBTLE)
+	tips_vbox.add_child(sep_tips)
+
+	var tips_rt := RichTextLabel.new()
+	tips_rt.bbcode_enabled = true
+	tips_rt.fit_content = true
+	tips_rt.scroll_active = false
+	tips_rt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tips_rt.text = (
+		"[color=#f2cb6f]✦[/color]  [color=#e6dfd3]Passe o mouse sobre qualquer item na Mochila, Baú ou Mercador para ver as setas de\n"
+		+ "    comparação ([color=#4dff6b]▲ verde = melhora[/color] / [color=#ff4d4d]▼ vermelha = piora[/color]).[/color]\n"
+		+ "[color=#f2cb6f]✦[/color]  [color=#e6dfd3]Requisitos de Força, Agilidade e Inteligência são cumpridos equipando Anéis, Amuletos e\n"
+		+ "    subindo de Nível em combate.[/color]"
+	)
+	tips_vbox.add_child(tips_rt)
+
+
+func _make_sage_service_card(
+	icon_res: String,
+	card_title: String,
+	card_desc: String,
+	btn_caption: String,
+	card_bg: Color,
+	btn_bg: Color,
+	btn_border: Color,
+	on_click: Callable
+) -> PanelContainer:
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(180, 212)
+
+	var c_style := StyleBoxFlat.new()
+	c_style.bg_color = card_bg
+	c_style.border_color = COLOR_BRONZE_BORDER
+	c_style.set_border_width_all(2)
+	c_style.set_corner_radius_all(6)
+	c_style.content_margin_left = 12
+	c_style.content_margin_right = 12
+	c_style.content_margin_top = 12
+	c_style.content_margin_bottom = 12
+	card.add_theme_stylebox_override("panel", c_style)
+
+	var vb := VBoxContainer.new()
+	vb.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_theme_constant_override("separation", 8)
+	card.add_child(vb)
+
+	var icon_rect := TextureRect.new()
+	icon_rect.texture = _load_ui_texture(icon_res)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_rect.custom_minimum_size = Vector2(96, 74)
+	vb.add_child(icon_rect)
+
+	var t_lbl := Label.new()
+	t_lbl.text = card_title
+	t_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t_lbl.add_theme_font_size_override("font_size", 14)
+	t_lbl.add_theme_color_override("font_color", COLOR_GOLD_TITLE)
+	vb.add_child(t_lbl)
+
+	var d_lbl := Label.new()
+	d_lbl.text = card_desc
+	d_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	d_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	d_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	d_lbl.add_theme_font_size_override("font_size", 11)
+	d_lbl.add_theme_color_override("font_color", COLOR_PARCHMENT)
+	vb.add_child(d_lbl)
+
+	var act_btn := Button.new()
+	act_btn.text = btn_caption
+	act_btn.custom_minimum_size = Vector2(0, 34)
+	act_btn.focus_mode = Control.FOCUS_NONE
+	act_btn.add_theme_font_size_override("font_size", 13)
+	act_btn.add_theme_color_override("font_color", Color(0.98, 0.96, 0.94))
+
+	var b_st := StyleBoxFlat.new()
+	b_st.bg_color = btn_bg
+	b_st.border_color = btn_border
+	b_st.set_border_width_all(2)
+	b_st.set_corner_radius_all(4)
+	var b_hov := b_st.duplicate() as StyleBoxFlat
+	b_hov.bg_color = b_st.bg_color.lightened(0.16)
+	b_hov.border_color = COLOR_GOLD_BRIGHT
+	act_btn.add_theme_stylebox_override("normal", b_st)
+	act_btn.add_theme_stylebox_override("hover", b_hov)
+	act_btn.add_theme_stylebox_override("pressed", b_hov)
+	act_btn.pressed.connect(on_click)
+	vb.add_child(act_btn)
+
+	return card
 
 
 # ===============================================================
