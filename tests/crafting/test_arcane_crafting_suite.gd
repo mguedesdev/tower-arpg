@@ -8,6 +8,7 @@ const LootBalanceConfig = preload("res://core/items/loot_balance_config.gd")
 const LootGenerationService = preload("res://core/items/loot_generation_service.gd")
 const CraftingEligibilityService = preload("res://core/items/crafting_eligibility_service.gd")
 const ItemCraftingService = preload("res://core/items/item_crafting_service.gd")
+const TownNpcModal = preload("res://game/ui/campaign/town_npc_modal.gd")
 
 var total_tests: int = 0
 var passed_tests: int = 0
@@ -47,6 +48,7 @@ func _run_all_tests() -> void:
 	test_verdict_preserve_and_elevate_intents()
 	test_persistence_and_serialization()
 	test_monte_carlo_crafting_simulation()
+	test_town_npc_modal_scribe_crafting_ui()
 
 ## ----------------------------------------------------------------------------
 ## 1. REGISTRO OFICIAL DOS 5 CONSUMÍVEIS DE CRAFTING
@@ -389,3 +391,41 @@ func test_monte_carlo_crafting_simulation() -> void:
 	print("  -> Veredito (100k): %d lacrados com sucesso | Violações de afixos: %d" % [vd_sealed_count, vd_2p2s_violations])
 	assert_test(vd_sealed_count == count_verdict, "100.000 Vereditos resultaram em 100.000 itens Lacrados (100%)")
 	assert_test(vd_2p2s_violations == 0, "Zero violações de limites 2P+2S após Veredito")
+
+
+## ----------------------------------------------------------------------------
+## 9. INTERFACE DA MESA DO ESCRIBA (TOWNNPCMODAL POPULATION & IMPLICITS)
+## ----------------------------------------------------------------------------
+func test_town_npc_modal_scribe_crafting_ui() -> void:
+	print("\n--- 9. INTERFACE DA MESA DO ESCRIBA (TOWNNPCMODAL & IMPLICITS) ---")
+	var modal: TownNpcModal = TownNpcModal.new()
+	root.add_child(modal)
+
+	# 1. Abre a estação scribe_crafting sem item selecionado
+	modal.open_station("scribe_crafting")
+	assert_test(modal.visible, "Modal da Mesa do Escriba abre com sucesso")
+	assert_test(modal.current_station_id == "scribe_crafting", "Estação ativa é 'scribe_crafting'")
+	assert_test(modal.get_selected_craft_target() == null, "Alvo de crafting inicia nulo")
+
+	# 2. Seleciona equipamento comum sem afixos implícitos (Espada Longa)
+	var sword: ItemInstance = ItemDatabase.instantiate_act1_catalog_example("sword_long_iron")
+	modal.select_crafting_item(sword)
+	assert_test(modal.get_selected_craft_target() == sword, "Espada Longa sem implícitos selecionada e inspecionada")
+
+	# 3. Seleciona equipamento COM afixos implícitos (Anel de Rubi: +2 de Força intrínseco)
+	# Ponto crítico que causava o crash: acessava it.implicit_modifiers em vez de it.get_implicit_affixes()
+	var ring: ItemInstance = ItemDatabase.instantiate_act1_catalog_example("ring_ruby")
+	modal.select_crafting_item(ring)
+	assert_test(modal.get_selected_craft_target() == ring, "Anel com afixos implícitos selecionado sem erros na UI")
+	assert_test(not ring.get_implicit_affixes().is_empty(), "Anel de Rubi possui afixos implícitos válidos")
+	assert_test(ring.get_implicit_affixes()[0].display_text.contains("Força"), "Texto do afixo implícito formatado corretamente")
+
+	# 4. Seleciona amuleto com afixos implícitos de agilidade
+	var amulet: ItemInstance = ItemDatabase.instantiate_act1_catalog_example("amulet_hawk")
+	modal.select_crafting_item(amulet)
+	assert_test(modal.get_selected_craft_target() == amulet, "Amuleto com afixos implícitos selecionado sem erros")
+
+	# 5. Fecha modal
+	modal.close_modal()
+	assert_test(not modal.visible, "Modal fechou com sucesso")
+	modal.queue_free()

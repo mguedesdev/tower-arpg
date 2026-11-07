@@ -129,7 +129,7 @@ static func _generate_procedural_image(def: ItemDefinition) -> Image:
 
 
 static func _draw_greatsword(img: Image, w: int, h: int, steel: Color, gold: Color) -> void:
-	var cx: int = w / 2
+	var cx: int = w >> 1
 	# Lâmina longa e larga
 	for y in range(8, h - 22):
 		var thick: int = 3 if y > 14 else 2
@@ -155,7 +155,7 @@ static func _draw_greatsword(img: Image, w: int, h: int, steel: Color, gold: Col
 
 
 static func _draw_sword(img: Image, w: int, h: int, steel: Color, gold: Color) -> void:
-	var cx: int = w / 2
+	var cx: int = w >> 1
 	for y in range(6, h - 18):
 		for x in range(cx - 2, cx + 3):
 			if x >= 0 and x < w:
@@ -174,7 +174,7 @@ static func _draw_sword(img: Image, w: int, h: int, steel: Color, gold: Color) -
 
 
 static func _draw_dagger(img: Image, w: int, h: int, steel: Color, gold: Color) -> void:
-	var cx: int = w / 2
+	var cx: int = w >> 1
 	for y in range(8, h - 14):
 		for x in range(cx - 1, cx + 2):
 			if x >= 0 and x < w:
@@ -194,23 +194,23 @@ static func _draw_gloves(img: Image, w: int, h: int, col: Color, gold: Color) ->
 	# Par de manoplas blindadas distintas e largas (2x2)
 	for y in range(12, h - 10):
 		# Luva esquerda
-		for x in range(8, w / 2 - 4):
+		for x in range(8, (w >> 1) - 4):
 			img.set_pixel(x, y, col)
 		# Luva direita
-		for x in range(w / 2 + 4, w - 8):
+		for x in range((w >> 1) + 4, w - 8):
 			img.set_pixel(x, y, col)
 	# Articulações douradas
-	for x in range(10, w / 2 - 6):
-		img.set_pixel(x, h / 2, gold)
-	for x in range(w / 2 + 6, w - 10):
-		img.set_pixel(x, h / 2, gold)
+	for x in range(10, (w >> 1) - 6):
+		img.set_pixel(x, h >> 1, gold)
+	for x in range((w >> 1) + 6, w - 10):
+		img.set_pixel(x, h >> 1, gold)
 
 
 static func _draw_shield(img: Image, w: int, h: int, base_col: Color, trim_col: Color) -> void:
-	var cx: int = w / 2
-	var cy: int = h / 2
-	var rad_x: int = w / 2 - 6
-	var rad_y: int = h / 2 - 6
+	var cx: int = w >> 1
+	var cy: int = h >> 1
+	var rad_x: int = (w >> 1) - 6
+	var rad_y: int = (h >> 1) - 6
 	for y in range(6, h - 6):
 		for x in range(6, w - 6):
 			var dx: float = float(x - cx) / float(rad_x)
@@ -227,19 +227,19 @@ static func _draw_shield(img: Image, w: int, h: int, base_col: Color, trim_col: 
 
 
 static func _draw_chestplate(img: Image, w: int, h: int, steel: Color, gold: Color) -> void:
-	var cx: int = w / 2
+	var cx: int = w >> 1
 	for y in range(10, h - 10):
-		var span: int = int(float(w / 2 - 8) * (1.0 - absf(float(y - h / 2) / float(h / 2)) * 0.35))
+		var span: int = int(float((w >> 1) - 8) * (1.0 - absf(float(y - (h >> 1)) / float(h >> 1)) * 0.35))
 		for x in range(cx - span, cx + span):
 			img.set_pixel(x, y, steel)
 	# Reforço peitoral dourado
 	for x in range(cx - 12, cx + 13):
-		img.set_pixel(x, h / 3, gold)
+		img.set_pixel(x, int(h / 3.0), gold)
 
 
 static func _draw_helmet(img: Image, w: int, h: int, steel: Color, gold: Color) -> void:
-	var cx: int = w / 2
-	var cy: int = h / 2
+	var cx: int = w >> 1
+	var cy: int = h >> 1
 	for y in range(12, h - 12):
 		for x in range(12, w - 12):
 			img.set_pixel(x, y, steel)
@@ -255,28 +255,28 @@ static func _draw_helmet(img: Image, w: int, h: int, steel: Color, gold: Color) 
 
 static func _draw_boots(img: Image, w: int, h: int, col: Color, gold: Color) -> void:
 	for y in range(14, h - 10):
-		for x in range(10, w / 2 - 2):
+		for x in range(10, (w >> 1) - 2):
 			img.set_pixel(x, y, col)
-		for x in range(w / 2 + 2, w - 10):
+		for x in range((w >> 1) + 2, w - 10):
 			img.set_pixel(x, y, col)
 	for x in range(8, w - 8):
 		img.set_pixel(x, h - 10, gold)
 
 
 static func _draw_belt(img: Image, w: int, h: int, col: Color, gold: Color) -> void:
-	var cy: int = h / 2
+	var cy: int = h >> 1
 	for y in range(cy - 4, cy + 5):
 		for x in range(4, w - 4):
 			img.set_pixel(x, y, col)
-	var cx: int = w / 2
+	var cx: int = w >> 1
 	for y in range(cy - 6, cy + 7):
 		for x in range(cx - 5, cx + 6):
 			img.set_pixel(x, y, gold)
 
 
 static func _draw_ring(img: Image, w: int, h: int, gold: Color, gem: Color) -> void:
-	var cx: int = w / 2
-	var cy: int = h / 2
+	var cx: int = w >> 1
+	var cy: int = h >> 1
 	var r: float = float(mini(w, h)) * 0.35
 	for y in range(h):
 		for x in range(w):
@@ -291,7 +291,7 @@ static func _draw_ring(img: Image, w: int, h: int, gold: Color, gem: Color) -> v
 
 
 static func _draw_amulet(img: Image, w: int, h: int, gold: Color, gem: Color) -> void:
-	var cx: int = w / 2
+	var cx: int = w >> 1
 	for y in range(4, h - 8):
 		var spread: int = int(float(y - 4) * 0.4)
 		if cx - spread >= 0 and cx + spread < w:
@@ -304,11 +304,11 @@ static func _draw_amulet(img: Image, w: int, h: int, gold: Color, gem: Color) ->
 
 
 static func _draw_potion(img: Image, w: int, h: int, liquid: Color) -> void:
-	var cx: int = w / 2
+	var cx: int = w >> 1
 	for y in range(6, 12):
 		img.set_pixel(cx, y, Color(0.7, 0.5, 0.3))
 	for y in range(12, h - 6):
-		var span: int = int(float(w / 2 - 4) * sin(float(y - 12) / float(h - 18) * PI))
+		var span: int = int(float((w >> 1) - 4) * sin(float(y - 12) / float(h - 18) * PI))
 		for x in range(cx - span, cx + span + 1):
 			img.set_pixel(x, y, liquid)
 

@@ -366,7 +366,10 @@ func _ensure_vendor_stocks() -> void:
 		_arcanist_stock = ItemDatabase.generate_arcanist_stock(maxi(1, area_level))
 
 
-func open_station(station_id: String, unlocked_zones: Array[String], current_zone: String, p_area_level: int = 1) -> void:
+func open_station(station_id: String, unlocked_zones: Array[String] = ["town"], current_zone: String = "town", p_area_level: int = 1) -> void:
+	if _window_panel == null:
+		_build_ui()
+
 	current_station_id = station_id
 	_unlocked_zones = unlocked_zones
 	_current_zone_id = current_zone
@@ -1766,6 +1769,10 @@ func select_crafting_item(item: ItemInstance) -> void:
 		_refresh_current_station_content()
 
 
+func get_selected_craft_target() -> ItemInstance:
+	return _selected_craft_target
+
+
 func _count_crafting_consumable(consumable_id: String) -> int:
 	var total: int = 0
 	if backpack != null:
@@ -1927,15 +1934,18 @@ func _populate_scribe_crafting() -> void:
 		item_card.add_child(badge_panel)
 
 		# Modificadores Implícitos (se existirem na base)
-		if not it.implicit_modifiers.is_empty():
+		var implicits: Array[ItemAffix] = it.get_implicit_affixes() if it.has_method("get_implicit_affixes") else []
+		if not implicits.is_empty():
 			var imp_title := Label.new()
 			imp_title.text = "Implicits da Base:"
 			imp_title.add_theme_font_size_override("font_size", 11)
 			imp_title.add_theme_color_override("font_color", COLOR_MUTED)
 			item_card.add_child(imp_title)
-			for imp in it.implicit_modifiers:
+			for imp in implicits:
+				if imp == null:
+					continue
 				var imp_lbl := Label.new()
-				imp_lbl.text = "  • %s" % String(imp.get("text", ""))
+				imp_lbl.text = "  • %s" % (imp.display_text if not imp.display_text.is_empty() else imp.affix_id)
 				imp_lbl.add_theme_font_size_override("font_size", 11)
 				imp_lbl.add_theme_color_override("font_color", Color(0.80, 0.88, 0.95))
 				item_card.add_child(imp_lbl)
@@ -2053,8 +2063,8 @@ func _populate_scribe_crafting() -> void:
 
 		var icon_rect := TextureRect.new()
 		var c_def: ItemDefinition = ItemDatabase.get_definition(c_id)
-		if c_def != null and c_def.icon != null:
-			icon_rect.texture = c_def.icon
+		if c_def != null:
+			icon_rect.texture = ItemIconFactory.get_icon(c_def)
 		icon_rect.custom_minimum_size = Vector2(26, 26)
 		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
