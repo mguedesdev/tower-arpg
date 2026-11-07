@@ -745,10 +745,11 @@ func _build_vendor_shop_ui(is_blacksmith: bool) -> void:
 	rar_opt.add_theme_stylebox_override("hover", se_style)
 	rar_opt.add_theme_stylebox_override("pressed", se_style)
 	rar_opt.add_item("Raridade: Todas", 0)
-	rar_opt.add_item("Normal", 1)
-	rar_opt.add_item("Mágico", 2)
-	rar_opt.add_item("Raro", 3)
-	rar_opt.add_item("Lendário", 4)
+	rar_opt.add_item("Normal (Branco)", 1)
+	rar_opt.add_item("Incomum (Verde)", 2)
+	rar_opt.add_item("Mágico (Azul)", 3)
+	rar_opt.add_item("Raro (Amarelo)", 4)
+	rar_opt.add_item("Único (Vermelho)", 5)
 	rar_opt.selected = _active_rarity_filter
 	rar_opt.item_selected.connect(func(idx: int) -> void:
 		_active_rarity_filter = idx
@@ -847,8 +848,8 @@ func _matches_vendor_filters(item: ItemInstance) -> bool:
 
 	# 3. Filtro de Raridade
 	if _active_rarity_filter > 0:
-		var expected_r: int = _active_rarity_filter - 1
-		if int(item.rarity) != expected_r:
+		var expected_order: int = _active_rarity_filter - 1
+		if ItemInstance.get_rarity_visual_order(item.rarity) != expected_order:
 			return false
 
 	# 4. Busca textual
@@ -1188,12 +1189,20 @@ func _rebuild_vendor_inspector() -> void:
 	elif def.base_health > 0:
 		_add_inspector_stat_row("♥  Vida", "+%d" % def.base_health)
 
+	for imp in def.implicit_affixes:
+		if imp != null:
+			var imp_lbl := Label.new()
+			imp_lbl.text = "◆ " + imp.display_text
+			imp_lbl.add_theme_font_size_override("font_size", 11)
+			imp_lbl.add_theme_color_override("font_color", Color(0.90, 0.84, 0.66))
+			_vendor_inspector_box.add_child(imp_lbl)
+
 	for af in item.explicit_affixes:
 		if af != null:
 			var af_lbl := Label.new()
 			af_lbl.text = "• " + af.display_text
 			af_lbl.add_theme_font_size_override("font_size", 11)
-			af_lbl.add_theme_color_override("font_color", Color(0.45, 0.74, 0.96))
+			af_lbl.add_theme_color_override("font_color", item.get_rarity_color())
 			_vendor_inspector_box.add_child(af_lbl)
 
 	var sep2 := HSeparator.new()
@@ -1433,6 +1442,9 @@ func _build_short_item_summary(item: ItemInstance) -> String:
 		parts.append("🛡 Armadura %d" % item.get_total_armor())
 	if def.base_health > 0:
 		parts.append("💙 +%d Vida" % def.base_health)
+	for imp in def.implicit_affixes:
+		if imp != null:
+			parts.append(imp.display_text)
 	for af in item.explicit_affixes:
 		if af != null:
 			parts.append(af.display_text)

@@ -507,7 +507,12 @@ func _on_enemy_died(xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 			for _i in range(maxi(1, xp_mult)):
 				run_progression.grant_enemy_kill_xp()
 	if is_instance_valid(enemy):
-		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss)
+		var m_class: int = LootBalanceConfig.MonsterClass.NORMAL
+		if enemy.is_mini_boss:
+			m_class = LootBalanceConfig.MonsterClass.RARE
+		elif enemy.xp_reward_multiplier > 1:
+			m_class = LootBalanceConfig.MonsterClass.MAGIC
+		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss, m_class)
 	kills += 1
 	enemies_left = maxi(enemies_left - 1, 0)
 	kills_label.text = "Abates: %d" % kills
@@ -523,19 +528,17 @@ func _on_enemy_died(xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 		get_tree().create_timer(1.6, false).timeout.connect(_start_wave)
 
 
-func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false) -> void:
+func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false, monster_class: int = -1) -> void:
 	if not is_instance_valid(_ground_items_root):
 		return
-	var chance: float = 0.95 if is_boss else 0.42
-	if randf() > chance:
-		return
-	var count: int = randi_range(2, 3) if is_boss else 1
-	for i in range(count):
-		var ilvl: int = maxi(1, current_wave)
-		var force_r: int = -1
-		if is_boss and i == 0:
-			force_r = ItemInstance.ItemRarity.RARE
-		var item: ItemInstance = ItemDatabase.generate_loot(ilvl, force_r)
+	var resolved_class: int = monster_class
+	if resolved_class < 0:
+		resolved_class = LootBalanceConfig.MonsterClass.BOSS if is_boss else LootBalanceConfig.MonsterClass.NORMAL
+	var monster_lvl: int = maxi(1, current_wave)
+	var dropped_items: Array[ItemInstance] = LootGenerationService.generate_monster_loot_drops(monster_lvl, resolved_class, "act1")
+	for item in dropped_items:
+		if item == null:
+			continue
 		var ground_drop: GroundItem3D = GROUND_ITEM_SCRIPT.new() as GroundItem3D
 		_ground_items_root.add_child(ground_drop)
 		var spread := Vector3(randf_range(-0.6, 0.6), 0.0, randf_range(-0.6, 0.6))

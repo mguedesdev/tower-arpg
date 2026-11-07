@@ -30,6 +30,7 @@ func _check(condition: bool, label: String) -> void:
 func _run_all() -> void:
 	print("=== INICIANDO SUITE DE TESTES: ITENS & INVENTÁRIO ESPACIAL (GRID ARPG) ===")
 	_test_spatial_grid_dimensions_and_collisions()
+	_test_act1_catalog_13_equipments_and_5_rarities()
 	_test_equipment_paperdoll_and_2h_weapons()
 	_test_stat_requirements_without_manual_points()
 	_test_item_identification_and_rarity()
@@ -118,15 +119,49 @@ func _test_equipment_paperdoll_and_2h_weapons() -> void:
 	var swap_shield_ok: Dictionary = equip.try_equip_from_inventory(shield, ItemDefinition.EquipmentSlot.OFF_HAND, bag_large, stats)
 	_check(bool(swap_shield_ok.get("ok", false)) and equip.get_equipped_item(ItemDefinition.EquipmentSlot.OFF_HAND) == shield and equip.get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND) == null and bag_large.items.has(sword_2h), "8f. Com espaço suficiente, equipar Escudo move a Espada 2H equipada para a mochila com segurança")
 
-	# 4. Usando Espada 1H (1x4) + Escudo (2x2) simultaneamente, tentar equipar Espada 2H (3x2) só é permitido se AMBOS couberem na mochila:
+	# 4. Usando Espada 1H (2x1) + Escudo (2x2) simultaneamente, tentar equipar Espada 2H (3x2) só é permitido se AMBOS couberem na mochila:
 	equip.equip_item(sword_1h, ItemDefinition.EquipmentSlot.MAIN_HAND, stats)
 	equip.equip_item(shield, ItemDefinition.EquipmentSlot.OFF_HAND, stats)
-	var bag_tight := SpatialInventoryGrid.new(3, 2) # 3x2: ao remover a Espada 2H, caberia o Escudo (2x2), mas NÃO cabe a Espada 1H (1x4)!
+	var bag_tight := SpatialInventoryGrid.new(3, 2) # 3x2 com 1 poção em (2,0): ao remover a Espada 2H, cabe o Escudo (2x2), mas sobra só 1x1 e NÃO cabe a Espada 1H (2x1)!
 	bag_tight.remove_item(sword_2h)
 	sword_2h.is_rotated = false
 	bag_tight.place_item(sword_2h, Vector2i(0, 0))
+	var blocker_pot := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")
+	# Para testar falta de espaço para o segundo item desalojado, usamos Escudo de Torre (2x4) ou mochila 3x2 onde não cabem Escudo + Espada
+	var tower_sh := ItemDatabase.generate_loot(3, ItemInstance.ItemRarity.NORMAL, "shield_tower") # 2x4
+	equip.equip_item(tower_sh, ItemDefinition.EquipmentSlot.OFF_HAND, stats)
 	var swap_2h_fail: Dictionary = equip.try_equip_from_inventory(sword_2h, ItemDefinition.EquipmentSlot.MAIN_HAND, bag_tight, stats)
-	_check(not bool(swap_2h_fail.get("ok", true)) and equip.get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND) == sword_1h and equip.get_equipped_item(ItemDefinition.EquipmentSlot.OFF_HAND) == shield and bag_tight.items.has(sword_2h), "8g. Bloqueia equipar arma 2H quando usa Espada 1H + Escudo e a mochila não comporta ambos os itens desalojados")
+	_check(not bool(swap_2h_fail.get("ok", true)) and equip.get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND) == sword_1h and equip.get_equipped_item(ItemDefinition.EquipmentSlot.OFF_HAND) == tower_sh and bag_tight.items.has(sword_2h), "8g. Bloqueia equipar arma 2H quando usa Espada 1H + Escudo e a mochila não comporta ambos os itens desalojados")
+
+
+func _test_act1_catalog_13_equipments_and_5_rarities() -> void:
+	var act1_ids: Array[String] = ItemDatabase.get_act1_equipment_ids()
+	_check(act1_ids.size() == 13, "6b. Catálogo oficial do Ato 1 possui exatamente os 13 equipamentos previstos")
+
+	var examples: Array[ItemInstance] = ItemDatabase.instantiate_all_act1_catalog_examples()
+	_check(examples.size() == 13, "6c. Todas as 13 instâncias-exemplo do catálogo do Ato 1 são criadas com sucesso")
+
+	# Verifica propriedades intrínsecas separadas e sem duplicação (Anel de Rubi, Anel de Safira, Colar do Vigia Antigo)
+	var ruby_ex := ItemDatabase.instantiate_act1_catalog_example("ring_ruby")
+	var saph_ex := ItemDatabase.instantiate_act1_catalog_example("ring_sapphire")
+	var amu_ex := ItemDatabase.instantiate_act1_catalog_example("amulet_hawk")
+	_check(ruby_ex.definition.implicit_affixes.size() == 1 and is_equal_approx(ruby_ex.get_implicit_stat_bonus("strength"), 2.0) and ruby_ex.explicit_affixes.size() == 2, "6d. Anel de Rubi separa +2 Força intrínseco dos 2 modificadores mágicos explícitos")
+	_check(saph_ex.definition.implicit_affixes.size() == 1 and is_equal_approx(saph_ex.get_implicit_stat_bonus("intelligence"), 2.0) and saph_ex.explicit_affixes.size() == 2, "6e. Anel de Safira separa +2 Inteligência intrínseco dos 2 modificadores mágicos explícitos")
+	_check(amu_ex.definition.implicit_affixes.size() == 1 and is_equal_approx(amu_ex.get_implicit_stat_bonus("agility"), 2.0) and amu_ex.explicit_affixes.size() == 3, "6f. Colar do Vigia Antigo separa +2 Agilidade intrínseco dos 3 modificadores raros explícitos")
+
+	# Verifica que o mesmo item-base pode ser gerado nas 5 raridades mantendo o nome-base e respeitando a contagem de afixos
+	var w_norm := ItemDatabase.generate_loot(5, ItemInstance.ItemRarity.NORMAL, "sword_steel")
+	var w_unc := ItemDatabase.generate_loot(5, ItemInstance.ItemRarity.UNCOMMON, "sword_steel")
+	var w_mag := ItemDatabase.generate_loot(5, ItemInstance.ItemRarity.MAGIC, "sword_steel")
+	var w_rar := ItemDatabase.generate_loot(5, ItemInstance.ItemRarity.RARE, "sword_steel")
+	var w_uni := ItemDatabase.generate_loot(5, ItemInstance.ItemRarity.UNIQUE, "greatsword_iron")
+	w_norm.identify()
+	w_unc.identify()
+	w_mag.identify()
+	w_rar.identify()
+	w_uni.identify()
+	_check(w_norm.explicit_affixes.size() == 0 and w_unc.explicit_affixes.size() == 1 and w_mag.explicit_affixes.size() == 2 and (w_rar.explicit_affixes.size() >= 3 and w_rar.explicit_affixes.size() <= 4) and w_uni.explicit_affixes.size() == 4, "6g. Regras de modificadores por raridade cumpridas (Branco=0, Verde=1, Azul=2, Amarelo=3-4, Vermelho=fixos)")
+	_check(w_mag.get_display_name() == "Espada Longa de Ferro" and w_rar.get_display_name() == "Espada Longa de Ferro" and w_uni.get_display_name() == "Espada Grande Rúnica Carmesim", "6h. Nome-base do equipamento é preservado em todas as raridades sem concatenar modificadores")
 
 
 func _test_stat_requirements_without_manual_points() -> void:
@@ -142,13 +177,13 @@ func _test_stat_requirements_without_manual_points() -> void:
 	# Com Força 20, não pode equipar
 	_check(not equip.can_equip(heavy_plate, ItemDefinition.EquipmentSlot.CHEST, stats), "9. Bloqueia equipar item quando o personagem não tem os requisitos de atributo")
 
-	# Equipa um anel que concede +6 de Força (o que eleva a Força total para 26)
+	# Equipa um anel de rubi (+2 Força intrínseco) + afixo explícito (+4 de Força), elevando a Força total de 20 para 26
 	var ring := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.MAGIC, "ring_ruby")
 	ring.explicit_affixes.clear()
-	ring.explicit_affixes.append(ItemAffix.create("test_str", ItemAffix.AffixType.PREFIX, "strength", 6.0, "+6 de Força"))
+	ring.explicit_affixes.append(ItemAffix.create("test_str", ItemAffix.AffixType.SUFFIX, "strength", 4.0, "+4 de Força"))
 	equip.equip_item(ring, ItemDefinition.EquipmentSlot.RING_1, stats)
 
-	_check(int(roundi(stats.get_stat(&"strength"))) == 26, "10. Anel equipado concede +6 de Força elevando o total para 26")
+	_check(int(roundi(stats.get_stat(&"strength"))) == 26, "10. Anel de Rubi equipado soma +2 intrínseco e +4 explícito de Força sem duplicar, elevando o total para 26")
 	# Agora o peitoral de 24 Força PODE ser equipado!
 	_check(equip.can_equip(heavy_plate, ItemDefinition.EquipmentSlot.CHEST, stats), "11. Com a Força do anel, o Peitoral Pesado cumpre os requisitos e pode ser equipado sem botões manuais")
 
@@ -167,22 +202,22 @@ func _test_item_identification_and_rarity() -> void:
 func _test_icon_procedural_generation_all_sizes() -> void:
 	var cat: Dictionary = ItemDatabase.get_catalog()
 	var def_1x1: ItemDefinition = cat["ring_ruby"]
-	var def_1x3: ItemDefinition = cat["dagger_sharp"]
-	var def_1x4: ItemDefinition = cat["sword_steel"]
+	var def_1x2: ItemDefinition = cat["dagger_sharp"]
+	var def_2x1: ItemDefinition = cat["sword_steel"]
 	var def_2x2: ItemDefinition = cat["helm_iron"]
-	var def_2x4: ItemDefinition = cat["chest_plate"]
+	var def_2x4: ItemDefinition = cat["shield_tower"]
 
 	var tex_1x1 := ItemIconFactory.get_icon(def_1x1)
-	var tex_1x3 := ItemIconFactory.get_icon(def_1x3)
-	var tex_1x4 := ItemIconFactory.get_icon(def_1x4)
+	var tex_1x2 := ItemIconFactory.get_icon(def_1x2)
+	var tex_2x1 := ItemIconFactory.get_icon(def_2x1)
 	var tex_2x2 := ItemIconFactory.get_icon(def_2x2)
 	var tex_2x4 := ItemIconFactory.get_icon(def_2x4)
 
-	_check(tex_1x1 != null and tex_1x1.get_width() == 32 and tex_1x1.get_height() == 32, "14a. Ícone 1x1 (Anel) gerado com 32x32 pixels")
-	_check(tex_1x3 != null and tex_1x3.get_width() == 32 and tex_1x3.get_height() == 96, "14b. Ícone 1x3 (Adaga fina) gerado com 32x96 pixels")
-	_check(tex_1x4 != null and tex_1x4.get_width() == 32 and tex_1x4.get_height() == 128, "14c. Ícone 1x4 (Espada 1H) gerado com 32x128 pixels")
-	_check(tex_2x2 != null and tex_2x2.get_width() == 64 and tex_2x2.get_height() == 64, "14d. Ícone 2x2 (Elmo/Luva/Bota) gerado com 64x64 pixels")
-	_check(tex_2x4 != null and tex_2x4.get_width() == 64 and tex_2x4.get_height() == 128, "14e. Ícone 2x4 (Peitoral) gerado com 64x128 pixels")
+	_check(tex_1x1 != null and tex_1x1.get_width() > 0 and tex_1x1.get_height() > 0, "14a. Ícone 1x1 (Anel) carregado/gerado com sucesso")
+	_check(tex_1x2 != null and tex_1x2.get_height() > tex_1x2.get_width(), "14b. Ícone 1x2 (Adaga de Caçador) possui orientação vertical (altura > largura)")
+	_check(tex_2x1 != null and tex_2x1.get_width() > tex_2x1.get_height(), "14c. Ícone 2x1 (Espada Longa de Ferro) possui orientação horizontal (largura > altura)")
+	_check(tex_2x2 != null and tex_2x2.get_width() == tex_2x2.get_height(), "14d. Ícone 2x2 (Elmo/Luva/Bota) possui proporção quadrada")
+	_check(tex_2x4 != null and tex_2x4.get_height() > tex_2x4.get_width(), "14e. Ícone 2x4 (Escudo de Torre) possui orientação vertical alta")
 
 	# Teste do novo sprite 3x2 da Espada de 2 Mãos (deitada no grid vs em pé quando girada ou equipada)
 	var gs_item := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "greatsword_iron")

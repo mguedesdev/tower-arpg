@@ -272,22 +272,26 @@ func _apply_plate_visual_state(highlighted: bool, force: bool = false) -> void:
 			text_col = Color(1.0, 0.86, 0.86) if highlighted else Color(0.96, 0.65, 0.68)
 		else:
 			match item.rarity:
+				ItemInstance.ItemRarity.UNCOMMON:
+					bg_col = Color(0.06, 0.19, 0.10, 0.97) if highlighted else Color(0.03, 0.10, 0.05, 0.90)
+					border_col = Color(0.55, 0.92, 0.66, 1.0) if highlighted else Color(0.34, 0.74, 0.46, 0.85)
+					text_col = Color(0.75, 0.98, 0.82) if highlighted else Color("#58BC76")
 				ItemInstance.ItemRarity.MAGIC:
 					bg_col = Color(0.08, 0.14, 0.28, 0.97) if highlighted else Color(0.035, 0.055, 0.12, 0.90)
 					border_col = Color(0.68, 0.86, 1.0, 1.0) if highlighted else Color(0.26, 0.46, 0.82, 0.85)
-					text_col = Color(0.82, 0.92, 1.0) if highlighted else Color(0.46, 0.72, 1.0)
+					text_col = Color(0.82, 0.92, 1.0) if highlighted else Color("#5596E6")
 				ItemInstance.ItemRarity.RARE:
 					bg_col = Color(0.16, 0.13, 0.04, 0.97) if highlighted else Color(0.06, 0.055, 0.025, 0.92)
 					border_col = Color(1.0, 0.92, 0.44, 1.0) if highlighted else Color(0.65, 0.54, 0.18, 0.86)
-					text_col = Color(1.0, 0.95, 0.58) if highlighted else Color(0.98, 0.85, 0.30)
+					text_col = Color(1.0, 0.95, 0.58) if highlighted else Color("#EBC34D")
 				ItemInstance.ItemRarity.UNIQUE:
-					bg_col = Color(0.44, 0.22, 0.07, 0.98) if highlighted else Color(0.28, 0.14, 0.05, 0.93)
-					border_col = Color(1.0, 0.86, 0.52, 1.0) if highlighted else Color(0.84, 0.48, 0.16, 0.90)
-					text_col = Color(1.0, 0.95, 0.84) if highlighted else Color(1.0, 0.80, 0.55)
+					bg_col = Color(0.28, 0.06, 0.08, 0.98) if highlighted else Color(0.16, 0.035, 0.045, 0.93)
+					border_col = Color(1.0, 0.52, 0.55, 1.0) if highlighted else Color(0.89, 0.32, 0.33, 0.90)
+					text_col = Color(1.0, 0.82, 0.84) if highlighted else Color("#E45155")
 				_:
 					bg_col = Color(0.09, 0.09, 0.12, 0.97) if highlighted else Color(0.035, 0.035, 0.045, 0.90)
 					border_col = Color(0.96, 0.96, 1.0, 1.0) if highlighted else Color(0.32, 0.32, 0.36, 0.80)
-					text_col = Color(1.0, 1.0, 1.0) if highlighted else Color(0.88, 0.88, 0.90)
+					text_col = Color(1.0, 1.0, 1.0) if highlighted else Color("#E8E6E2")
 
 	# Quando em destaque: apenas contorno/borda mais grosso (3px vs 1px), mantendo o mesmo tamanho sem expandir!
 	var bw: int = 3 if highlighted else 1

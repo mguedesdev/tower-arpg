@@ -161,42 +161,61 @@ func sync_to_character_stats(stats: CharacterStats) -> void:
 		return
 
 	stats.remove_modifiers_by_source("equipment")
+	stats.remove_modifiers_by_source("implicit")
 	stats.remove_modifiers_by_source("affix")
 	_active_modifiers.clear()
 
-	# Aplica bônus de cada item equipado
+	# Aplica bônus de cada item equipado (Base + Intrínsecos + Afixos Explícitos, sem duplicar!)
 	for slot_key in equipped.keys():
 		var item: ItemInstance = equipped[slot_key] as ItemInstance
 		if item == null or item.definition == null:
 			continue
 		var def: ItemDefinition = item.definition
+		var slot_tag: String = str(int(slot_key))
 
-		# Armadura base
+		# Armadura base + afixos de armadura já consolidados em get_total_armor()
 		var total_armor: int = item.get_total_armor()
 		if total_armor > 0:
-			var mod := StatModifier.new("equip_" + def.base_id + "_armor", &"armor", StatModifier.Op.FLAT, float(total_armor), "equipment")
+			var mod := StatModifier.new("equip_" + slot_tag + "_" + def.base_id + "_armor", &"armor", StatModifier.Op.FLAT, float(total_armor), "equipment")
 			stats.add_modifier(mod)
 			_active_modifiers.append(mod)
 
-		# Dano base da arma
+		# Dano base da arma + afixos de dano já consolidados em get_damage_range()
 		var dmg_range: Vector2i = item.get_damage_range()
 		if dmg_range.y > 0:
 			var avg_dmg: float = float(dmg_range.x + dmg_range.y) * 0.5
-			var mod := StatModifier.new("equip_" + def.base_id + "_dmg", &"damage", StatModifier.Op.FLAT, avg_dmg, "equipment")
+			var mod := StatModifier.new("equip_" + slot_tag + "_" + def.base_id + "_dmg", &"damage", StatModifier.Op.FLAT, avg_dmg, "equipment")
 			stats.add_modifier(mod)
 			_active_modifiers.append(mod)
 
 		# Vida base
 		if def.base_health > 0:
-			var mod := StatModifier.new("equip_" + def.base_id + "_hp", &"max_health", StatModifier.Op.FLAT, float(def.base_health), "equipment")
+			var mod := StatModifier.new("equip_" + slot_tag + "_" + def.base_id + "_hp", &"max_health", StatModifier.Op.FLAT, float(def.base_health), "equipment")
 			stats.add_modifier(mod)
 			_active_modifiers.append(mod)
 
-		# Afixos adicionais (ex: +Força, +Agilidade, +Vida, +Dano)
+		# Propriedades Intrínsecas (implícitas fixas da definição, ex: Anel de Rubi +2 Força, Safira +2 Int, Colar +2 Agi)
+		var imp_idx: int = 0
+		for imp in def.implicit_affixes:
+			if imp == null or imp.stat_key.is_empty():
+				continue
+			if imp.stat_key == "armor" or imp.stat_key == "damage":
+				continue
+			var stat_name := StringName(imp.stat_key)
+			var mod := StatModifier.new("imp_" + slot_tag + "_%d_%s" % [imp_idx, imp.affix_id], stat_name, StatModifier.Op.FLAT, imp.value, "implicit")
+			stats.add_modifier(mod)
+			_active_modifiers.append(mod)
+			imp_idx += 1
+
+		# Modificadores Explícitos (Prefixos, Sufixos ou Propriedades Especiais Únicas)
+		var af_idx: int = 0
 		for affix in item.explicit_affixes:
 			if affix == null or affix.stat_key.is_empty():
 				continue
+			if affix.stat_key == "armor" or affix.stat_key == "damage":
+				continue
 			var stat_name := StringName(affix.stat_key)
-			var mod := StatModifier.new("affix_" + affix.affix_id, stat_name, StatModifier.Op.FLAT, affix.value, "affix")
+			var mod := StatModifier.new("affix_" + slot_tag + "_%d_%s" % [af_idx, affix.affix_id], stat_name, StatModifier.Op.FLAT, affix.value, "affix")
 			stats.add_modifier(mod)
 			_active_modifiers.append(mod)
+			af_idx += 1

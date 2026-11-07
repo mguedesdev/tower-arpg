@@ -1,18 +1,21 @@
 extends RefCounted
 class_name ItemInstance
-## Instância de item real gerada no jogo com raridade, afixos e estado de identificação.
+## Instância de item gerada no jogo com raridade, nível, propriedades intrínsecas (da definição)
+## e modificadores explícitos (prefixos, sufixos ou propriedades especiais fixas de Único).
 
 enum ItemRarity {
-	NORMAL,   ## Branco
-	MAGIC,    ## Azul (1-2 afixos)
-	RARE,     ## Amarelo (3-5 afixos)
-	UNIQUE    ## Dourado/Lendário (afixos fixos exclusivos)
+	NORMAL,    ## 0 - Branco (#E8E6E2): 0 modificadores aleatórios
+	MAGIC,     ## 1 - Azul (#5596E6): 2 modificadores aleatórios
+	RARE,      ## 2 - Amarelo (#EBC34D): 3–4 modificadores aleatórios
+	UNIQUE,    ## 3 - Vermelho (#E45155): item único com propriedades especiais predefinidas
+	UNCOMMON   ## 4 - Verde (#58BC76): 1 modificador aleatório (no final da enum para preservar índices serializados)
 }
 
-const COLOR_NORMAL := Color(0.92, 0.92, 0.92)
-const COLOR_MAGIC := Color(0.35, 0.65, 1.0)
-const COLOR_RARE := Color(1.0, 0.88, 0.28)
-const COLOR_UNIQUE := Color(0.98, 0.58, 0.16)
+const COLOR_NORMAL := Color("#E8E6E2")
+const COLOR_UNCOMMON := Color("#58BC76")
+const COLOR_MAGIC := Color("#5596E6")
+const COLOR_RARE := Color("#EBC34D")
+const COLOR_UNIQUE := Color("#E45155")
 
 var uid: String = ""
 var definition: ItemDefinition
@@ -28,6 +31,52 @@ var is_rotated: bool = false
 var equipped_slot: ItemDefinition.EquipmentSlot = ItemDefinition.EquipmentSlot.NONE
 
 
+static func get_rarity_visual_order(r: ItemRarity) -> int:
+	## Ordem lógica/visual crescente de raridade (independente do índice interno da enum):
+	## 0 = Branco (NORMAL), 1 = Verde (UNCOMMON), 2 = Azul (MAGIC), 3 = Amarelo (RARE), 4 = Vermelho (UNIQUE)
+	match r:
+		ItemRarity.NORMAL:
+			return 0
+		ItemRarity.UNCOMMON:
+			return 1
+		ItemRarity.MAGIC:
+			return 2
+		ItemRarity.RARE:
+			return 3
+		ItemRarity.UNIQUE:
+			return 4
+	return 0
+
+
+static func get_rarity_name_pt(r: ItemRarity) -> String:
+	match r:
+		ItemRarity.NORMAL:
+			return "Normal"
+		ItemRarity.UNCOMMON:
+			return "Incomum"
+		ItemRarity.MAGIC:
+			return "Mágico"
+		ItemRarity.RARE:
+			return "Raro"
+		ItemRarity.UNIQUE:
+			return "Único"
+	return "Normal"
+
+
+static func rarity_from_id(rarity_id: String) -> ItemRarity:
+	match rarity_id.to_lower().strip_edges():
+		"uncommon", "verde", "incomum":
+			return ItemRarity.UNCOMMON
+		"magic", "azul", "magico", "mágico":
+			return ItemRarity.MAGIC
+		"rare", "amarelo", "raro":
+			return ItemRarity.RARE
+		"unique", "vermelho", "unico", "único":
+			return ItemRarity.UNIQUE
+		_:
+			return ItemRarity.NORMAL
+
+
 func get_grid_size() -> Vector2i:
 	if definition == null:
 		return Vector2i.ONE
@@ -38,6 +87,8 @@ func get_grid_size() -> Vector2i:
 
 func can_rotate() -> bool:
 	if definition == null:
+		return false
+	if not definition.rotatable:
 		return false
 	return definition.grid_size.x != definition.grid_size.y
 
@@ -53,8 +104,8 @@ func _init(p_def: ItemDefinition = null, p_rarity: ItemRarity = ItemRarity.NORMA
 	uid = "%d_%d" % [Time.get_ticks_msec(), randi()]
 	definition = p_def
 	rarity = p_rarity
-	item_level = p_ilvl
-	is_identified = (p_rarity == ItemRarity.NORMAL)
+	item_level = maxi(1, p_ilvl)
+	is_identified = (p_rarity == ItemRarity.NORMAL or p_rarity == ItemRarity.UNCOMMON)
 
 
 func get_display_name() -> String:
@@ -62,19 +113,22 @@ func get_display_name() -> String:
 		return "Item Desconhecido"
 	if not is_identified:
 		match rarity:
+			ItemRarity.UNCOMMON:
+				return "Item Incomum Não-Identificado"
 			ItemRarity.MAGIC:
 				return "Item Mágico Não-Identificado"
 			ItemRarity.RARE:
 				return "Item Raro Não-Identificado"
 			ItemRarity.UNIQUE:
-				return "Item Lendário Não-Identificado"
-	if not custom_name.is_empty():
-		return custom_name
+				return "Item Único Não-Identificado"
+	# Regra do Ato 1: manter sempre o nome-base do equipamento, sem concatenar modificadores no nome!
 	return definition.display_name
 
 
 func get_rarity_color() -> Color:
 	match rarity:
+		ItemRarity.UNCOMMON:
+			return COLOR_UNCOMMON
 		ItemRarity.MAGIC:
 			return COLOR_MAGIC
 		ItemRarity.RARE:
@@ -85,12 +139,50 @@ func get_rarity_color() -> Color:
 			return COLOR_NORMAL
 
 
-func get_stat_bonus(stat_key: String) -> float:
+func get_implicit_affixes() -> Array[ItemAffix]:
+	if definition == null:
+		return []
+	return definition.implicit_affixes
+
+
+func get_implicit_stat_bonus(stat_key: String) -> float:
+	if definition == null:
+		return 0.0
+	var total: float = 0.0
+	for imp in definition.implicit_affixes:
+		if imp != null and imp.stat_key == stat_key:
+			total += imp.value
+	return total
+
+
+func get_explicit_stat_bonus(stat_key: String) -> float:
 	var total: float = 0.0
 	for affix in explicit_affixes:
 		if affix != null and affix.stat_key == stat_key:
 			total += affix.value
 	return total
+
+
+func get_stat_bonus(stat_key: String) -> float:
+	## Retorna a soma de bônus intrínsecos (implícitos) + modificadores explícitos (prefixos/sufixos/únicos)
+	## sem nunca duplicar propriedades intrínsecas.
+	return get_implicit_stat_bonus(stat_key) + get_explicit_stat_bonus(stat_key)
+
+
+func get_prefix_count() -> int:
+	var c: int = 0
+	for af in explicit_affixes:
+		if af != null and af.affix_type == ItemAffix.AffixType.PREFIX:
+			c += 1
+	return c
+
+
+func get_suffix_count() -> int:
+	var c: int = 0
+	for af in explicit_affixes:
+		if af != null and af.affix_type == ItemAffix.AffixType.SUFFIX:
+			c += 1
+	return c
 
 
 func get_total_armor() -> int:
@@ -110,7 +202,6 @@ func get_damage_range() -> Vector2i:
 func meets_requirements(stats: CharacterStats) -> bool:
 	if definition == null or stats == null:
 		return true
-	# Atributos no CharacterStats
 	var str_val: int = int(roundi(stats.get_stat(&"strength") if stats.has_method("get_stat") else 0.0))
 	var agi_val: int = int(roundi(stats.get_stat(&"agility") if stats.has_method("get_stat") else 0.0))
 	var int_val: int = int(roundi(stats.get_stat(&"intelligence") if stats.has_method("get_stat") else 0.0))
@@ -132,20 +223,22 @@ func get_buy_price() -> int:
 		return 10
 	var rarity_mult: float = 1.0
 	match rarity:
+		ItemRarity.UNCOMMON:
+			rarity_mult = 1.30
 		ItemRarity.MAGIC:
 			rarity_mult = 1.65
 		ItemRarity.RARE:
 			rarity_mult = 2.60
 		ItemRarity.UNIQUE:
 			rarity_mult = 4.50
-	var base: float = float(maxi(10, definition.base_gold_value)) * rarity_mult
-	var affix_bonus: int = explicit_affixes.size() * 14
-	var lvl_bonus: int = maxi(0, item_level - 1) * 12
+	var base: float = float(maxi(9, definition.base_gold_value)) * rarity_mult
+	var affix_bonus: int = explicit_affixes.size() * 12
+	var lvl_bonus: int = maxi(0, item_level - 1) * 8
 	return int(roundi(base)) + affix_bonus + lvl_bonus
 
 
 func get_sell_value() -> int:
-	return maxi(5, int(roundi(float(get_buy_price()) * 0.42)))
+	return maxi(4, int(roundi(float(get_buy_price()) * 0.42)))
 
 
 func get_total_stat_value(stat_key: String) -> float:
@@ -207,7 +300,7 @@ func get_slot_display_name() -> String:
 		ItemDefinition.ItemCategory.BELT:
 			return "Cinto"
 		ItemDefinition.ItemCategory.AMULET:
-			return "Amuleto"
+			return "Amuleto / Colar"
 		ItemDefinition.ItemCategory.RING:
 			return "Anel"
 		ItemDefinition.ItemCategory.CONSUMABLE:
@@ -216,31 +309,33 @@ func get_slot_display_name() -> String:
 
 
 func get_lore_description() -> String:
+	if definition != null and not definition.description.is_empty():
+		return definition.description
 	if definition == null:
 		return "Relíquia forjada nas profundezas de Velen."
 	match definition.category:
 		ItemDefinition.ItemCategory.WEAPON_2H:
-			return "Uma lâmina robusta, feita para atingir com força devastadora."
+			return "Uma montante antiga marcada por fissuras que ainda ardem."
 		ItemDefinition.ItemCategory.WEAPON_1H:
 			if definition.base_id.contains("dagger"):
-				return "Leve e silenciosa, ideal para golpes rápidos nos pontos vitais."
-			return "Equilíbrio preciso entre alcance, velocidade e poder de corte."
+				return "Lâmina curta para ataques rápidos e precisos."
+			return "Lâmina equilibrada, confiável para os primeiros combates."
 		ItemDefinition.ItemCategory.SHIELD:
-			return "Bastião temperado em forja ardente para suportar os golpes mais brutais."
+			return "Um escudo resistente para aparar golpes e defender as muralhas."
 		ItemDefinition.ItemCategory.CHEST:
-			return "Placas sobrepostas que protegem o coração contra as garras da Cripta."
+			return "Placas de aço gastas, reforçadas para sobreviver."
 		ItemDefinition.ItemCategory.HELMET:
-			return "Forjado em ferro maciço para guardar a mente em meio ao caos."
+			return "Proteção simples para quem encara a primeira batalha."
 		ItemDefinition.ItemCategory.GLOVES:
-			return "Manoplas articuladas que oferecem firmeza implacável ao empunhar armas."
+			return "Manoplas articuladas que preservam a precisão."
 		ItemDefinition.ItemCategory.BOOTS:
-			return "Grevas reforçadas para marchar firme sobre terrenos amaldiçoados."
+			return "Botas resistentes para marchas pelo terreno hostil."
 		ItemDefinition.ItemCategory.BELT:
-			return "Couro curtido com fivela pesada de bronze para sustentar o equipamento."
+			return "Um cinto firme, feito para prender equipamento."
 		ItemDefinition.ItemCategory.RING:
-			return "Um aro ancestral cuja gema pulsa com o vigor dos antigos guerreiros."
+			return "A pedra preciosa fortalece o espírito do portador."
 		ItemDefinition.ItemCategory.AMULET:
-			return "Talismã encantado que aguça os sentidos e guia os passos na escuridão."
+			return "Um talismã usado pelos batedores de Velen."
 		ItemDefinition.ItemCategory.CONSUMABLE:
 			return "Elixir alquímico puro que restaura o vigor vital instantaneamente."
 	return "Equipamento temperado para enfrentar os horrores do Primeiro Ato."
@@ -250,8 +345,9 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 	if definition == null:
 		return ""
 	var r_col: String = get_rarity_color().to_html(false)
+	var r_name: String = get_rarity_name_pt(rarity)
 	var t: String = "[center][b][color=#%s]%s[/color][/b]\n" % [r_col, get_display_name()]
-	t += "[color=#9a9284]%s (Nv. %d)[/color][/center]\n" % [get_slot_display_name(), item_level]
+	t += "[color=#9a9284]%s • %s (Nv. %d)[/color][/center]\n" % [get_slot_display_name(), r_name, item_level]
 
 	if not is_identified:
 		t += "[center][color=#ff5555][b]❓ Item Não-Identificado[/b]\nLeve ao Sábio na Vila para revelar seus poderes[/color][/center]\n"
@@ -320,8 +416,10 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 			line_ms += _format_inline_diff(float(ms_pct) - eq_ms, false, true)
 		t += line_ms + "\n"
 
-	# 2. Requisitos
+	# 2. Requisitos (Nível, Força, Agilidade e Inteligência)
 	var req_text: String = ""
+	if definition.req_level > 1:
+		req_text += "Nível: [color=#ffffff]%d[/color]  " % definition.req_level
 	if definition.req_strength > 0:
 		var ok: bool = stats == null or stats.get_stat(&"strength") >= definition.req_strength
 		var c: String = "#ffffff" if ok else "#ff4d4d"
@@ -337,23 +435,43 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 	if not req_text.is_empty():
 		t += "[color=#b3a898]Requer: " + req_text + "[/color]\n"
 
-	# 3. Afixos Explícitos (com seta ▲ verde / ▼ vermelha em cada linha!)
+	# 3. Propriedades Intrínsecas / Implícitas fixas (não contam como afixos aleatórios)
+	if not definition.implicit_affixes.is_empty():
+		t += "[color=#5a5244]────────────────────────────[/color]\n"
+		for imp in definition.implicit_affixes:
+			if imp == null:
+				continue
+			var imp_line: String = "[color=#e6d5a8]◆ %s[/color]" % imp.display_text
+			if do_compare:
+				var eq_imp_v: float = eq_item.get_stat_bonus(imp.stat_key) if eq_item != null else 0.0
+				imp_line += _format_inline_diff(get_stat_bonus(imp.stat_key) - eq_imp_v, false, imp.stat_key == "crit_chance")
+			t += imp_line + "\n"
+
+	# 4. Modificadores Explícitos (Prefixos, Sufixos ou Propriedades Especiais Únicas)
 	if is_identified and not explicit_affixes.is_empty():
+		t += "[color=#5a5244]────────────────────────────[/color]\n"
 		for af in explicit_affixes:
 			if af == null:
 				continue
-			var af_line: String = "[color=#5dade2]• %s[/color]" % af.display_text
+			var af_color: String = "#e45155" if rarity == ItemRarity.UNIQUE else ("#58bc76" if rarity == ItemRarity.UNCOMMON else "#5dade2")
+			var af_line: String = "[color=%s]• %s[/color]" % [af_color, af.display_text]
 			if do_compare:
 				if af.stat_key == "crit_chance":
-					var my_c: float = af.value * 100.0
+					var my_c: float = get_stat_bonus("crit_chance") * 100.0
 					var eq_c: float = (eq_item.get_stat_bonus("crit_chance") * 100.0) if eq_item != null else 0.0
 					af_line += _format_inline_diff(my_c - eq_c, false, true)
 				else:
+					var my_v: float = get_stat_bonus(af.stat_key)
 					var eq_v: float = eq_item.get_stat_bonus(af.stat_key) if eq_item != null else 0.0
-					af_line += _format_inline_diff(af.value - eq_v, false, false)
+					af_line += _format_inline_diff(my_v - eq_v, false, false)
 			t += af_line + "\n"
 
-	# 4. Área Nova de Comparação Completa (O que GANHA em verde ▲ e o que PERDE em vermelho ▼)
+	# 5. Descrição curta temática do item
+	var lore_str: String = get_lore_description()
+	if not lore_str.is_empty():
+		t += "[color=#8d8272][i]\"%s\"[/i][/color]\n" % lore_str
+
+	# 6. Área de Comparação Completa (O que GANHA em verde ▲ e o que PERDE em vermelho ▼)
 	if do_compare:
 		t += "[color=#5a5244]────────────────────────────[/color]\n"
 		if eq_item != null:
@@ -412,7 +530,7 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 			for l in losses:
 				t += "  " + l + "\n"
 
-	# 5. Rodapé de Preço e Ação Rápida
+	# 7. Rodapé de Preço e Ação Rápida
 	t += "[color=#5a5244]────────────────────────────[/color]\n"
 	if not custom_price_line.is_empty():
 		t += custom_price_line + "\n"

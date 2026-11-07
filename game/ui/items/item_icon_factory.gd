@@ -63,6 +63,9 @@ static func _get_base_image(def: ItemDefinition) -> Image:
 
 	if loaded_img == null:
 		loaded_img = _generate_procedural_image(def)
+	elif def.grid_size.x > def.grid_size.y and loaded_img.get_height() > loaded_img.get_width():
+		loaded_img = loaded_img.duplicate() as Image
+		loaded_img.rotate_90(CLOCKWISE)
 
 	_image_cache[def.base_id] = loaded_img
 	return loaded_img
@@ -113,7 +116,8 @@ static func _generate_procedural_image(def: ItemDefinition) -> Image:
 		ItemDefinition.ItemCategory.BELT:
 			_draw_belt(img, w, h, Color(0.55, 0.35, 0.20), accent_color)
 		ItemDefinition.ItemCategory.RING:
-			_draw_ring(img, w, h, accent_color, Color(0.95, 0.25, 0.25))
+			var ring_gem: Color = Color(0.25, 0.58, 0.98) if def.base_id.contains("sapphire") else Color(0.95, 0.25, 0.25)
+			_draw_ring(img, w, h, accent_color, ring_gem)
 		ItemDefinition.ItemCategory.AMULET:
 			_draw_amulet(img, w, h, accent_color, Color(0.25, 0.85, 0.95))
 		ItemDefinition.ItemCategory.CONSUMABLE:

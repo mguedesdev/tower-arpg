@@ -770,6 +770,8 @@ func _refresh_all() -> void:
 
 func _get_item_slot_bg_color(item: ItemInstance) -> Color:
 	match item.rarity:
+		ItemInstance.ItemRarity.UNCOMMON:
+			return Color(0.09, 0.20, 0.12, 0.96)
 		ItemInstance.ItemRarity.MAGIC:
 			return Color(0.13, 0.14, 0.25, 0.96)
 		ItemInstance.ItemRarity.RARE:
