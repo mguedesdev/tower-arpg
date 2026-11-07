@@ -21,8 +21,10 @@ static var _trail_mat: StandardMaterial3D
 static var _fill_mat: StandardMaterial3D
 static var _burn_fill_mat: StandardMaterial3D
 
+var _rim_node: MeshInstance3D
 var _fill_node: MeshInstance3D
 var _trail_node: MeshInstance3D
+var _title_label: Label3D = null
 var _target_ratio: float = 1.0
 var _trail_ratio: float = 1.0
 var _is_burning: bool = false
@@ -70,6 +72,7 @@ func _ready() -> void:
 	rim.material_override = _rim_mat
 	rim.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(rim)
+	_rim_node = rim
 
 	var bg := MeshInstance3D.new()
 	bg.name = "Background"
@@ -102,6 +105,44 @@ func _ready() -> void:
 func configure(bar_height: float, width_scale: float = 1.0) -> void:
 	position = Vector3(0.0, bar_height, 0.0)
 	scale = Vector3(width_scale, 1.0, 1.0)
+
+
+func configure_rank(monster_rank: int, display_title: String, rank_color: Color = Color.WHITE) -> void:
+	if _rim_node != null:
+		var rim_mat: StandardMaterial3D = _make_bar_material(rank_color, 10)
+		_rim_node.material_override = rim_mat
+
+	if monster_rank == LootBalanceConfig.MonsterClass.NORMAL or display_title.is_empty():
+		if _title_label != null:
+			_title_label.visible = false
+		return
+
+	if _title_label == null:
+		_title_label = Label3D.new()
+		_title_label.name = "RankTitle"
+		_title_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_title_label.no_depth_test = true
+		_title_label.render_priority = 15
+		_title_label.font_size = 14
+		_title_label.outline_size = 4
+		_title_label.outline_modulate = Color(0.0, 0.0, 0.0, 0.95)
+		_title_label.position = Vector3(0.0, 0.16, 0.0)
+		add_child(_title_label)
+
+	var icon_prefix: String = ""
+	match monster_rank:
+		LootBalanceConfig.MonsterClass.MAGIC:
+			icon_prefix = "★ "
+		LootBalanceConfig.MonsterClass.RARE:
+			icon_prefix = "✦ "
+		LootBalanceConfig.MonsterClass.HERO:
+			icon_prefix = "☠ "
+		LootBalanceConfig.MonsterClass.BOSS:
+			icon_prefix = "⚔ "
+
+	_title_label.text = icon_prefix + display_title
+	_title_label.modulate = rank_color
+	_title_label.visible = true
 
 
 func update_health(current_hp: int, max_hp: int, burning: bool = false) -> void:

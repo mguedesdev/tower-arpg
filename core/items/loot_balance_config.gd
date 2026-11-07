@@ -16,6 +16,7 @@ enum MonsterClass {
 	MAGIC = 1,  ## Monstro aprimorado, com modificadores de combate
 	RARE = 2,   ## Monstro poderoso, com multiplos modificadores
 	BOSS = 3,   ## Chefe / inimigo especial
+	HERO = 4,   ## Herói / Elite especial
 }
 
 ## Marcos de nivel para interpolacao continua (cobre Ato 1: 1..25 e Endgame: 40..100+)
@@ -90,6 +91,16 @@ const ENEMY_RANK_CONFIG: Dictionary = {
 		"rare_weight_mult": 6.00,
 		"extra_roll_chance": 0.30,
 	},
+	MonsterClass.HERO: {
+		"id": "hero",
+		"name": "Herói/Elite",
+		"drop_mult": 2.50,
+		"normal_weight_mult": 1.00,
+		"uncommon_weight_mult": 1.00,
+		"magic_weight_mult": 2.90,
+		"rare_weight_mult": 5.00,
+		"extra_roll_chance": 0.22,
+	},
 }
 
 ## ---------------------------------------------------------------------------
@@ -125,6 +136,7 @@ const RANK_ILVL_BONUS: Dictionary = {
 	MonsterClass.NORMAL: 0,
 	MonsterClass.MAGIC:  1,
 	MonsterClass.RARE:   2,
+	MonsterClass.HERO:   2,
 	MonsterClass.BOSS:   2,
 }
 
@@ -470,7 +482,7 @@ static func get_monster_class_name(monster_class: int) -> String:
 	return String(cfg.get("name", "Normal"))
 
 static func get_rank_config(monster_class: int) -> Dictionary:
-	var clamped_class: int = clampi(monster_class, MonsterClass.NORMAL, MonsterClass.BOSS)
+	var clamped_class: int = clampi(monster_class, MonsterClass.NORMAL, MonsterClass.HERO)
 	return ENEMY_RANK_CONFIG.get(clamped_class, ENEMY_RANK_CONFIG[MonsterClass.NORMAL])
 
 static func get_base_equipment_drop_chance(enemy_level: int) -> float:
@@ -513,7 +525,7 @@ static func get_eligible_unique_definition_and_chance(
 	zone_id: String = "act1",
 	enemy_id: String = ""
 ) -> Dictionary:
-	var clamped_class: int = clampi(monster_class, MonsterClass.NORMAL, MonsterClass.BOSS)
+	var clamped_class: int = clampi(monster_class, MonsterClass.NORMAL, MonsterClass.HERO)
 	var candidates: Array[Dictionary] = []
 
 	for u_def in get_unique_item_definitions():
@@ -573,7 +585,7 @@ static func get_rarity_weights(enemy_level: int, monster_class: int, allow_uniqu
 
 ## Determina o `ilvl` a partir do `enemy_level` e `monster_class` (Seção 6, linha 163)
 static func get_effective_item_level(enemy_level: int, monster_class: int = MonsterClass.NORMAL, zone_max_ilvl: int = -1) -> int:
-	var clamped_class: int = clampi(monster_class, MonsterClass.NORMAL, MonsterClass.BOSS)
+	var clamped_class: int = clampi(monster_class, MonsterClass.NORMAL, MonsterClass.HERO)
 	var bonus: int = int(RANK_ILVL_BONUS.get(clamped_class, 0)) if enable_rank_ilvl_bonus else 0
 	var ilvl: int = maxi(1, enemy_level + bonus)
 	if zone_max_ilvl > 0:

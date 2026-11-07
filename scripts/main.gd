@@ -488,9 +488,14 @@ func _spawn_single_enemy(spec: Dictionary) -> void:
 	elif is_wolf:
 		enemy_scene = WOLF_SCENE
 	var enemy: TowerEnemy = enemy_scene.instantiate() as TowerEnemy
-	var hp_per_wave: int = 18 if is_boss else 7
-	enemy.maximum_health += (wave_num - 1) * hp_per_wave
-	enemy.movement_speed += minf(float(wave_num - 1) * 0.05, 0.7)
+	var rank_val: int = LootBalanceConfig.MonsterClass.NORMAL
+	var arch_val: String = "melee"
+	if is_boss:
+		rank_val = LootBalanceConfig.MonsterClass.RARE
+		arch_val = "tank"
+	elif randf() < 0.15:
+		rank_val = LootBalanceConfig.MonsterClass.MAGIC
+	enemy.configure_difficulty(wave_num, rank_val, arch_val)
 	enemy.set_target(player)
 	enemies_root.add_child(enemy)
 	enemy.global_position = player.global_position + Vector3(cos(angle) * radius, 0, sin(angle) * radius)
@@ -513,12 +518,13 @@ func _on_enemy_died(xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 			for _i in range(maxi(1, xp_mult)):
 				run_progression.grant_enemy_kill_xp()
 	if is_instance_valid(enemy):
-		var m_class: int = LootBalanceConfig.MonsterClass.NORMAL
-		if enemy.is_mini_boss:
-			m_class = LootBalanceConfig.MonsterClass.RARE
-		elif enemy.xp_reward_multiplier > 1:
-			m_class = LootBalanceConfig.MonsterClass.MAGIC
-		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss, m_class)
+		var m_class: int = enemy.monster_rank
+		if m_class == LootBalanceConfig.MonsterClass.NORMAL:
+			if enemy.is_mini_boss:
+				m_class = LootBalanceConfig.MonsterClass.RARE
+			elif enemy.xp_reward_multiplier > 1:
+				m_class = LootBalanceConfig.MonsterClass.MAGIC
+		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss, m_class, enemy.monster_level)
 	kills += 1
 	enemies_left = maxi(enemies_left - 1, 0)
 	kills_label.text = "Abates: %d" % kills
@@ -534,13 +540,13 @@ func _on_enemy_died(xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 		get_tree().create_timer(1.6, false).timeout.connect(_start_wave)
 
 
-func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false, monster_class: int = -1) -> void:
+func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false, monster_class: int = -1, enemy_level: int = -1) -> void:
 	if not is_instance_valid(_ground_items_root):
 		return
 	var resolved_class: int = monster_class
 	if resolved_class < 0:
 		resolved_class = LootBalanceConfig.MonsterClass.BOSS if is_boss else LootBalanceConfig.MonsterClass.NORMAL
-	var monster_lvl: int = maxi(1, current_wave)
+	var monster_lvl: int = enemy_level if enemy_level > 0 else maxi(1, current_wave)
 	var dropped_items: Array[ItemInstance] = LootGenerationService.generate_monster_loot_drops(monster_lvl, resolved_class, "act1")
 	for item in dropped_items:
 		if item == null:

@@ -358,9 +358,14 @@ func _spawn_single_enemy(spec: Dictionary) -> void:
 	elif is_wolf:
 		enemy_scene = WOLF_SCENE
 	var enemy: TowerEnemy = enemy_scene.instantiate() as TowerEnemy
-	var hp_per_wave: int = 18 if is_boss else 7
-	enemy.maximum_health += (wave_num - 1) * hp_per_wave
-	enemy.movement_speed += minf(float(wave_num - 1) * 0.05, 0.7)
+	var rank_val: int = LootBalanceConfig.MonsterClass.NORMAL
+	var arch_val: String = "melee"
+	if is_boss:
+		rank_val = LootBalanceConfig.MonsterClass.RARE
+		arch_val = "tank"
+	elif randf() < 0.15:
+		rank_val = LootBalanceConfig.MonsterClass.MAGIC
+	enemy.configure_difficulty(wave_num, rank_val, arch_val)
 	enemy.set_target(player)
 	enemies_root.add_child(enemy)
 	enemy.global_position = player.global_position + Vector3(cos(angle) * radius, 0, sin(angle) * radius)

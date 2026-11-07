@@ -442,15 +442,24 @@ func _spawn_campaign_packs(zone_def: CampaignZoneDefinition) -> void:
 			var pos: Vector3 = center + Vector3(cos(ang) * rad, 0.0, sin(ang) * rad)
 
 			var scene_to_use: PackedScene = ENEMY_SCENE
+			var archetype: String = "melee"
+			var rank_val: int = LootBalanceConfig.MonsterClass.NORMAL
 			if is_boss:
 				scene_to_use = BOSS_SCENE
+				archetype = "tank"
+				rank_val = LootBalanceConfig.MonsterClass.RARE
 			elif is_wolf:
 				scene_to_use = WOLF_SCENE
+				archetype = "melee"
+				if rng.randf() < 0.12:
+					rank_val = LootBalanceConfig.MonsterClass.MAGIC
+			else:
+				if rng.randf() < 0.15:
+					rank_val = LootBalanceConfig.MonsterClass.MAGIC
+
 			var enemy: TowerEnemy = scene_to_use.instantiate() as TowerEnemy
 			enemy.aggro_radius = 10.5
-			var hp_bonus: int = 20 if is_boss else 8
-			enemy.maximum_health += (lvl - 1) * hp_bonus
-			enemy.movement_speed += minf(float(lvl - 1) * 0.06, 0.6)
+			enemy.configure_difficulty(lvl, rank_val, archetype, [], rng)
 			enemy.set_target(player)
 			enemies_root.add_child(enemy)
 			enemy.global_position = pos
@@ -640,11 +649,13 @@ func _on_enemy_died(_xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 		var m_class: int = LootBalanceConfig.MonsterClass.NORMAL
 		if enemy is BossMalakor:
 			m_class = LootBalanceConfig.MonsterClass.BOSS
+		elif enemy.monster_rank != LootBalanceConfig.MonsterClass.NORMAL:
+			m_class = enemy.monster_rank
 		elif enemy.is_mini_boss:
 			m_class = LootBalanceConfig.MonsterClass.RARE
 		elif enemy.xp_reward_multiplier > 1:
 			m_class = LootBalanceConfig.MonsterClass.MAGIC
-		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss, m_class)
+		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss, m_class, enemy.monster_level)
 
 	kills += 1
 	enemies_left = maxi(enemies_left - 1, 0)
@@ -684,6 +695,7 @@ func _spawn_zone_boss_malakor() -> void:
 
 	# 4. Instanciação e Conexão do Chefe
 	var boss: BossMalakor = MALAKOR_SCENE.instantiate() as BossMalakor
+	boss.configure_difficulty(maxi(1, area_level + 2), LootBalanceConfig.MonsterClass.BOSS, "tank")
 	boss.aggro_radius = 24.0
 	boss.set_target(player)
 	enemies_root.add_child(boss)
@@ -706,13 +718,13 @@ func _spawn_zone_boss_malakor() -> void:
 		_status_timer = 6.0
 
 
-func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false, monster_class: int = -1) -> void:
+func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false, monster_class: int = -1, enemy_level: int = -1) -> void:
 	if not is_instance_valid(_ground_items_root):
 		return
 	var resolved_class: int = monster_class
 	if resolved_class < 0:
 		resolved_class = LootBalanceConfig.MonsterClass.BOSS if is_boss else LootBalanceConfig.MonsterClass.NORMAL
-	var monster_lvl: int = maxi(1, area_level)
+	var monster_lvl: int = enemy_level if enemy_level > 0 else maxi(1, area_level)
 	var profile: Dictionary = {}
 	if resolved_class == LootBalanceConfig.MonsterClass.BOSS:
 		profile = {"enemy_id": "boss_malakor", "guaranteed_min_equipment_drops": 1}

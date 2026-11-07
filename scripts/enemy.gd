@@ -16,6 +16,29 @@ const VFX = preload("res://scripts/vfx/tower_vfx_spawner.gd")
 const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
 const EnemyDefScript = preload("res://core/combat/enemy_definition.gd")
 const HealthBar3DScript = preload("res://core/combat/enemy_health_bar_3d.gd")
+const MonsterDifficultyServiceScript = preload("res://core/combat/monster_difficulty_service.gd")
+
+@export var monster_level: int = 1
+@export var monster_rank: int = LootBalanceConfig.MonsterClass.NORMAL
+@export var combat_archetype: String = "melee"
+
+var active_modifiers: Array[Dictionary] = []
+var display_title: String = ""
+var damage_reduction_pct: float = 0.0
+var regen_pct_sec: float = 0.0
+var regen_cooldown: float = 3.0
+var _regen_cooldown_timer: float = 0.0
+var burn_on_hit_ratio: float = 0.0
+var burn_on_hit_duration: float = 0.0
+var slow_on_hit_pct: float = 0.0
+var slow_on_hit_duration: float = 0.0
+var aura_radius: float = 0.0
+var aura_dmg_mult: float = 1.0
+var aura_spd_mult: float = 1.0
+var _aura_timer: float = 0.0
+var _commander_buff_time_left: float = 0.0
+var _base_unbuffed_touch_damage: int = -1
+var _base_unbuffed_speed: float = -1.0
 
 @export_range(0.1, 4.0, 0.05) var visual_scale: float = 1.0
 @export_range(-180.0, 180.0, 5.0) var visual_yaw_degrees: float = 0.0
@@ -100,9 +123,70 @@ func _setup_health_bar() -> void:
 	health_bar.name = "HealthBar3D"
 	add_child(health_bar)
 	health_bar.configure(health_bar_height, health_bar_width_scale)
+	if monster_rank != LootBalanceConfig.MonsterClass.NORMAL:
+		var r_cfg: Dictionary = MonsterDifficultyServiceScript.RANK_CONFIG.get(monster_rank, {})
+		var r_color: Color = r_cfg.get("color", Color.WHITE)
+		health_bar.configure_rank(monster_rank, display_title, r_color)
 	health_bar.update_health(health, maximum_health, is_burning())
 	if is_inside_tree():
 		health_bar.align_to_camera(get_viewport())
+
+
+func configure_difficulty(
+	lvl: int,
+	rank_val: int = LootBalanceConfig.MonsterClass.NORMAL,
+	arch: String = "melee",
+	forced_modifiers: Array = [],
+	rng: RandomNumberGenerator = null
+) -> void:
+	monster_level = maxi(1, lvl)
+	monster_rank = rank_val
+	combat_archetype = arch
+
+	if forced_modifiers.is_empty():
+		if monster_rank == LootBalanceConfig.MonsterClass.MAGIC or monster_rank == LootBalanceConfig.MonsterClass.RARE or monster_rank == LootBalanceConfig.MonsterClass.HERO:
+			active_modifiers = MonsterDifficultyServiceScript.roll_modifiers(monster_level, monster_rank, combat_archetype, ["undead"], rng)
+		else:
+			active_modifiers = []
+	else:
+		active_modifiers.clear()
+		for fm in forced_modifiers:
+			if fm is Dictionary:
+				active_modifiers.append(fm)
+
+	var ref_hp: int = enemy_definition.base_max_health if enemy_definition != null else maximum_health
+	var ref_dmg: int = enemy_definition.base_touch_damage if enemy_definition != null else touch_damage
+	var ref_spd: float = enemy_definition.base_movement_speed if enemy_definition != null else movement_speed
+
+	var stats: Dictionary = MonsterDifficultyServiceScript.resolve_monster_stats(
+		ref_hp, ref_dmg, ref_spd, monster_level, monster_rank, combat_archetype, active_modifiers
+	)
+
+	maximum_health = int(stats["max_health"])
+	health = maximum_health
+	touch_damage = int(stats["touch_damage"])
+	movement_speed = float(stats["movement_speed"])
+	damage_reduction_pct = float(stats["damage_reduction_pct"])
+	regen_pct_sec = float(stats["regen_pct_sec"])
+	regen_cooldown = float(stats["regen_cooldown"])
+	burn_on_hit_ratio = float(stats["burn_ratio"])
+	burn_on_hit_duration = float(stats["burn_duration"])
+	slow_on_hit_pct = float(stats["slow_pct"])
+	slow_on_hit_duration = float(stats["slow_duration"])
+	aura_radius = float(stats["aura_radius"])
+	aura_dmg_mult = float(stats["aura_dmg_mult"])
+	aura_spd_mult = float(stats["aura_spd_mult"])
+	xp_reward_multiplier = maxi(1, roundi(float(stats["xp_reward_mult"])))
+
+	var base_name: String = enemy_definition.display_name if enemy_definition != null else "Inimigo"
+	display_title = MonsterDifficultyServiceScript.build_monster_title(base_name, monster_rank, active_modifiers)
+
+	if health_bar != null:
+		health_bar.configure_rank(monster_rank, display_title, stats["rank_color"])
+		health_bar.update_health(health, maximum_health, is_burning())
+
+	if regen_pct_sec > 0.0 or aura_radius > 0.0:
+		set_process(true)
 
 
 func _load_real_enemy_if_available() -> void:
@@ -278,6 +362,11 @@ func _play_contact_attack() -> void:
 				VFX.arc(vfx_root, global_position + Vector3.UP * 0.95, f_dir, 0.92)
 			else:
 				VFX.claws(vfx_root, target.global_position + Vector3.UP * 0.80, f_dir, 0.72)
+		if burn_on_hit_ratio > 0.0 and target.has_method("apply_burn"):
+			var b_dps: float = float(touch_damage) * burn_on_hit_ratio
+			target.call("apply_burn", b_dps, burn_on_hit_duration)
+		if slow_on_hit_pct > 0.0 and target.has_method("apply_slow"):
+			target.call("apply_slow", slow_on_hit_pct, slow_on_hit_duration)
 	if _animation_player == null or _attack_animation == &"":
 		return
 	_is_attacking = true
@@ -298,7 +387,11 @@ func take_damage(amount: int) -> void:
 	if not alive:
 		return
 	_aggro_triggered = true
-	health = maxi(0, health - amount)
+	var mitigated: int = maxi(1, roundi(float(amount) * (1.0 - damage_reduction_pct)))
+	_regen_cooldown_timer = regen_cooldown
+	if regen_pct_sec > 0.0:
+		set_process(true)
+	health = maxi(0, health - mitigated)
 	health_changed.emit(health, maximum_health)
 	if health_bar != null:
 		health_bar.update_health(health, maximum_health, is_burning())
@@ -357,6 +450,34 @@ func _begin_hit_flash() -> void:
 	set_process(true)
 
 
+func receive_commander_pulse(dmg_mult: float, spd_mult: float) -> void:
+	if not alive:
+		return
+	if _base_unbuffed_touch_damage < 0:
+		_base_unbuffed_touch_damage = touch_damage
+		_base_unbuffed_speed = movement_speed
+		touch_damage = roundi(float(touch_damage) * dmg_mult)
+		movement_speed = movement_speed * spd_mult
+	_commander_buff_time_left = 1.0
+	set_process(true)
+
+
+func _pulse_commander_aura() -> void:
+	if not is_inside_tree() or aura_radius <= 0.0 or not alive:
+		return
+	var allies: Array[Node] = get_tree().get_nodes_in_group("enemies")
+	var rad_sq: float = aura_radius * aura_radius
+	for ally in allies:
+		if ally == self or not (ally is Node3D) or not is_instance_valid(ally):
+			continue
+		if not ally.get("alive"):
+			continue
+		var a3d: Node3D = ally as Node3D
+		if global_position.distance_squared_to(a3d.global_position) <= rad_sq:
+			if ally.has_method("receive_commander_pulse"):
+				ally.call("receive_commander_pulse", aura_dmg_mult, aura_spd_mult)
+
+
 func _process(delta: float) -> void:
 	if _burn_remaining > 0.0 and alive:
 		_burn_remaining = maxf(_burn_remaining - delta, 0.0)
@@ -390,5 +511,40 @@ func _process(delta: float) -> void:
 					_hit_meshes[index].material_overlay = _previous_overlays[index]
 			_previous_overlays.clear()
 
-	if _hit_flash_remaining <= 0.0 and _burn_remaining <= 0.0:
+	# Regeneracao passiva apos resfriamento de dano
+	if regen_pct_sec > 0.0 and alive and health < maximum_health:
+		if _regen_cooldown_timer > 0.0:
+			_regen_cooldown_timer -= delta
+		else:
+			var heal_amount: float = float(maximum_health) * regen_pct_sec * delta
+			var heal_int: int = maxi(1, roundi(heal_amount))
+			health = mini(maximum_health, health + heal_int)
+			health_changed.emit(health, maximum_health)
+			if health_bar != null:
+				health_bar.update_health(health, maximum_health, is_burning())
+
+	# Aura de Comandante
+	if aura_radius > 0.0 and alive and is_inside_tree():
+		_aura_timer -= delta
+		if _aura_timer <= 0.0:
+			_aura_timer = 0.5
+			_pulse_commander_aura()
+
+	# Decaimento do buff recebido de comandante
+	if _commander_buff_time_left > 0.0:
+		_commander_buff_time_left -= delta
+		if _commander_buff_time_left <= 0.0 and _base_unbuffed_touch_damage >= 0:
+			touch_damage = _base_unbuffed_touch_damage
+			movement_speed = _base_unbuffed_speed
+			_base_unbuffed_touch_damage = -1
+			_base_unbuffed_speed = -1.0
+
+	var needs_process: bool = (
+		_hit_flash_remaining > 0.0 or
+		_burn_remaining > 0.0 or
+		(regen_pct_sec > 0.0 and health < maximum_health) or
+		(aura_radius > 0.0 and alive) or
+		(_commander_buff_time_left > 0.0)
+	)
+	if not needs_process:
 		set_process(false)
