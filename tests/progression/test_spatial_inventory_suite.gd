@@ -241,6 +241,19 @@ func _test_main_scene_inventory_integration() -> void:
 	var night_phase: String = dn_hud.get_current_phase_id()
 	_check(noon_phase == "noon" and night_phase == "night" and noon_energy > night_energy and not noon_rot.is_equal_approx(night_rot), "19h. Ciclo Dia/Noite interpola energia solar, cor e ângulo das sombras 3D entre Meio-Dia e Noite")
 
+	# Teste do Mapa do Ato 1 em Tela Cheia (Waypoint vs Tecla M + Pausa + 8 Locais)
+	var wm: WorldMapModal = main_node.world_map_modal
+	_check(wm != null and wm.ACT1_LOCATIONS.size() == 8 and wm._close_top_btn != null and wm._close_bottom_btn != null, "19i. WorldMapModal do Ato 1 possui 8 locais e botões de fechar ([✕] e Fechar Mapa)")
+	wm.open_map(false, "town", main_node.unlocked_zones)
+	_check(wm.visible and paused and not wm.can_teleport, "19j. Abrir mapa pela tecla [M] pausa o jogo e entra em modo consulta (sem teleporte)")
+	wm._on_location_clicked(wm.ACT1_LOCATIONS[1])
+	_check(wm.visible and wm._feedback_panel.visible and main_node.current_zone_id == "town", "19k. Clicar em um destino no modo [M] fora do Waypoint bloqueia o teleporte e exibe aviso")
+	wm.close_map()
+	_check(not wm.visible and not paused, "19l. Fechar o mapa despausa o jogo imediatamente")
+	wm.open_map(true, "town", main_node.unlocked_zones)
+	wm._on_location_clicked(wm.ACT1_LOCATIONS[3]) # 4. Minas de Karpon (zone_4_mines)
+	_check(not wm.visible and not paused and main_node.current_zone_id == "zone_4_mines", "19m. Abrir mapa pelo Waypoint permite clicar em qualquer local do Ato 1 e teleportar instantaneamente")
+
 	main_node.queue_free()
 
 

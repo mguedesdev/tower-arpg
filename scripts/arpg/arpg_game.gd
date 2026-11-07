@@ -18,6 +18,7 @@ const CAMPAIGN_ZONE_DEF_SCRIPT = preload("res://game/campaign/campaign_zone_defi
 const TOWN_INTERACTABLE_SCRIPT = preload("res://game/campaign/town_interactable_3d.gd")
 const ZONE_PORTAL_SCRIPT = preload("res://game/campaign/zone_portal_3d.gd")
 const TOWN_NPC_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/town_npc_modal.gd")
+const WORLD_MAP_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/world_map_modal.gd")
 const SKILL_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/skill_bar_hud.gd")
 const ITEM_DEF_SCRIPT = preload("res://core/items/item_definition.gd")
 const ITEM_INST_SCRIPT = preload("res://core/items/item_instance.gd")
@@ -51,6 +52,7 @@ var gold: int = 150
 var run_progression: RunProgressionService
 var skill_bar_hud: SkillBarHUD
 var town_npc_modal: TownNpcModal
+var world_map_modal: WorldMapModal
 var inventory_modal: InventoryEquipmentModal
 var boss_health_bar_hud: Control = null
 var day_night_hud: DayNightCycleHUD = null
@@ -155,6 +157,12 @@ func _ready() -> void:
 	$HUD.add_child(day_night_hud)
 	day_night_hud.bind_world(get_node_or_null("Sun") as DirectionalLight3D, get_node_or_null("WorldEnvironment") as WorldEnvironment)
 
+	# Mapa de Tela Cheia do Ato 1 (Teleporte via Waypoint ou Consulta via tecla [M])
+	world_map_modal = WORLD_MAP_MODAL_SCRIPT.new() as WorldMapModal
+	$HUD.add_child(world_map_modal)
+	world_map_modal.waypoint_travel_requested.connect(_on_waypoint_travel_requested)
+	world_map_modal.add_to_group("blocking_modal")
+
 	# Menu de Pausa / Retornar ao Launcher
 	_build_pause_menu()
 
@@ -181,8 +189,19 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if game_over:
 		return
+	if world_map_modal != null and world_map_modal.visible:
+		return
 	if town_npc_modal != null and town_npc_modal.visible:
 		return
+
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
+		if inventory_modal != null and inventory_modal.visible:
+			inventory_modal.close_inventory()
+		if world_map_modal != null:
+			world_map_modal.open_map(false, current_zone_id, unlocked_zones)
+		get_viewport().set_input_as_handled()
+		return
+
 	if inventory_modal != null and inventory_modal.visible:
 		return
 
@@ -468,6 +487,14 @@ func _update_campaign_world(delta: float) -> void:
 
 
 func _on_town_station_interacted(station_id: String, _station_title: String) -> void:
+	if station_id == "waypoint":
+		if town_npc_modal != null and town_npc_modal.visible:
+			town_npc_modal.close_modal()
+		if inventory_modal != null and inventory_modal.visible:
+			inventory_modal.close_inventory()
+		if world_map_modal != null:
+			world_map_modal.open_map(true, current_zone_id, unlocked_zones)
+		return
 	if town_npc_modal == null:
 		return
 	town_npc_modal.set_gold(gold)

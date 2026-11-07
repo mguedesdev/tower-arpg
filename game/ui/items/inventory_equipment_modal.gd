@@ -169,6 +169,10 @@ func toggle_inventory() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_I or event.keycode == KEY_B:
+			if get_tree() != null:
+				for m in get_tree().get_nodes_in_group("blocking_modal"):
+					if m != self and m is Control and (m as Control).visible and m.name == "WorldMapModal":
+						return
 			toggle_inventory()
 			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_ESCAPE and visible and active_partner_station.is_empty():

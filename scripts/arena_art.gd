@@ -593,16 +593,30 @@ func _build_campaign_zone_props(zone_id: String) -> void:
 	_build_dead_trees()
 	_build_gravestones()
 
-	if zone_id == "zone_2_woods":
-		# Floresta mais densa na Mata das Sombras
+	if zone_id == "zone_2_woods" or zone_id == "zone_6_hills":
+		# Floresta/Colinas mais densas
 		for extra_tree in [
 			Vector3(-11.0, 0.0, -7.0), Vector3(11.5, 0.0, -6.0),
 			Vector3(-12.0, 0.0, 6.0), Vector3(12.5, 0.0, 8.0),
 			Vector3(-6.5, 0.0, -15.5), Vector3(7.0, 0.0, 14.5),
 		]:
 			_dead_tree(extra_tree, 1.32, rng.randf_range(-0.22, 0.22))
-	elif zone_id == "zone_3_crypt":
-		# Altar profanado no covil do Carrasco + lápides extras
+	elif zone_id == "zone_4_mines":
+		# Cristais arcanos roxos nas Minas de Karpon
+		var crystal_mat := _material("karpon_crystal", Color(0.68, 0.24, 1.0), 0.25, false, 1.4)
+		for c_pos in [
+			Vector3(-9.5, 0.65, -8.5), Vector3(9.5, 0.65, -7.5),
+			Vector3(-10.5, 0.65, 5.5), Vector3(10.2, 0.65, 6.5),
+		]:
+			var c_mesh := CylinderMesh.new()
+			c_mesh.top_radius = 0.06
+			c_mesh.bottom_radius = 0.42
+			c_mesh.height = 1.45
+			c_mesh.radial_segments = 6
+			var c_node := _mesh_instance(_unique("KarponCrystal"), c_mesh, crystal_mat, c_pos)
+			c_node.rotation = Vector3(rng.randf_range(-0.2, 0.2), rng.randf_range(0.0, TAU), rng.randf_range(-0.2, 0.2))
+	elif zone_id == "zone_3_crypt" or zone_id == "zone_7_plateau" or zone_id == "zone_8_rift":
+		# Altar profanado no covil do Carrasco / Planalto / Fenda Abissal + lápides extras
 		_build_altar()
 		for extra_grave in [
 			Vector3(-8.5, 0.0, -10.5), Vector3(8.5, 0.0, -10.5),
