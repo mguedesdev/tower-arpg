@@ -143,6 +143,20 @@ func find_free_spot_for(item: ItemInstance) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
+func can_fit_item(item: ItemInstance) -> bool:
+	if item == null or item.definition == null:
+		return false
+	if find_free_spot_for(item).x >= 0:
+		return true
+	if item.can_rotate():
+		item.toggle_rotation()
+		var spot: Vector2i = find_free_spot_for(item)
+		item.toggle_rotation()
+		if spot.x >= 0:
+			return true
+	return false
+
+
 func auto_add_item(item: ItemInstance) -> bool:
 	if item == null:
 		return false
@@ -157,6 +171,64 @@ func auto_add_item(item: ItemInstance) -> bool:
 			return place_item(item, spot)
 		item.toggle_rotation()
 	return false # Mochila cheia para o tamanho do item
+
+
+func try_place_items_transactionally(items_to_place: Array[ItemInstance], preferred_first_pos: Vector2i = Vector2i(-1, -1)) -> bool:
+	## Tenta acomodar TODOS os itens da lista no grid (testando posição preferencial e rotações).
+	## Se qualquer item não couber, desfaz (rollback) todas as alterações e restaura o estado exato anterior.
+	if items_to_place.is_empty():
+		return true
+
+	# Snapshot do estado atual do grid e das rotações dos itens envolvidos
+	var snapshot_grid: Array[Dictionary] = []
+	for existing in items:
+		if existing != null:
+			snapshot_grid.append({
+				"item": existing,
+				"pos": existing.grid_position,
+				"rot": existing.is_rotated,
+			})
+	var snapshot_incoming_rot: Dictionary = {}
+	for incoming in items_to_place:
+		if incoming != null:
+			snapshot_incoming_rot[incoming] = incoming.is_rotated
+
+	var all_placed: bool = true
+	for idx in range(items_to_place.size()):
+		var it: ItemInstance = items_to_place[idx]
+		if it == null:
+			continue
+		var placed_this: bool = false
+		if idx == 0 and preferred_first_pos.x >= 0 and preferred_first_pos.y >= 0:
+			if can_place_at(it, preferred_first_pos):
+				placed_this = place_item(it, preferred_first_pos)
+			elif it.can_rotate():
+				it.toggle_rotation()
+				if can_place_at(it, preferred_first_pos):
+					placed_this = place_item(it, preferred_first_pos)
+				else:
+					it.toggle_rotation()
+		if not placed_this:
+			placed_this = auto_add_item(it)
+		if not placed_this:
+			all_placed = false
+			break
+
+	if not all_placed:
+		# Rollback atômico completo
+		items.clear()
+		_reset_cells()
+		for incoming in snapshot_incoming_rot.keys():
+			incoming.is_rotated = bool(snapshot_incoming_rot[incoming])
+			incoming.grid_position = Vector2i(-1, -1)
+		for entry in snapshot_grid:
+			var ex_item: ItemInstance = entry["item"] as ItemInstance
+			ex_item.is_rotated = bool(entry["rot"])
+			place_item(ex_item, entry["pos"] as Vector2i)
+		grid_changed.emit()
+		return false
+
+	return true
 
 
 func get_overlapping_items(item: ItemInstance, top_left: Vector2i) -> Array[ItemInstance]:

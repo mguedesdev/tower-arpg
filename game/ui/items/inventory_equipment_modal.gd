@@ -40,8 +40,12 @@ var _has_custom_window_pos: bool = false
 
 # Estado de arrasto e foco de itens
 var _held_item: ItemInstance = null
+var _held_origin_pos: Vector2i = Vector2i(-1, -1)
+var _held_origin_rotated: bool = false
+var _held_origin_slot: ItemDefinition.EquipmentSlot = ItemDefinition.EquipmentSlot.NONE
 var _held_preview: TextureRect
 var _hovered_grid_item: ItemInstance = null
+var _warning_timer: float = 0.0
 
 # Componentes da UI
 var _grid_container: Control
@@ -136,8 +140,19 @@ func open_inventory() -> void:
 
 
 func close_inventory() -> void:
-	if _held_item != null and inventory != null:
-		inventory.auto_add_item(_held_item)
+	if _held_item != null:
+		var restored: bool = false
+		if inventory != null:
+			if _held_origin_pos.x >= 0 and _held_origin_pos.y >= 0:
+				_held_item.is_rotated = _held_origin_rotated
+				if inventory.can_place_at(_held_item, _held_origin_pos):
+					restored = inventory.place_item(_held_item, _held_origin_pos)
+			if not restored:
+				restored = inventory.auto_add_item(_held_item)
+		if not restored and equipment != null and _held_origin_slot != ItemDefinition.EquipmentSlot.NONE:
+			if equipment.get_equipped_item(_held_origin_slot) == null:
+				equipment.equip_item(_held_item, _held_origin_slot, stats)
+				restored = true
 		_set_held_item(null)
 	visible = false
 	_is_dragging_window = false
@@ -726,12 +741,23 @@ func _get_or_build_silhouette(slot: ItemDefinition.EquipmentSlot) -> Texture2D:
 	return tex
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _warning_timer > 0.0:
+		_warning_timer -= delta
+		if _warning_timer <= 0.0:
+			_update_hint_label()
 	if not visible:
 		return
 	if _held_item != null and _held_preview != null and _held_preview.visible:
 		var mpos: Vector2 = get_viewport().get_mouse_position()
 		_held_preview.position = mpos - _held_preview.size * 0.5
+
+
+func show_inventory_warning(msg: String) -> void:
+	if _hint_label != null:
+		_hint_label.text = msg
+		_hint_label.add_theme_color_override("font_color", Color(1.0, 0.42, 0.42))
+		_warning_timer = 4.0
 
 
 var _grid_dirty: bool = true
@@ -883,6 +909,21 @@ func _refresh_stats_view() -> void:
 
 
 # --- INTERAÇÃO COM O MOUSE ---
+func _format_no_space_warning(displaced: Array[ItemInstance]) -> String:
+	if displaced.is_empty():
+		return "⚠ Sem espaço suficiente na mochila para realizar esta troca!"
+	if displaced.size() == 1:
+		var d0: ItemInstance = displaced[0]
+		var sz: Vector2i = d0.get_grid_size()
+		return "⚠ Sem espaço livre na mochila (%dx%d) para guardar o item equipado: %s!" % [sz.x, sz.y, d0.get_display_name()]
+	var names: PackedStringArray = PackedStringArray()
+	for d in displaced:
+		if d != null:
+			var sz: Vector2i = d.get_grid_size()
+			names.append("%s (%dx%d)" % [d.get_display_name(), sz.x, sz.y])
+	return "⚠ Sem espaço livre na mochila para guardar os itens equipados: %s!" % ", ".join(names)
+
+
 func _on_grid_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		var mb := event as InputEventMouseButton
@@ -892,9 +933,13 @@ func _on_grid_gui_input(event: InputEvent) -> void:
 				if inventory.can_place_at(_held_item, cell):
 					inventory.place_item(_held_item, cell)
 					_set_held_item(null)
+					_refresh_all()
 			else:
 				var clicked: ItemInstance = inventory.get_item_at(cell)
 				if clicked != null:
+					_held_origin_pos = clicked.grid_position
+					_held_origin_rotated = clicked.is_rotated
+					_held_origin_slot = ItemDefinition.EquipmentSlot.NONE
 					inventory.remove_item(clicked)
 					_set_held_item(clicked)
 
@@ -904,17 +949,30 @@ func _on_item_panel_input(item: ItemInstance, event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if _held_item == null:
+				_held_origin_pos = item.grid_position
+				_held_origin_rotated = item.is_rotated
+				_held_origin_slot = ItemDefinition.EquipmentSlot.NONE
 				inventory.remove_item(item)
 				_set_held_item(item)
 			else:
 				var prev_held: ItemInstance = _held_item
+				var item_orig_pos: Vector2i = item.grid_position
+				var item_orig_rot: bool = item.is_rotated
 				inventory.remove_item(item)
-				if inventory.can_place_at(prev_held, item.grid_position):
-					inventory.place_item(prev_held, item.grid_position)
+				if inventory.can_place_at(prev_held, item_orig_pos):
+					inventory.place_item(prev_held, item_orig_pos)
+					_held_origin_pos = item_orig_pos
+					_held_origin_rotated = item_orig_rot
+					_held_origin_slot = ItemDefinition.EquipmentSlot.NONE
 					_set_held_item(item)
+					_refresh_all()
 				else:
-					inventory.place_item(item, item.grid_position)
+					item.is_rotated = item_orig_rot
+					inventory.place_item(item, item_orig_pos)
+					show_inventory_warning("⚠ %s (%dx%d) não cabe no espaço de %s!" % [prev_held.get_display_name(), prev_held.get_grid_size().x, prev_held.get_grid_size().y, item.get_display_name()])
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
+			if _held_item != null:
+				return
 			_hide_tooltip()
 			if active_partner_station == "stash" or active_partner_station == "vendor_physical" or active_partner_station == "vendor_magic":
 				item_context_action_requested.emit(item)
@@ -929,14 +987,20 @@ func _on_item_panel_input(item: ItemInstance, event: InputEvent) -> void:
 
 			if item.definition.is_equippable():
 				var target_slot: ItemDefinition.EquipmentSlot = item.definition.equip_slot
-				if target_slot == ItemDefinition.EquipmentSlot.RING_1 and equipment.get_equipped_item(ItemDefinition.EquipmentSlot.RING_1) != null:
+				if target_slot == ItemDefinition.EquipmentSlot.RING_1 and equipment.get_equipped_item(ItemDefinition.EquipmentSlot.RING_1) != null and equipment.get_equipped_item(ItemDefinition.EquipmentSlot.RING_2) == null:
 					target_slot = ItemDefinition.EquipmentSlot.RING_2
-				if equipment.can_equip(item, target_slot, stats):
-					inventory.remove_item(item)
-					var prev: ItemInstance = equipment.equip_item(item, target_slot, stats)
-					if prev != null:
-						inventory.auto_add_item(prev)
-					_refresh_all()
+				var res: Dictionary = equipment.try_equip_from_inventory(item, target_slot, inventory, stats)
+				if not bool(res.get("ok", false)):
+					var reason: String = String(res.get("reason", ""))
+					if reason == "no_space":
+						var disp_arr: Array[ItemInstance] = []
+						for d in res.get("displaced", []):
+							if d is ItemInstance:
+								disp_arr.append(d)
+						show_inventory_warning(_format_no_space_warning(disp_arr))
+					elif reason == "requirements":
+						show_inventory_warning("⚠ Você não cumpre os requisitos de atributos para equipar %s!" % item.get_display_name())
+				_refresh_all()
 
 
 func _on_doll_slot_input(slot: ItemDefinition.EquipmentSlot, event: InputEvent) -> void:
@@ -945,18 +1009,44 @@ func _on_doll_slot_input(slot: ItemDefinition.EquipmentSlot, event: InputEvent) 
 		var equipped_item: ItemInstance = equipment.get_equipped_item(slot)
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if _held_item != null:
-				if equipment.can_equip(_held_item, slot, stats):
-					var prev: ItemInstance = equipment.equip_item(_held_item, slot, stats)
-					_set_held_item(prev)
+				var res: Dictionary = equipment.try_equip_from_inventory(_held_item, slot, inventory, stats, _held_origin_pos)
+				if bool(res.get("ok", false)):
+					_set_held_item(null)
+					_refresh_all()
+				else:
+					var reason: String = String(res.get("reason", ""))
+					if reason == "no_space":
+						var disp_arr: Array[ItemInstance] = []
+						for d in res.get("displaced", []):
+							if d is ItemInstance:
+								disp_arr.append(d)
+						show_inventory_warning(_format_no_space_warning(disp_arr))
+					elif reason == "requirements":
+						show_inventory_warning("⚠ Você não cumpre os requisitos de atributos para equipar %s!" % _held_item.get_display_name())
+					else:
+						show_inventory_warning("⚠ %s não pode ser equipado neste slot!" % _held_item.get_display_name())
 			elif equipped_item != null:
+				if inventory != null and not inventory.can_fit_item(equipped_item):
+					var sz: Vector2i = equipped_item.get_grid_size()
+					show_inventory_warning("⚠ Sem espaço livre na mochila (%dx%d) para desequipar %s!" % [sz.x, sz.y, equipped_item.get_display_name()])
+					return
+				_held_origin_slot = slot
+				_held_origin_pos = Vector2i(-1, -1)
+				_held_origin_rotated = equipped_item.is_rotated
 				equipment.unequip_item(slot, stats)
 				_set_held_item(equipped_item)
+				_refresh_all()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
+			if _held_item != null:
+				return
 			if equipped_item != null:
 				_hide_tooltip()
+				if inventory == null or not inventory.can_fit_item(equipped_item):
+					var sz: Vector2i = equipped_item.get_grid_size()
+					show_inventory_warning("⚠ Sem espaço livre na mochila (%dx%d) para desequipar %s!" % [sz.x, sz.y, equipped_item.get_display_name()])
+					return
 				equipment.unequip_item(slot, stats)
-				if not inventory.auto_add_item(equipped_item):
-					_set_held_item(equipped_item)
+				inventory.auto_add_item(equipped_item)
 				_refresh_all()
 
 

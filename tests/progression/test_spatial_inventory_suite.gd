@@ -78,6 +78,7 @@ func _test_equipment_paperdoll_and_2h_weapons() -> void:
 	var equip := CharacterEquipment.new()
 	var stats := CharacterStats.new()
 	stats.set_base_stat(CharacterStats.STAT_STRENGTH, 25.0) # Força suficiente para equipar 2H (req 24)
+	stats.set_base_stat(CharacterStats.STAT_AGILITY, 20.0)  # Agilidade suficiente para equipar Adaga (req 12)
 
 	var sword_1h := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "sword_steel")
 	var shield := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "shield_round")
@@ -93,6 +94,39 @@ func _test_equipment_paperdoll_and_2h_weapons() -> void:
 	equip.equip_item(sword_2h, ItemDefinition.EquipmentSlot.MAIN_HAND, stats)
 	_check(equip.get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND) == sword_2h, "8a. Arma 2H substituiu espada na Mão Principal")
 	_check(equip.get_equipped_item(ItemDefinition.EquipmentSlot.OFF_HAND) == null, "8b. Escudo foi automaticamente desequipado ao equipar arma 2H")
+
+	# Teste de Troca Transacional Atômica (Prevenção de perda de itens quando não há espaço na mochila):
+	# 1. Mochila pequena 2x3 onde cabe apenas uma Adaga (1x3) + poções ocupando o resto, enquanto a Espada 2H (3x2) está equipada:
+	var small_bag := SpatialInventoryGrid.new(2, 3)
+	var dagger := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "dagger_sharp") # 1x3
+	var pot1 := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health") # 1x1
+	small_bag.place_item(dagger, Vector2i(0, 0))
+	small_bag.place_item(pot1, Vector2i(1, 0)) # Agora sobra apenas 1x3 ao tirar a adaga, insuficiente para a Espada 2H (3x2 / 2x3)!
+	var swap_dagger_res: Dictionary = equip.try_equip_from_inventory(dagger, ItemDefinition.EquipmentSlot.MAIN_HAND, small_bag, stats)
+	_check(not bool(swap_dagger_res.get("ok", true)) and String(swap_dagger_res.get("reason", "")) == "no_space", "8c. Bloqueia equipar Adaga (1x3) quando não há espaço 3x2/2x3 na mochila para guardar a Espada 2H equipada")
+	_check(equip.get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND) == sword_2h and small_bag.items.has(dagger), "8d. Rollback atômico preserva a Espada 2H equipada e mantém a Adaga intacta na mochila (nenhum item some)")
+
+	# 2. Tentar equipar Escudo (2x2) na Mão Secundária enquanto usa Espada 2H (3x2) sem espaço para a Espada 2H na mochila:
+	var bag_2x2 := SpatialInventoryGrid.new(2, 2)
+	bag_2x2.place_item(shield, Vector2i(0, 0))
+	var swap_shield_fail: Dictionary = equip.try_equip_from_inventory(shield, ItemDefinition.EquipmentSlot.OFF_HAND, bag_2x2, stats)
+	_check(not bool(swap_shield_fail.get("ok", true)) and equip.get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND) == sword_2h and bag_2x2.items.has(shield), "8e. Bloqueia equipar Escudo quando está usando arma 2H e a mochila só tem espaço 2x2")
+
+	# 3. Quando há espaço suficiente na mochila (ex: 3x2 livre), equipar o Escudo desaloja a Espada 2H para a mochila sem sumir com ela:
+	var bag_large := SpatialInventoryGrid.new(4, 3)
+	bag_large.place_item(shield, Vector2i(0, 0))
+	var swap_shield_ok: Dictionary = equip.try_equip_from_inventory(shield, ItemDefinition.EquipmentSlot.OFF_HAND, bag_large, stats)
+	_check(bool(swap_shield_ok.get("ok", false)) and equip.get_equipped_item(ItemDefinition.EquipmentSlot.OFF_HAND) == shield and equip.get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND) == null and bag_large.items.has(sword_2h), "8f. Com espaço suficiente, equipar Escudo move a Espada 2H equipada para a mochila com segurança")
+
+	# 4. Usando Espada 1H (1x4) + Escudo (2x2) simultaneamente, tentar equipar Espada 2H (3x2) só é permitido se AMBOS couberem na mochila:
+	equip.equip_item(sword_1h, ItemDefinition.EquipmentSlot.MAIN_HAND, stats)
+	equip.equip_item(shield, ItemDefinition.EquipmentSlot.OFF_HAND, stats)
+	var bag_tight := SpatialInventoryGrid.new(3, 2) # 3x2: ao remover a Espada 2H, caberia o Escudo (2x2), mas NÃO cabe a Espada 1H (1x4)!
+	bag_tight.remove_item(sword_2h)
+	sword_2h.is_rotated = false
+	bag_tight.place_item(sword_2h, Vector2i(0, 0))
+	var swap_2h_fail: Dictionary = equip.try_equip_from_inventory(sword_2h, ItemDefinition.EquipmentSlot.MAIN_HAND, bag_tight, stats)
+	_check(not bool(swap_2h_fail.get("ok", true)) and equip.get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND) == sword_1h and equip.get_equipped_item(ItemDefinition.EquipmentSlot.OFF_HAND) == shield and bag_tight.items.has(sword_2h), "8g. Bloqueia equipar arma 2H quando usa Espada 1H + Escudo e a mochila não comporta ambos os itens desalojados")
 
 
 func _test_stat_requirements_without_manual_points() -> void:

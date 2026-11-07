@@ -36,23 +36,54 @@ func can_equip(item: ItemInstance, slot: ItemDefinition.EquipmentSlot, stats: Ch
 	return true
 
 
-func equip_item(item: ItemInstance, slot: ItemDefinition.EquipmentSlot, stats: CharacterStats) -> ItemInstance:
+func get_displaced_items_for_equip(item: ItemInstance, slot: ItemDefinition.EquipmentSlot) -> Array[ItemInstance]:
+	## Retorna todos os itens atualmente equipados que serão desalojados ao equipar `item` em `slot`.
+	## Exemplo:
+	## - Equipar Escudo (OFF_HAND) usando Espada 2H (MAIN_HAND) desaloja a Espada 2H.
+	## - Equipar Espada 2H (MAIN_HAND) usando Espada 1H + Escudo desaloja AMBOS (Espada 1H e Escudo).
+	var displaced: Array[ItemInstance] = []
+	if item == null or item.definition == null:
+		return displaced
+
+	var current_in_slot: ItemInstance = get_equipped_item(slot)
+	if current_in_slot != null and current_in_slot != item:
+		displaced.append(current_in_slot)
+
+	if slot == ItemDefinition.EquipmentSlot.MAIN_HAND and item.definition.is_two_handed():
+		var off_item: ItemInstance = get_equipped_item(ItemDefinition.EquipmentSlot.OFF_HAND)
+		if off_item != null and off_item != item and not displaced.has(off_item):
+			displaced.append(off_item)
+	elif slot == ItemDefinition.EquipmentSlot.OFF_HAND:
+		var main_item: ItemInstance = get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND)
+		if main_item != null and main_item.definition != null and main_item.definition.is_two_handed() and not displaced.has(main_item):
+			displaced.append(main_item)
+
+	return displaced
+
+
+func equip_item_and_get_displaced(item: ItemInstance, slot: ItemDefinition.EquipmentSlot, stats: CharacterStats) -> Array[ItemInstance]:
+	var displaced: Array[ItemInstance] = []
 	if not can_equip(item, slot, stats):
-		return null
+		return displaced
 
 	var previous: ItemInstance = get_equipped_item(slot)
 	if previous != null:
 		previous.equipped_slot = ItemDefinition.EquipmentSlot.NONE
+		displaced.append(previous)
 
 	# Se for arma de duas mãos (2H) na Mão Principal, remove o escudo/item da Mão Secundária
 	if slot == ItemDefinition.EquipmentSlot.MAIN_HAND and item.definition.is_two_handed():
-		unequip_item(ItemDefinition.EquipmentSlot.OFF_HAND)
+		var off_removed: ItemInstance = unequip_item(ItemDefinition.EquipmentSlot.OFF_HAND)
+		if off_removed != null and not displaced.has(off_removed):
+			displaced.append(off_removed)
 
 	# Se estiver equipando na mão secundária, verifica se não está usando arma 2H
 	if slot == ItemDefinition.EquipmentSlot.OFF_HAND:
 		var main_hand: ItemInstance = get_equipped_item(ItemDefinition.EquipmentSlot.MAIN_HAND)
 		if main_hand != null and main_hand.definition.is_two_handed():
-			unequip_item(ItemDefinition.EquipmentSlot.MAIN_HAND)
+			var main_removed: ItemInstance = unequip_item(ItemDefinition.EquipmentSlot.MAIN_HAND)
+			if main_removed != null and not displaced.has(main_removed):
+				displaced.append(main_removed)
 
 	equipped[slot] = item
 	item.equipped_slot = slot
@@ -61,7 +92,54 @@ func equip_item(item: ItemInstance, slot: ItemDefinition.EquipmentSlot, stats: C
 	if stats != null:
 		sync_to_character_stats(stats)
 
-	return previous
+	return displaced
+
+
+func equip_item(item: ItemInstance, slot: ItemDefinition.EquipmentSlot, stats: CharacterStats) -> ItemInstance:
+	var displaced: Array[ItemInstance] = equip_item_and_get_displaced(item, slot, stats)
+	return displaced[0] if not displaced.is_empty() else null
+
+
+func try_equip_from_inventory(
+	item: ItemInstance,
+	slot: ItemDefinition.EquipmentSlot,
+	inv: SpatialInventoryGrid,
+	stats: CharacterStats,
+	preferred_pos: Vector2i = Vector2i(-1, -1)
+) -> Dictionary:
+	## Executa a troca transacional e atômica entre o Inventário Espacial e o Paperdoll:
+	## 1. Verifica validade de slot e atributos.
+	## 2. Identifica todos os itens equipados que serão desalojados (1H, 2H, Escudo ou ambos).
+	## 3. Libera temporariamente o espaço do novo item na mochila e verifica se TODOS os itens
+	##    desalojados cabem na mochila (incluindo rotação automática 3x2 <-> 2x3).
+	## 4. Se não houver espaço suficiente na mochila, faz rollback completo e bloqueia a troca!
+	if item == null or item.definition == null:
+		return {"ok": false, "reason": "invalid_item", "displaced": []}
+	if not is_slot_valid_for_item(slot, item):
+		return {"ok": false, "reason": "invalid_slot", "displaced": []}
+	if stats != null and not item.meets_requirements(stats):
+		return {"ok": false, "reason": "requirements", "displaced": []}
+
+	var displaced: Array[ItemInstance] = get_displaced_items_for_equip(item, slot)
+	var was_in_inv: bool = (inv != null and inv.items.has(item))
+	var orig_pos: Vector2i = item.grid_position if was_in_inv else preferred_pos
+	var orig_rot: bool = item.is_rotated
+
+	if was_in_inv:
+		inv.remove_item(item)
+
+	if inv != null and not displaced.is_empty():
+		var fit_ok: bool = inv.try_place_items_transactionally(displaced, orig_pos)
+		if not fit_ok:
+			# Rollback: devolve o item candidato exatamente para sua posição e orientação originais na mochila
+			if was_in_inv:
+				item.is_rotated = orig_rot
+				inv.place_item(item, orig_pos)
+			return {"ok": false, "reason": "no_space", "displaced": displaced}
+
+	# Todos os itens desalojados já foram acomodados com sucesso na mochila! Efetiva o equip:
+	equip_item_and_get_displaced(item, slot, stats)
+	return {"ok": true, "reason": "", "displaced": displaced}
 
 
 func unequip_item(slot: ItemDefinition.EquipmentSlot, stats: CharacterStats = null) -> ItemInstance:

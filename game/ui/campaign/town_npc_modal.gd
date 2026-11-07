@@ -539,7 +539,7 @@ func _on_stash_item_input(item: ItemInstance, event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT or mb.button_index == MOUSE_BUTTON_RIGHT:
 			if backpack == null or stash == null:
 				return
-			if backpack.find_free_spot_for(item).x < 0:
+			if not backpack.can_fit_item(item):
 				show_feedback("⚠ Espaço insuficiente na Mochila para retirar %s!" % item.get_display_name(), true)
 				return
 			_hide_tooltip()
@@ -1409,7 +1409,7 @@ func _attempt_buyback_item(entry: Dictionary) -> void:
 	if current_gold < sold_price:
 		show_feedback("⚠ Ouro insuficiente para recomprar! Você precisa de %d Ouro." % sold_price, true)
 		return
-	if backpack.find_free_spot_for(item).x < 0:
+	if not backpack.can_fit_item(item):
 		var gsz: Vector2i = item.get_grid_size()
 		show_feedback("⚠ Sua Mochila não tem espaço livre (%dx%d) para recomprar este item!" % [gsz.x, gsz.y], true)
 		return
@@ -1454,7 +1454,7 @@ func _attempt_buy_item(item: ItemInstance, stock_array: Array[ItemInstance]) -> 
 		item_to_give = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, item.definition.base_id)
 		item_to_give.identify()
 
-	if backpack.find_free_spot_for(item_to_give).x < 0:
+	if not backpack.can_fit_item(item_to_give):
 		var gsz: Vector2i = item_to_give.get_grid_size()
 		show_feedback("⚠ Sua Mochila não tem espaço livre (%dx%d) para este item!" % [gsz.x, gsz.y], true)
 		return

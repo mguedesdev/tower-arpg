@@ -529,8 +529,9 @@ func _on_inventory_context_action(item: ItemInstance) -> void:
 		return
 	var st_id: String = town_npc_modal.current_station_id
 	if st_id == "stash":
-		if stash_grid == null or stash_grid.find_free_spot_for(item).x < 0:
-			town_npc_modal.show_feedback("⚠ O Baú Pessoal está cheio para um item %dx%d!" % [item.definition.grid_size.x, item.definition.grid_size.y], true)
+		if stash_grid == null or not stash_grid.can_fit_item(item):
+			var sz: Vector2i = item.get_grid_size()
+			town_npc_modal.show_feedback("⚠ O Baú Pessoal está cheio para um item %dx%d!" % [sz.x, sz.y], true)
 			return
 		var name_str: String = item.get_display_name()
 		backpack.remove_item(item)
