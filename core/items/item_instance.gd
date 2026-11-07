@@ -304,8 +304,7 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 	if do_compare:
 		t += "[color=#5a5244]────────────────────────────[/color]\n"
 		if eq_item != null:
-			var eq_col: String = eq_item.get_rarity_color().to_html(false)
-			t += "[color=#c7bca8]Comparado a: [/color][b][color=#%s]%s[/color][/b]\n" % [eq_col, eq_item.get_display_name()]
+			t += "[color=#c7bca8]Comparado ao [/color][b][color=#f2cb6f]Item Equipado:[/color][/b]\n"
 		else:
 			t += "[color=#c7bca8]Comparado a: [color=#8b939c]Slot Vazio[/color][/color]\n"
 
