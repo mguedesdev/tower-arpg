@@ -528,6 +528,9 @@ func _update_campaign_world(delta: float) -> void:
 	if player == null or not player.alive:
 		return
 	var p_pos: Vector3 = player.global_position
+	# Atualiza oclusão das copas das árvores na linha de visão isométrica (Dithered Fade leve na fila opaca)
+	NatureProp3D.update_tree_occlusion(p_pos, delta)
+
 	var near_station: TownInteractable3D = null
 	for station in _active_interactables:
 		if is_instance_valid(station):

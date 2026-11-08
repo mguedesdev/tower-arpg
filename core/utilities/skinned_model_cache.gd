@@ -133,6 +133,18 @@ static func _merge_skeleton_meshes(skeleton: Skeleton3D) -> void:
 					for _i in range(v_count):
 						body_normals.append(Vector3.UP)
 				var col: Color = std_mat.albedo_color
+				# Calibração física estilizada (estilo Albion Online):
+				# Previne estouro para branco puro (#FFFFFF) no aço e lâmina sob luz solar direta
+				match std_mat.resource_name:
+					"Steel_Light":
+						col = Color(0.58, 0.60, 0.64, col.a)
+					"Steel":
+						col = Color(0.46, 0.48, 0.52, col.a)
+					"Blade":
+						col = Color(0.64, 0.66, 0.70, col.a)
+					"Gold":
+						col = Color(0.85, 0.72, 0.38, col.a)
+
 				var col_arr := PackedColorArray()
 				col_arr.resize(v_count)
 				col_arr.fill(col)
@@ -202,7 +214,9 @@ static func _merge_skeleton_meshes(skeleton: Skeleton3D) -> void:
 		var body_mat := StandardMaterial3D.new()
 		body_mat.vertex_color_use_as_albedo = true
 		body_mat.vertex_color_is_srgb = true
-		body_mat.roughness = (roughness_sum / float(roughness_count)) if roughness_count > 0 else 0.88
+		body_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+		var avg_roughness: float = (roughness_sum / float(roughness_count)) if roughness_count > 0 else 0.55
+		body_mat.roughness = clampf(avg_roughness, 0.48, 0.72)
 		combined_mesh.surface_set_material(surf_idx, body_mat)
 
 	for key in special_buckets:

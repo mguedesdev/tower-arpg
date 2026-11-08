@@ -17,11 +17,13 @@ uniform sampler2D detail_control : filter_linear, repeat_disable;
 uniform vec2 texture_tiling = vec2(12.0,12.0);
 uniform float details_strength : hint_range(0.0, 1.0) = 0.75;
 uniform float material_roughness : hint_range(0.0, 1.0) = 0.96;
+uniform vec4 grass_tint : source_color = vec4(0.80, 0.94, 0.72, 1.0);
+uniform vec4 dirt_tint : source_color = vec4(0.75, 0.68, 0.60, 1.0);
 
 void fragment() {
     vec2 material_uv = UV * texture_tiling;
-    vec3 grass = texture(grass_tex, material_uv).rgb;
-    vec3 dirt = texture(dirt_tex, material_uv).rgb;
+    vec3 grass = texture(grass_tex, material_uv).rgb * grass_tint.rgb;
+    vec3 dirt = texture(dirt_tex, material_uv).rgb * dirt_tint.rgb;
     vec3 stone = texture(stone_tex, material_uv).rgb;
     vec3 ctrl = texture(base_control, UV).rgb;
     float wd = clamp(ctrl.r,0.0,1.0);
@@ -32,8 +34,8 @@ void fragment() {
 
     // Detalhes locais: onde o controle e preto, manter base sem pedrinhas.
     vec3 decor = texture(detail_control, UV).rgb * details_strength;
-    color = mix(color, texture(grass_pebble_tex, material_uv).rgb, clamp(decor.r,0.0,1.0));
-    color = mix(color, texture(dirt_pebble_tex, material_uv).rgb, clamp(decor.g,0.0,1.0));
+    color = mix(color, texture(grass_pebble_tex, material_uv).rgb * grass_tint.rgb, clamp(decor.r,0.0,1.0));
+    color = mix(color, texture(dirt_pebble_tex, material_uv).rgb * dirt_tint.rgb, clamp(decor.g,0.0,1.0));
     color = mix(color, texture(rocky_path_tex, material_uv).rgb, clamp(decor.b,0.0,1.0));
 
     ALBEDO = color;

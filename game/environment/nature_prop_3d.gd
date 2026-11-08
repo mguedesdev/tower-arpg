@@ -3,7 +3,8 @@ class_name NatureProp3D
 ## Elemento de ambientação 3D estilizado do Stylized Nature MegaKit (Godot 4).
 ## Gerencia instanciação de malha, materiais estilizados sem bordas pretas,
 ## sombras nítidas e otimizadas (apenas em árvores e rochas), colisores cilíndricos de tronco
-## e transparência suave quando obstrui a visão da câmera isométrica.
+## e sistema de Dithered Fade (screen-door transparency) ultra-leve na fila opaca,
+## afetando exclusivamente as copas das árvores que obstruem a câmera (máx 1 a 3 árvores simultâneas).
 
 enum PropCategory {
 	TREE_NORMAL,
@@ -28,14 +29,19 @@ enum PropCategory {
 var _static_body: StaticBody3D = null
 var _collision_shape: CollisionShape3D = null
 var _meshes: Array[MeshInstance3D] = []
-var _fade_materials: Array[StandardMaterial3D] = []
-var _is_faded: bool = false
-var _target_alpha: float = 1.0
-var _current_alpha: float = 1.0
+var _canopy_meshes: Array[MeshInstance3D] = []
+var _target_fade: float = 1.0
+var _current_fade: float = 1.0
 
-# Cache estático de PackedScenes e Materiais Otimizados para altíssima performance
+# Shader Dithered Fade carregado previamente
+const FOLIAGE_SHADER: Shader = preload("res://assets/shaders/nature_foliage_dither.gdshader")
+
+# Cache estático de PackedScenes e Materiais Pré-compilados
 static var _scene_cache: Dictionary = {}
 static var _material_cache: Dictionary = {}
+
+# Registro estático de árvores ativas para oclusão centralizada (sem process individual em cada árvore)
+static var _active_trees: Array[NatureProp3D] = []
 
 
 static func get_cached_scene(path: String) -> PackedScene:
@@ -49,6 +55,15 @@ static func get_cached_scene(path: String) -> PackedScene:
 	return sc
 
 
+func _enter_tree() -> void:
+	if _is_tree_category() and not _active_trees.has(self):
+		_active_trees.append(self)
+
+
+func _exit_tree() -> void:
+	_active_trees.erase(self)
+
+
 func configure(path: String, prop_cat: PropCategory, custom_scale: Vector3 = Vector3.ONE, custom_yaw: float = 0.0) -> void:
 	model_path = path
 	category = prop_cat
@@ -57,6 +72,9 @@ func configure(path: String, prop_cat: PropCategory, custom_scale: Vector3 = Vec
 
 	_setup_visual()
 	_setup_collision()
+	
+	# Desativa _process individual: a oclusão é controlada centralizadamente para máxima performance
+	set_process(false)
 
 
 func _setup_visual() -> void:
@@ -80,7 +98,7 @@ func _setup_visual() -> void:
 	model_root.scale = base_scale
 
 	_meshes.clear()
-	_fade_materials.clear()
+	_canopy_meshes.clear()
 	_find_and_prepare_meshes(model_root)
 
 
@@ -98,43 +116,64 @@ func _find_and_prepare_meshes(node: Node) -> void:
 				var original_mat: Material = m.surface_get_material(s)
 				if original_mat is StandardMaterial3D:
 					var sm := original_mat as StandardMaterial3D
-					var mat_key: String = "%s_s%d" % [model_path, s]
-					var optimized_mat: StandardMaterial3D = null
+					var is_foliage: bool = (
+						sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+						or (sm.albedo_texture != null and ("Leaf" in sm.resource_name or "Leaves" in sm.resource_name))
+					)
 
-					if _material_cache.has(mat_key):
-						optimized_mat = _material_cache[mat_key] as StandardMaterial3D
-					else:
-						optimized_mat = sm.duplicate() as StandardMaterial3D
-						optimized_mat.metallic = 0.0
-						
-						# Se for superfície de folha/vegetação com canal alpha
-						if sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or sm.albedo_texture != null and "Leaf" in sm.resource_name or "Leaves" in sm.resource_name:
-							optimized_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-							optimized_mat.alpha_scissor_threshold = 0.50
-							optimized_mat.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
-							optimized_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-							optimized_mat.roughness = 0.85
-							optimized_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+					if is_foliage and _is_tree_category():
+						# Copa de árvore: usa o Shader de Dithered Fade na FILA OPACA (sem alpha blend)
+						var mat_key: String = "dither_%s_s%d" % [model_path, s]
+						var foliage_mat: ShaderMaterial = null
+
+						if _material_cache.has(mat_key):
+							foliage_mat = _material_cache[mat_key] as ShaderMaterial
 						else:
-							# Tronco ou rocha
-							optimized_mat.cull_mode = BaseMaterial3D.CULL_BACK
-							optimized_mat.roughness = 0.90
+							foliage_mat = ShaderMaterial.new()
+							foliage_mat.shader = FOLIAGE_SHADER
+							if sm.albedo_texture != null:
+								foliage_mat.set_shader_parameter("albedo_texture", sm.albedo_texture)
+							foliage_mat.set_shader_parameter("alpha_scissor_threshold", 0.50)
+							foliage_mat.set_shader_parameter("foliage_tint", Color(0.95, 1.0, 0.95))
+							foliage_mat.set_shader_parameter("material_roughness", 0.85)
+							_material_cache[mat_key] = foliage_mat
 
-						_material_cache[mat_key] = optimized_mat
+						mi.set_surface_override_material(s, foliage_mat)
+						mi.set_instance_shader_parameter("fade_amount", 1.0)
+						if not _canopy_meshes.has(mi):
+							_canopy_meshes.append(mi)
 
-					mi.set_surface_override_material(s, optimized_mat)
+					else:
+						# Tronco de árvore, rocha ou vegetação decorativa estática: material opaco PBR
+						var mat_key: String = "opaque_%s_s%d" % [model_path, s]
+						var opaque_mat: StandardMaterial3D = null
 
-					if _is_tree_category():
-						# Para árvores, guardamos referência caso precise de fade por oclusão isométrica
-						_fade_materials.append(optimized_mat)
+						if _material_cache.has(mat_key):
+							opaque_mat = _material_cache[mat_key] as StandardMaterial3D
+						else:
+							opaque_mat = sm.duplicate() as StandardMaterial3D
+							opaque_mat.metallic = 0.0
+							if is_foliage:
+								# Arbustos/samambaias no chão: recorte alpha com Burley
+								opaque_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+								opaque_mat.alpha_scissor_threshold = 0.50
+								opaque_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+								opaque_mat.roughness = 0.85
+								opaque_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+							else:
+								# Tronco e rocha 100% sólidos
+								opaque_mat.cull_mode = BaseMaterial3D.CULL_BACK
+								opaque_mat.roughness = 0.90
+								opaque_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_BURLEY
+							_material_cache[mat_key] = opaque_mat
+
+						mi.set_surface_override_material(s, opaque_mat)
 
 	for child in node.get_children():
 		_find_and_prepare_meshes(child)
 
 
 func _should_cast_shadow() -> bool:
-	# Apenas árvores e rochas médias projetam sombras nítidas no terreno.
-	# Vegetação rasteira, flores, cogumelos e pedregulhos não projetam sombra (performance 60 FPS).
 	match category:
 		PropCategory.TREE_NORMAL, PropCategory.TREE_PINE, PropCategory.TREE_DEAD, PropCategory.TREE_TWISTED, PropCategory.ROCK_MEDIUM:
 			return true
@@ -179,7 +218,6 @@ func _setup_collision() -> void:
 			trunk_height = 1.30 * base_scale.y
 			col_offset_y = trunk_height * 0.5
 		_:
-			# Vegetação rasteira, arbustos, flores e pedrinhas NUNCA bloqueiam movimentação
 			is_blocking = false
 
 	if is_blocking and trunk_radius > 0.0 and trunk_height > 0.0:
@@ -206,48 +244,57 @@ func _is_tree_category() -> bool:
 	]
 
 
-func _process(delta: float) -> void:
-	if not _is_tree_category() or _fade_materials.is_empty():
-		set_process(false)
+func set_target_fade(fade: float) -> void:
+	_target_fade = fade
+
+
+func apply_fade_step(delta: float) -> void:
+	if not is_equal_approx(_current_fade, _target_fade):
+		_current_fade = move_toward(_current_fade, _target_fade, delta * 5.0)
+		for mi in _canopy_meshes:
+			if is_instance_valid(mi):
+				mi.set_instance_shader_parameter("fade_amount", _current_fade)
+
+
+## Gerenciador Central de Oclusão de Câmera
+## Localiza no máximo 1 a 3 árvores obstruindo a linha de visão (+X, +Z) do jogador e esmaece suavemente suas copas via Dithered Fade
+static func update_tree_occlusion(player_pos: Vector3, delta: float) -> void:
+	if _active_trees.is_empty():
 		return
 
-	var vp := get_viewport()
-	if vp == null:
-		return
-	var cam: Camera3D = vp.get_camera_3d()
-	if cam == null:
-		return
+	# Coleta candidatos que estejam no corredor entre a câmera isométrica (+X, +Z) e o jogador
+	var candidates: Array[Dictionary] = []
 
-	var player_nodes := get_tree().get_nodes_in_group("player")
-	if player_nodes.is_empty():
-		return
-	var player_node := player_nodes[0] as Node3D
-	if player_node == null:
-		return
+	for tree in _active_trees:
+		if not is_instance_valid(tree):
+			continue
+		var t_pos := tree.global_position
+		var dx: float = t_pos.x - player_pos.x
+		var dz: float = t_pos.z - player_pos.z
 
-	var p_pos := player_node.global_position
-	var t_pos := global_position
+		# A câmera isométrica do jogo observa a partir de (+X, +Z) em direção à origem
+		if dx > 0.2 and dx < 5.8 and dz > 0.2 and dz < 5.8:
+			var dist_diag: float = (dx + dz) * 0.7071
+			var lateral_dist: float = absf(dx - dz) * 0.7071
+			if lateral_dist < (2.0 * tree.base_scale.x) and dist_diag < 6.8:
+				var score: float = dist_diag + lateral_dist * 1.5
+				candidates.append({"tree": tree, "score": score})
 
-	# Checa se esta árvore está no cone entre o jogador e a câmera isométrica (+X, +Z)
-	var dx: float = t_pos.x - p_pos.x
-	var dz: float = t_pos.z - p_pos.z
-	var should_fade: bool = false
+	# Ordena por proximidade da linha de visão e seleciona no MÁXIMO 2 a 3 árvores
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return a["score"] < b["score"]
+	)
 
-	if dx > 0.2 and dx < 6.0 and dz > 0.2 and dz < 6.0:
-		var dist_along_diagonal: float = (dx + dz) * 0.7071
-		var lateral_dist: float = absf(dx - dz) * 0.7071
-		if lateral_dist < (2.2 * base_scale.x) and dist_along_diagonal < 7.5:
-			should_fade = true
+	var fading_trees: Array[NatureProp3D] = []
+	var max_fading: int = mini(2, candidates.size()) # Limite estrito de no máximo 2 árvores simultâneas
+	for i in range(max_fading):
+		var t: NatureProp3D = candidates[i]["tree"] as NatureProp3D
+		fading_trees.append(t)
+		t.set_target_fade(0.35)
 
-	_target_alpha = 0.35 if should_fade else 1.0
-
-	if not is_equal_approx(_current_alpha, _target_alpha):
-		_current_alpha = move_toward(_current_alpha, _target_alpha, delta * 4.5)
-		for mat in _fade_materials:
-			if _current_alpha < 0.98:
-				mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-				mat.albedo_color.a = _current_alpha
-			else:
-				mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-				mat.alpha_scissor_threshold = 0.50
-				mat.albedo_color.a = 1.0
+	# Todas as outras árvores da floresta permanecem 100% sólidas (fade_amount = 1.0)
+	for tree in _active_trees:
+		if is_instance_valid(tree) and not fading_trees.has(tree):
+			tree.set_target_fade(1.0)
+		if is_instance_valid(tree):
+			tree.apply_fade_step(delta)

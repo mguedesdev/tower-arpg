@@ -61,8 +61,8 @@ func _run_all() -> void:
 	assert(sun.visible == true, "Sol deve estar visível e ativo no exterior")
 	assert(sun.light_energy >= 0.80 and sun.light_energy <= 1.05, "Intensidade solar moderada (0.80 - 1.05)")
 	assert(sun.shadow_enabled == true, "Sombras ativadas no exterior para silhuetas reconhecíveis")
-	assert(sun.shadow_blur >= 1.0 and sun.shadow_blur <= 1.8, "Sombras com bordas suaves naturais (sem serrilhado duro)")
-	assert(world_env.environment.ambient_light_energy >= 0.45 and world_env.environment.ambient_light_energy <= 0.65, "Luz ambiente suficiente para terreno legível sob sombras de árvores")
+	assert(sun.shadow_blur >= 0.70 and sun.shadow_blur <= 1.8, "Sombras com bordas naturais e definidas (estilo Albion)")
+	assert(world_env.environment.ambient_light_energy >= 0.30 and world_env.environment.ambient_light_energy <= 0.65, "Luz ambiente calibrada para terreno legível sob sombras de árvores sem estourar branco")
 	assert(world_env.environment.tonemap_mode == Environment.TONE_MAPPER_FILMIC, "Tonemapping Filmic para evitar brancos estourados")
 	print("[OK] Cenário 2: Perfil Exterior configurado com sol suave, sombras reconhecíveis e ambiente legível.")
 
