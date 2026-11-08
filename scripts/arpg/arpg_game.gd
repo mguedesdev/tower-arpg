@@ -681,10 +681,15 @@ func _on_town_heal_player_requested() -> void:
 		return
 	player.max_health = player.stats.get_max_health() if player.stats != null else player.max_health
 	player.health = player.max_health
+	if "max_mana" in player and "mana" in player:
+		player.mana = player.max_mana
+		_on_mana_changed(player.mana, player.max_mana)
 	_on_health_changed(player.health, player.max_health)
+	if health_globe_hud != null:
+		health_globe_hud.refill_all_flasks()
 	VFX_SPAWNER.spin(self as Node3D, player.global_position + Vector3.UP * 0.5, 1.5)
 	if status_label != null:
-		status_label.text = "✦ O Sábio restaurou completamente sua Vida (%d/%d)!" % [player.health, player.max_health]
+		status_label.text = "✦ O Sábio restaurou sua Vida e recarregou todos os Frascos!"
 		_status_timer = 3.5
 
 
@@ -743,6 +748,10 @@ func _on_enemy_died(_xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 		_on_gold_changed(gold + gold_gain)
 
 		_maybe_drop_loot_at(enemy.global_position, is_boss, m_class, m_lvl)
+
+		# Recarrega cargas dos frascos equipados por abate (Doc 08)
+		if health_globe_hud != null:
+			health_globe_hud.on_enemy_killed(m_class)
 
 	kills += 1
 	enemies_left = maxi(enemies_left - 1, 0)
@@ -920,6 +929,19 @@ func _grant_starter_items() -> void:
 
 	var pot = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "potion_health")
 	backpack.auto_add_item(pot)
+
+	# Frascos Recarregáveis Permanentes do Ato 1 (Doc 08 Seção 3 e 7.1)
+	var flask_life := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "flask_life_small")
+	flask_life.identify()
+	backpack.auto_add_item(flask_life)
+	if health_globe_hud != null:
+		health_globe_hud.equip_flask(0, flask_life)
+
+	var flask_mana := ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "flask_mana_small")
+	flask_mana.identify()
+	backpack.auto_add_item(flask_mana)
+	if health_globe_hud != null:
+		health_globe_hud.equip_flask(1, flask_mana)
 
 	if inventory_modal != null:
 		inventory_modal._refresh_all()

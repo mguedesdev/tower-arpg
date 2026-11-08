@@ -46,10 +46,70 @@ var grid_position: Vector2i = Vector2i(-1, -1)
 var is_rotated: bool = false
 var equipped_slot: ItemDefinition.EquipmentSlot = ItemDefinition.EquipmentSlot.NONE
 
+# Frasco Recarregável (Doc 08 / PoE2 Style)
+var current_charges: int = -1
+
 ## Propriedade calculada / alias de compatibilidade defensiva para afixos implícitos da base
 var implicit_modifiers: Array[ItemAffix]:
 	get:
 		return get_implicit_affixes()
+
+
+func is_flask() -> bool:
+	return definition != null and definition.is_flask
+
+
+func get_flask_capacity() -> int:
+	if not is_flask():
+		return 0
+	return definition.flask_capacity
+
+
+func get_flask_cost() -> int:
+	if not is_flask():
+		return 10
+	return definition.flask_cost_per_use
+
+
+func get_current_charges() -> int:
+	if not is_flask():
+		return 0
+	if current_charges < 0:
+		current_charges = get_flask_capacity()
+	return current_charges
+
+
+func get_available_uses() -> int:
+	if not is_flask():
+		return 0
+	var cost: int = get_flask_cost()
+	if cost <= 0:
+		return 0
+	return int(get_current_charges() / cost)
+
+
+func add_charges(amount: int) -> int:
+	if not is_flask() or amount <= 0:
+		return 0
+	var before: int = get_current_charges()
+	var cap: int = get_flask_capacity()
+	current_charges = clampi(before + amount, 0, cap)
+	return current_charges - before
+
+
+func consume_use() -> bool:
+	if not is_flask():
+		return false
+	var cost: int = get_flask_cost()
+	if get_current_charges() < cost:
+		return false
+	current_charges -= cost
+	return true
+
+
+func refill_flask() -> void:
+	if is_flask():
+		current_charges = get_flask_capacity()
 
 
 static func get_rarity_visual_order(r: ItemRarity) -> int:
@@ -150,6 +210,8 @@ func _init(p_def: ItemDefinition = null, p_rarity: ItemRarity = ItemRarity.NORMA
 	rarity = p_rarity
 	item_level = maxi(1, p_ilvl)
 	is_identified = (p_rarity == ItemRarity.NORMAL or p_rarity == ItemRarity.UNCOMMON)
+	if is_flask():
+		current_charges = get_flask_capacity()
 
 
 func get_display_name() -> String:
@@ -459,7 +521,17 @@ func format_tooltip_bbcode(stats: CharacterStats = null, equipment: Object = nul
 			line_arm += _format_inline_diff(float(arm) - eq_arm, false, false)
 		t += line_arm + "\n"
 
-	if definition.base_health > 0:
+	if is_flask():
+		var res_name: String = "Vida" if definition.flask_resource_type == "life" else "Mana"
+		var res_col: String = "#ff5555" if definition.flask_resource_type == "life" else "#55aaff"
+		t += "💧 Restaura [color=%s]%d de %s[/color] ao longo de [color=#ffffff]%.1f s[/color]\n" % [
+			res_col, int(definition.flask_recovery_amount), res_name, definition.flask_recovery_duration
+		]
+		t += "🔋 Cargas: [color=#ffffff]%d / %d[/color]\n" % [get_current_charges(), get_flask_capacity()]
+		t += "⚡ Consome [color=#ffffff]%d[/color] cargas por uso\n" % get_flask_cost()
+		t += "✨ Usos disponíveis: [color=#4dff6b]%d[/color]\n" % get_available_uses()
+		t += "[color=#8b939c]Recarga: derrotar inimigos ou ativar ponto de repouso[/color]\n"
+	elif definition.base_health > 0:
 		if definition.category == ItemDefinition.ItemCategory.CONSUMABLE:
 			if not ItemDatabase.is_crafting_consumable(definition.base_id):
 				t += "♥ Uso Imediato: [color=#4dff6b]Restaura +%d de Vida[/color]\n" % definition.base_health
@@ -646,6 +718,7 @@ func to_dictionary() -> Dictionary:
 		"craft_state": int(craft_state),
 		"verdict_mode": verdict_mode,
 		"craft_history": craft_history,
+		"current_charges": current_charges,
 		"explicit_affixes": affixes_arr,
 	}
 
@@ -688,6 +761,11 @@ static func from_dictionary(data: Dictionary) -> ItemInstance:
 	var raw_history: Variant = data.get("craft_history", [])
 	if typeof(raw_history) == TYPE_ARRAY:
 		inst.craft_history = (raw_history as Array).duplicate()
+
+	if data.has("current_charges"):
+		inst.current_charges = int(data["current_charges"])
+	elif inst.is_flask():
+		inst.current_charges = inst.get_flask_capacity()
 
 	if data.has("grid_position") and typeof(data["grid_position"]) == TYPE_DICTIONARY:
 		var gp: Dictionary = data["grid_position"]

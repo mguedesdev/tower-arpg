@@ -127,6 +127,10 @@ func assign_slot(slot_index: int, skill_id: String) -> bool:
 	return true
 
 
+func assign_skill_to_slot(slot_index: int, skill_id: String) -> bool:
+	return assign_slot(slot_index, skill_id)
+
+
 func get_slot_skill(slot_index: int) -> SkillDefinition:
 	if slot_index < 0 or slot_index >= SLOT_COUNT:
 		return null

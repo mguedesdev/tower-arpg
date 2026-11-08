@@ -460,7 +460,10 @@ func _open_picker(slot_idx: int) -> void:
 
 		var skill_to_assign: String = sid
 		btn.pressed.connect(func() -> void:
-			controller.assign_skill_to_slot(_picker_slot, skill_to_assign)
+			if controller.has_method("assign_slot"):
+				controller.assign_slot(_picker_slot, skill_to_assign)
+			elif controller.has_method("assign_skill_to_slot"):
+				controller.assign_skill_to_slot(_picker_slot, skill_to_assign)
 			_picker_panel.visible = false
 			refresh_slots()
 		)
@@ -480,8 +483,12 @@ func _open_picker(slot_idx: int) -> void:
 	c_style.set_corner_radius_all(4)
 	clear_btn.add_theme_stylebox_override("normal", c_style)
 	clear_btn.pressed.connect(func() -> void:
-		controller.slots[_picker_slot] = ""
-		controller.slots_changed.emit()
+		if controller.has_method("assign_slot"):
+			controller.assign_slot(_picker_slot, "")
+		elif "slots" in controller:
+			controller.slots[_picker_slot] = ""
+			if controller.has_signal("slots_changed"):
+				controller.slots_changed.emit()
 		_picker_panel.visible = false
 		refresh_slots()
 	)

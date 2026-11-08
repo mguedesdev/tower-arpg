@@ -44,6 +44,7 @@ const POTION_KEYPLATE_CENTERS: Array[Vector2] = [
 	Vector2(492, 237)
 ]
 const POTION_COOLDOWN_TIME: float = 3.0
+const FlaskServiceScript = preload("res://core/progression/flask_service.gd")
 
 @export_range(0.3, 1.2, 0.02) var user_scale_multiplier: float = 1.0
 @export var smooth_speed: float = 4.0
@@ -60,6 +61,8 @@ var player: Node = null
 
 var bound_potion_ids: Array[String] = ["potion_health", "potion_mana"]
 var potion_cooldowns: Array[float] = [0.0, 0.0]
+var equipped_flasks: Array[ItemInstance] = [null, null]
+var flask_service: RefCounted = null
 
 var _scaler: Control
 var _orb_under: TextureRect
@@ -88,6 +91,7 @@ var _picker_slot: int = -1
 func _init() -> void:
 	name = "HealthGlobeHUD"
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flask_service = FlaskServiceScript.new()
 	_build_ui()
 	refresh_keyplate_labels()
 	refresh_potion_slots()
@@ -377,12 +381,103 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 
 
+func equip_flask(slot_index: int, flask: ItemInstance) -> bool:
+	if slot_index < 0 or slot_index >= POTION_SLOT_COUNT:
+		return false
+	if flask != null:
+		if not flask.is_flask():
+			return false
+		var res_type: String = flask.definition.flask_resource_type
+		if slot_index == 0 and res_type != "life":
+			return false
+		if slot_index == 1 and res_type != "mana":
+			return false
+		var other_slot: int = 1 - slot_index
+		if equipped_flasks[other_slot] == flask:
+			return false
+	equipped_flasks[slot_index] = flask
+	if flask != null and flask.definition != null:
+		bound_potion_ids[slot_index] = flask.definition.base_id
+	else:
+		bound_potion_ids[slot_index] = ""
+	refresh_potion_slots()
+	potion_slot_changed.emit(slot_index, bound_potion_ids[slot_index])
+	return true
+
+
+func get_equipped_flask(slot_index: int) -> ItemInstance:
+	if slot_index >= 0 and slot_index < equipped_flasks.size():
+		return equipped_flasks[slot_index]
+	return null
+
+
+func on_enemy_killed(enemy_rank: int, threat_multiplier: float = 1.0) -> void:
+	for fl in equipped_flasks:
+		if fl != null:
+			FlaskServiceScript.apply_kill_charges_to_flask(fl, enemy_rank, threat_multiplier)
+	refresh_potion_slots()
+
+
+func refill_all_flasks() -> void:
+	for fl in equipped_flasks:
+		if fl != null:
+			fl.refill_flask()
+	refresh_potion_slots()
+
+
 func use_potion(slot_index: int) -> bool:
 	if slot_index < 0 or slot_index >= POTION_SLOT_COUNT:
 		return false
 	if potion_cooldowns[slot_index] > 0.0:
 		return false
 
+	# 1. Frasco Recarregável permanente (Doc 08 / PoE 2 Style)
+	var flask: ItemInstance = equipped_flasks[slot_index]
+	if flask != null:
+		var res_type: String = flask.definition.flask_resource_type
+		var p_hp: Variant = player.get("health") if player != null else null
+		var p_max_hp: Variant = player.get("max_health") if player != null else null
+		var p_mp: Variant = player.get("mana") if player != null else null
+		var p_max_mp: Variant = player.get("max_mana") if player != null else null
+
+		var cur_hp: int = int(p_hp) if p_hp != null else current_health
+		var max_hp: int = int(p_max_hp) if p_max_hp != null else maximum_health
+		var cur_mp: int = int(p_mp) if p_mp != null else 0
+		var max_mp: int = int(p_max_mp) if p_max_mp != null else 100
+
+		# Bloqueia ativação se o recurso já estiver 100% cheio (Doc 08 Seção 4)
+		if res_type == "life" and cur_hp >= max_hp:
+			return false
+		if res_type == "mana" and cur_mp >= max_mp:
+			return false
+
+		# Consome cargas do frasco (sem destruir o item)
+		if not flask.consume_use():
+			return false
+
+		var amount: float = flask.definition.flask_recovery_amount
+		var dur: float = flask.definition.flask_recovery_duration
+		if flask_service != null:
+			flask_service.start_recovery(res_type, amount, dur)
+
+		# Aplicação inicial imediata para resposta de combate e testes síncronos
+		if player != null:
+			if res_type == "life" and p_hp != null:
+				var tick_hp: int = maxi(1, int(round(amount / dur * 0.5)))
+				var new_hp: int = mini(max_hp, cur_hp + tick_hp)
+				player.set("health", new_hp)
+				update_health(new_hp, max_hp)
+			elif res_type == "mana" and p_mp != null:
+				var tick_mp: int = maxi(1, int(round(amount / dur * 0.5)))
+				player.set("mana", mini(max_mp, cur_mp + tick_mp))
+
+		potion_cooldowns[slot_index] = POTION_COOLDOWN_TIME
+		_flash_slot(slot_index)
+		potion_consumed.emit(int(amount), res_type)
+		refresh_potion_slots()
+		return true
+
+	# 2. Consumível tradicional do inventário (compatibilidade regressiva)
 	var pot_id: String = bound_potion_ids[slot_index]
 	if pot_id.is_empty():
 		return false
@@ -390,7 +485,6 @@ func use_potion(slot_index: int) -> bool:
 	if backpack == null:
 		return false
 
-	# Busca uma instância do item no inventário
 	var item_to_use: ItemInstance = null
 	for it in backpack.items:
 		if it != null and it.definition != null and it.definition.base_id == pot_id:
@@ -400,7 +494,11 @@ func use_potion(slot_index: int) -> bool:
 	if item_to_use == null:
 		return false
 
-	# Aplica efeito
+	if item_to_use.is_flask():
+		equip_flask(slot_index, item_to_use)
+		return use_potion(slot_index)
+
+	# Aplica efeito legado
 	var heal_val: int = 0
 	var pot_type: String = "health"
 
@@ -416,7 +514,6 @@ func use_potion(slot_index: int) -> bool:
 			player.health = mini(int(player.max_health), int(player.health) + heal_val)
 			update_health(player.health, player.max_health)
 
-	# Remove o item físico do grid
 	backpack.remove_item(item_to_use)
 	potion_cooldowns[slot_index] = POTION_COOLDOWN_TIME
 
@@ -442,11 +539,41 @@ func refresh_potion_slots() -> void:
 		var cnt_lbl: Label = _potion_counts[i]
 		var click_btn: Button = _potion_click_btns[i]
 
+		# 1. Frasco Recarregável equipado
+		var flask: ItemInstance = equipped_flasks[i]
+		if flask != null:
+			if flask.definition != null:
+				icon.texture = ItemIconFactory.get_icon(flask.definition)
+			var uses: int = flask.get_available_uses()
+			cnt_lbl.text = "x%d" % uses
+			if uses > 0:
+				icon.modulate = Color.WHITE
+			else:
+				icon.modulate = Color(0.45, 0.45, 0.45, 0.8)
+			var def_name: String = flask.definition.display_name if flask.definition != null else pot_id
+			click_btn.tooltip_text = "%s\nCargas: %d / %d (Consome %d por uso)\nUsos disponíveis: %d\nClique para consumir ou use o atalho." % [
+				def_name, flask.get_current_charges(), flask.get_flask_capacity(), flask.get_flask_cost(), uses
+			]
+			continue
+
+		# 2. Vazio
 		if pot_id.is_empty():
 			icon.texture = null
 			cnt_lbl.text = ""
 			click_btn.tooltip_text = "Slot de Poção %d (Vazio)\nClique na seta ▲ para vincular." % (i + 1)
 			continue
+
+		# 3. Se for frasco no backpack vinculado por ID, auto-equipa a instância
+		if ItemDatabase.is_flask(pot_id) and backpack != null:
+			var found_flask: ItemInstance = null
+			for it in backpack.items:
+				if it != null and it.definition != null and it.definition.base_id == pot_id:
+					found_flask = it
+					break
+			if found_flask != null:
+				equipped_flasks[i] = found_flask
+				refresh_potion_slots()
+				return
 
 		var def: ItemDefinition = ItemDatabase.get_definition(pot_id)
 		if def != null:
@@ -497,24 +624,46 @@ func _open_picker(slot_index: int) -> void:
 		if c != _picker_title:
 			c.queue_free()
 
-	# Coleta poções distintas disponíveis no inventário
+	# Coleta poções e frascos disponíveis no inventário
+	var available_flasks: Array[ItemInstance] = []
 	var available_pots: Dictionary = {}
 	if backpack != null:
 		for it in backpack.items:
 			if it != null and it.definition != null:
 				var def: ItemDefinition = it.definition
-				if def.category == ItemDefinition.ItemCategory.CONSUMABLE:
-					# Ignora consumíveis arcanos de crafting
+				if it.is_flask():
+					var matches_slot: bool = (slot_index == 0 and def.flask_resource_type == "life") or (slot_index == 1 and def.flask_resource_type == "mana")
+					if matches_slot and not available_flasks.has(it):
+						available_flasks.append(it)
+				elif def.category == ItemDefinition.ItemCategory.CONSUMABLE:
 					if not ItemDatabase.is_crafting_consumable(def.base_id):
 						available_pots[def.base_id] = available_pots.get(def.base_id, 0) + 1
 
-	if available_pots.is_empty():
+	if available_flasks.is_empty() and available_pots.is_empty():
 		var empty_lbl := Label.new()
 		empty_lbl.text = "Nenhuma poção na mochila"
 		empty_lbl.add_theme_font_size_override("font_size", 12)
 		empty_lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 		_picker_list.add_child(empty_lbl)
 	else:
+		# 1. Frascos Recarregáveis
+		for fl in available_flasks:
+			var btn := Button.new()
+			var uses: int = fl.get_available_uses()
+			btn.text = "%s (%d/%d cargas)" % [fl.get_display_name(), fl.get_current_charges(), fl.get_flask_capacity()]
+			btn.icon = ItemIconFactory.get_icon(fl.definition) if fl.definition != null else null
+			btn.expand_icon = true
+			btn.custom_minimum_size = Vector2(190, 32)
+			btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			btn.focus_mode = Control.FOCUS_NONE
+			var flask_ref: ItemInstance = fl
+			btn.pressed.connect(func() -> void:
+				equip_flask(_picker_slot, flask_ref)
+				_picker_panel.visible = false
+			)
+			_picker_list.add_child(btn)
+
+		# 2. Consumíveis tradicionais
 		for pot_id in available_pots.keys():
 			var count: int = available_pots[pot_id]
 			var def: ItemDefinition = ItemDatabase.get_definition(pot_id)
@@ -523,11 +672,12 @@ func _open_picker(slot_index: int) -> void:
 			btn.text = "%s (x%d)" % [d_name, count]
 			btn.icon = ItemIconFactory.get_icon(def) if def != null else null
 			btn.expand_icon = true
-			btn.custom_minimum_size = Vector2(170, 32)
+			btn.custom_minimum_size = Vector2(190, 32)
 			btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			btn.focus_mode = Control.FOCUS_NONE
 			var pid: String = pot_id
 			btn.pressed.connect(func() -> void:
+				equipped_flasks[_picker_slot] = null
 				bound_potion_ids[_picker_slot] = pid
 				potion_slot_changed.emit(_picker_slot, pid)
 				_picker_panel.visible = false
@@ -538,9 +688,10 @@ func _open_picker(slot_index: int) -> void:
 	# Opção de desvincular
 	var clear_btn := Button.new()
 	clear_btn.text = "✕ Desvincular (Vazio)"
-	clear_btn.custom_minimum_size = Vector2(170, 28)
+	clear_btn.custom_minimum_size = Vector2(190, 28)
 	clear_btn.focus_mode = Control.FOCUS_NONE
 	clear_btn.pressed.connect(func() -> void:
+		equipped_flasks[_picker_slot] = null
 		bound_potion_ids[_picker_slot] = ""
 		potion_slot_changed.emit(_picker_slot, "")
 		_picker_panel.visible = false
@@ -615,6 +766,23 @@ func _process(delta: float) -> void:
 		else:
 			_potion_cd_curtains[i].visible = false
 			_potion_cd_labels[i].visible = false
+
+	# Processamento de recuperação contínua de frascos (HoT/MoT)
+	if flask_service != null and player != null:
+		var cur_hp: float = float(player.get("health")) if "health" in player else float(current_health)
+		var max_hp: float = float(player.get("max_health")) if "max_health" in player else float(maximum_health)
+		var cur_mp: float = float(player.get("mana")) if "mana" in player else 0.0
+		var max_mp: float = float(player.get("max_mana")) if "max_mana" in player else 100.0
+
+		var gains: Dictionary = flask_service.update_recovery(delta, cur_hp, max_hp, cur_mp, max_mp)
+		var gain_hp: float = float(gains.get("life", 0.0))
+		var gain_mp: float = float(gains.get("mana", 0.0))
+
+		if gain_hp > 0.0 and "health" in player:
+			player.health = minf(max_hp, cur_hp + gain_hp)
+			update_health(int(player.health), int(max_hp))
+		if gain_mp > 0.0 and "mana" in player:
+			player.mana = minf(max_mp, cur_mp + gain_mp)
 
 
 func _relayout() -> void:

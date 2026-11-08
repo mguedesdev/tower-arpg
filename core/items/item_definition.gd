@@ -71,6 +71,14 @@ var id: String:
 @export var description: String = ""
 @export var suggested_source: String = "comum"
 
+# Propriedades de Frasco Recarregável (Doc 08 / PoE2 Style)
+@export var is_flask: bool = false
+@export var flask_resource_type: String = "life" ## "life" ou "mana"
+@export var flask_recovery_amount: float = 70.0  ## Pontos de vida/mana restaurados
+@export var flask_recovery_duration: float = 3.0 ## Duração em segundos (recuperação contínua)
+@export var flask_capacity: int = 60             ## Cargas máximas suportadas
+@export var flask_cost_per_use: int = 10         ## Cargas consumidas por ativação
+
 # Propriedades Intrínsecas / Implícitas fixas do item-base (não contam como afixos aleatórios)
 var implicit_affixes: Array[ItemAffix] = []
 

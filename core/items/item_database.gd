@@ -26,6 +26,15 @@ const CRAFTING_CONSUMABLE_IDS: Array[String] = [
 	"stone_verdict",
 ]
 
+const FLASK_IDS: Array[String] = [
+	"flask_life_small",
+	"flask_life_medium",
+	"flask_life_large",
+	"flask_mana_small",
+	"flask_mana_medium",
+	"flask_mana_large",
+]
+
 static var _catalog: Dictionary = {}
 
 
@@ -50,6 +59,14 @@ static func get_crafting_consumable_ids() -> Array[String]:
 
 static func is_crafting_consumable(base_id: String) -> bool:
 	return CRAFTING_CONSUMABLE_IDS.has(base_id)
+
+
+static func get_flask_ids() -> Array[String]:
+	return FLASK_IDS.duplicate()
+
+
+static func is_flask(base_id: String) -> bool:
+	return FLASK_IDS.has(base_id)
 
 
 static func get_definition(base_id: String) -> ItemDefinition:
@@ -373,6 +390,87 @@ static func _initialize_catalog() -> void:
 		"example_affixes": []
 	})
 
+	# ===============================================================
+	# FRASCOS RECARREGÁVEIS (DOC 08 / POE 2 STYLE)
+	# ===============================================================
+	# 1. Frasco de Vida Pequeno (1x1, Vida, req_lvl 1, 70 HP em 3.0s, cap 60, cost 10)
+	_register("flask_life_small", "Frasco de Vida Pequeno", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 1, "req_lvl": 1,
+		"gold": 20,
+		"icon": "res://assets/items/flasks/flask_life_small.png",
+		"desc": "Garrafa rústica com aro de metal. Recarrega cargas ao abater inimigos ou descansar em fontes de poder.",
+		"source": "inicial",
+		"is_flask": true, "flask_res_type": "life",
+		"flask_recovery": 70.0, "flask_duration": 3.0,
+		"flask_capacity": 60, "flask_cost": 10
+	})
+
+	# 2. Frasco de Vida Médio (1x1, Vida, req_lvl 8, 160 HP em 4.0s, cap 70, cost 10)
+	_register("flask_life_medium", "Frasco de Vida Médio", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 8, "req_lvl": 8,
+		"gold": 45,
+		"icon": "res://assets/items/flasks/flask_life_medium.png",
+		"desc": "Frasco bojudo com reforço de metal. Concentração superior de essência vital.",
+		"source": "drops_ou_mercadores",
+		"is_flask": true, "flask_res_type": "life",
+		"flask_recovery": 160.0, "flask_duration": 4.0,
+		"flask_capacity": 70, "flask_cost": 10
+	})
+
+	# 3. Frasco de Vida Grande (1x1, Vida, req_lvl 18, 320 HP em 4.0s, cap 80, cost 10)
+	_register("flask_life_large", "Frasco de Vida Grande", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 18, "req_lvl": 18,
+		"gold": 90,
+		"icon": "res://assets/items/flasks/flask_life_large.png",
+		"desc": "Recipiente alquímico reforçado de grande porte. Essência vital puríssima de Velen.",
+		"source": "zonas_avancadas",
+		"is_flask": true, "flask_res_type": "life",
+		"flask_recovery": 320.0, "flask_duration": 4.0,
+		"flask_capacity": 80, "flask_cost": 10
+	})
+
+	# 4. Frasco de Mana Pequeno (1x1, Mana, req_lvl 1, 55 Mana em 2.5s, cap 60, cost 10)
+	_register("flask_mana_small", "Frasco de Mana Pequeno", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 1, "req_lvl": 1,
+		"gold": 20,
+		"icon": "res://assets/items/flasks/flask_mana_small.png",
+		"desc": "Frasco de vidro lapidado que retém fluido etéreo. Recarrega cargas com abates em combate.",
+		"source": "inicial",
+		"is_flask": true, "flask_res_type": "mana",
+		"flask_recovery": 55.0, "flask_duration": 2.5,
+		"flask_capacity": 60, "flask_cost": 10
+	})
+
+	# 5. Frasco de Mana Médio (1x1, Mana, req_lvl 8, 125 Mana em 3.0s, cap 70, cost 10)
+	_register("flask_mana_medium", "Frasco de Mana Médio", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 8, "req_lvl": 8,
+		"gold": 45,
+		"icon": "res://assets/items/flasks/flask_mana_medium.png",
+		"desc": "Frasco protegido por guarnição arcana. Restauração substancial de mana.",
+		"source": "drops_ou_mercadores",
+		"is_flask": true, "flask_res_type": "mana",
+		"flask_recovery": 125.0, "flask_duration": 3.0,
+		"flask_capacity": 70, "flask_cost": 10
+	})
+
+	# 6. Frasco de Mana Grande (1x1, Mana, req_lvl 18, 240 Mana em 3.5s, cap 80, cost 10)
+	_register("flask_mana_large", "Frasco de Mana Grande", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 18, "req_lvl": 18,
+		"gold": 90,
+		"icon": "res://assets/items/flasks/flask_mana_large.png",
+		"desc": "Frasco arcano pesado com fluido condensado. Sustenta conjurações contínuas em batalhas decisivas.",
+		"source": "zonas_avancadas",
+		"is_flask": true, "flask_res_type": "mana",
+		"flask_recovery": 240.0, "flask_duration": 3.5,
+		"flask_capacity": 80, "flask_cost": 10
+	})
+
 
 static func _register(id: String, name: String, cat: ItemDefinition.ItemCategory, slot: ItemDefinition.EquipmentSlot, sz: Vector2i, props: Dictionary) -> void:
 	var def := ItemDefinition.new()
@@ -398,6 +496,12 @@ static func _register(id: String, name: String, cat: ItemDefinition.ItemCategory
 	def.description = String(props.get("desc", ""))
 	def.suggested_source = String(props.get("source", "comum"))
 	def.example_rarity_id = String(props.get("example_rarity", "normal"))
+	def.is_flask = bool(props.get("is_flask", false))
+	def.flask_resource_type = String(props.get("flask_res_type", "life"))
+	def.flask_recovery_amount = float(props.get("flask_recovery", 70.0))
+	def.flask_recovery_duration = float(props.get("flask_duration", 3.0))
+	def.flask_capacity = int(props.get("flask_capacity", 60))
+	def.flask_cost_per_use = int(props.get("flask_cost", 10))
 
 	if props.has("implicits"):
 		for imp in props["implicits"]:
