@@ -168,6 +168,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif InputMap.has_action("hud_skill_2") and event.is_action("hud_skill_2"):
 			slot_idx = SLOT_RMB
 		elif mb.button_index == MOUSE_BUTTON_LEFT:
+			if mb.pressed and TownInteractable3D.is_any_station_hovered():
+				var st: TownInteractable3D = TownInteractable3D.get_hovered_station()
+				if st != null:
+					st._handle_interaction_click()
+					get_viewport().set_input_as_handled()
+					return
+			if mb.pressed and ZonePortal3D.get_hovered_portal() != null:
+				var pt: ZonePortal3D = ZonePortal3D.get_hovered_portal()
+				if pt != null:
+					pt._handle_transition_click()
+					get_viewport().set_input_as_handled()
+					return
 			slot_idx = SLOT_LMB
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			slot_idx = SLOT_RMB

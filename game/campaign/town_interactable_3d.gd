@@ -5,7 +5,15 @@ class_name TownInteractable3D
 ## - "vendor_physical": Vendedor de Itens Físicos (Ferreiro)
 ## - "vendor_magic": Vendedor de Itens Mágicos (Arcanista)
 ## - "identifier_respec": Identificador de Itens, Cura & Resetar Build (Sábio)
+## - "scribe_crafting": Mesa do Escriba (Encantamento e Forja de Afixos)
 ## - "waypoint": Waypoint Ancestral (Teleporte entre Vila e Zonas descobertas)
+##
+## Suporte completo a interação estilo loot de chão (Path of Exile / Last Epoch):
+## • Placa 2D dinâmica na tela posicionada perfeitamente sobre a estação.
+## • Ao passar o mouse por cima (hover): ganha borda grossa (3px) e brilho intenso.
+## • Cursor em formato de mãozinha apontadora (CURSOR_POINTING_HAND).
+## • Clique Esquerdo do mouse (LMB) interage diretamente sem disparar ataques da hotbar.
+## • Se o jogador estiver longe, caminha automaticamente até a estação e interage ao chegar.
 
 signal interaction_requested(station_id: String, station_title: String)
 
@@ -14,14 +22,51 @@ signal interaction_requested(station_id: String, station_title: String)
 @export var station_subtitle: String = "[Clique] Abrir Baú"
 @export var interaction_radius: float = 3.1
 
+static var _active_stations: Array[TownInteractable3D] = []
+static var _hovered_station: TownInteractable3D = null
+
 var _label_title: Label3D
 var _label_prompt: Label3D
 var _highlight_ring: MeshInstance3D
 var _npc_pivot: Node3D
 var _animated_prop: Node3D
 var _station_light: OmniLight3D
+var _click_area: Area3D
 var _player_in_range: bool = false
+var _is_hovered: bool = false
 var _pulse_time: float = 0.0
+
+var _plate_panel: PanelContainer
+var _plate_style: StyleBoxFlat
+var _plate_title_label: Label
+var _plate_prompt_label: Label
+
+var _pending_interact_player: Node3D = null
+
+
+static func get_hovered_station() -> TownInteractable3D:
+	if is_instance_valid(_hovered_station):
+		return _hovered_station
+	return null
+
+
+static func is_any_station_hovered() -> bool:
+	return is_instance_valid(_hovered_station)
+
+
+func _ready() -> void:
+	if not _active_stations.has(self):
+		_active_stations.append(self)
+	_create_screen_plate()
+
+
+func _exit_tree() -> void:
+	_active_stations.erase(self)
+	if _hovered_station == self:
+		_hovered_station = null
+	if is_instance_valid(_plate_panel):
+		_plate_panel.queue_free()
+		_plate_panel = null
 
 
 func configure(id_value: String, title_value: String, subtitle_value: String, pos: Vector3, yaw_deg: float = 0.0) -> void:
@@ -32,6 +77,7 @@ func configure(id_value: String, title_value: String, subtitle_value: String, po
 	rotation_degrees.y = yaw_deg
 	_pulse_time = randf() * TAU
 	_build_visuals()
+	_create_screen_plate()
 
 
 func _build_visuals() -> void:
@@ -40,6 +86,7 @@ func _build_visuals() -> void:
 	_npc_pivot = null
 	_animated_prop = null
 	_station_light = null
+	_click_area = null
 
 	var accent_color := _get_accent_color()
 
@@ -90,6 +137,7 @@ func _build_visuals() -> void:
 
 	var label_height: float = 1.95 if (station_id == "stash" or station_id == "waypoint" or station_id == "scribe_crafting") else 2.55
 
+	# Labels 3D mantidos internamente para compatibilidade, ocultados em prol da placa 2D interativa
 	_label_title = Label3D.new()
 	_label_title.text = "✦ %s ✦" % station_title
 	_label_title.font_size = 32
@@ -102,6 +150,7 @@ func _build_visuals() -> void:
 	_label_title.no_depth_test = true
 	_label_title.pixel_size = 0.0085
 	_label_title.position = Vector3(0.0, label_height, 0.0)
+	_label_title.visible = false
 	add_child(_label_title)
 
 	_label_prompt = Label3D.new()
@@ -118,6 +167,312 @@ func _build_visuals() -> void:
 	_label_prompt.position = Vector3(0.0, label_height - 0.35, 0.0)
 	_label_prompt.visible = false
 	add_child(_label_prompt)
+
+	# Área física 3D para capturar hover e clique diretamente no modelo 3D
+	_click_area = Area3D.new()
+	_click_area.name = "StationClickArea"
+	_click_area.collision_layer = 16
+	_click_area.collision_mask = 0
+	_click_area.input_ray_pickable = true
+	var col_shape := CollisionShape3D.new()
+	var cyl := CylinderShape3D.new()
+	cyl.radius = 1.35
+	cyl.height = 2.4
+	col_shape.shape = cyl
+	col_shape.position = Vector3(0.0, 1.2, 0.0)
+	_click_area.add_child(col_shape)
+	_click_area.mouse_entered.connect(_on_plate_mouse_entered)
+	_click_area.mouse_exited.connect(_on_plate_mouse_exited)
+	_click_area.input_event.connect(_on_3d_input_event)
+	add_child(_click_area)
+
+
+func _create_screen_plate() -> void:
+	if is_instance_valid(_plate_panel):
+		_update_plate_content()
+		return
+	var hud_parent: Node = _find_hud_layer()
+	if hud_parent == null:
+		return
+
+	_plate_panel = PanelContainer.new()
+	_plate_panel.name = "StationPlate_%s" % station_id
+	_plate_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_plate_panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_plate_panel.z_index = 4
+
+	_plate_style = StyleBoxFlat.new()
+	_plate_style.set_corner_radius_all(3)
+	_plate_style.shadow_color = Color(0.0, 0.0, 0.0, 0.85)
+	_plate_style.content_margin_left = 12
+	_plate_style.content_margin_right = 12
+	_plate_style.content_margin_top = 4
+	_plate_style.content_margin_bottom = 4
+	_plate_panel.add_theme_stylebox_override("panel", _plate_style)
+
+	var vbox := VBoxContainer.new()
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_theme_constant_override("separation", 1)
+	_plate_panel.add_child(vbox)
+
+	_plate_title_label = Label.new()
+	_plate_title_label.text = _format_station_title()
+	_plate_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_plate_title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_plate_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_plate_title_label.add_theme_font_size_override("font_size", 13)
+	vbox.add_child(_plate_title_label)
+
+	_plate_prompt_label = Label.new()
+	_plate_prompt_label.text = station_subtitle
+	_plate_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_plate_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_plate_prompt_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_plate_prompt_label.add_theme_font_size_override("font_size", 10)
+	vbox.add_child(_plate_prompt_label)
+
+	_plate_panel.mouse_entered.connect(_on_plate_mouse_entered)
+	_plate_panel.mouse_exited.connect(_on_plate_mouse_exited)
+	_plate_panel.gui_input.connect(_on_plate_gui_input)
+
+	hud_parent.add_child(_plate_panel)
+	hud_parent.move_child(_plate_panel, 0)
+	_apply_plate_visual_state(false, true)
+
+
+func _update_plate_content() -> void:
+	if _plate_title_label != null:
+		_plate_title_label.text = _format_station_title()
+	if _plate_prompt_label != null:
+		_plate_prompt_label.text = station_subtitle
+	_apply_plate_visual_state(_is_hovered, true)
+
+
+func _find_hud_layer() -> Node:
+	var tree := get_tree()
+	if tree == null:
+		return null
+	var scene: Node = tree.current_scene
+	if scene == null:
+		scene = get_parent()
+	if scene != null:
+		var hud: Node = scene.get_node_or_null("HUD")
+		if hud != null:
+			return hud
+	return scene
+
+
+func _format_station_title() -> String:
+	match station_id:
+		"waypoint":
+			return "◆  %s  ◆" % station_title
+		"stash":
+			return "✦  %s  ✦" % station_title
+		"vendor_physical":
+			return "⚒  %s  ⚒" % station_title
+		"vendor_magic":
+			return "✦  %s  ✦" % station_title
+		"identifier_respec":
+			return "📜  %s  📜" % station_title
+		"scribe_crafting":
+			return "✒  %s  ✒" % station_title
+		_:
+			return "✦  %s  ✦" % station_title
+
+
+func _on_plate_mouse_entered() -> void:
+	_hovered_station = self
+	_apply_plate_visual_state(true)
+
+
+func _on_plate_mouse_exited() -> void:
+	if _hovered_station == self:
+		_hovered_station = null
+	_apply_plate_visual_state(false)
+
+
+func _on_plate_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			get_viewport().set_input_as_handled()
+			_handle_interaction_click()
+
+
+func _on_3d_input_event(_cam: Node, event: InputEvent, _pos: Vector3, _normal: Vector3, _shape: int) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			get_viewport().set_input_as_handled()
+			_handle_interaction_click()
+
+
+func _apply_plate_visual_state(highlighted: bool, force: bool = false) -> void:
+	if not force and _is_hovered == highlighted:
+		return
+	_is_hovered = highlighted
+	if not is_instance_valid(_plate_panel) or _plate_style == null:
+		return
+
+	var accent := _get_accent_color()
+
+	# Borda grossa (3px) no hover conforme solicitado pelo usuário:
+	# "coloque uma borda grossa e talz a gente vai saber q ta com o mouse em cima"
+	var bw: int = 3 if highlighted else 1
+	_plate_style.set_border_width_all(bw)
+
+	if highlighted:
+		_plate_style.bg_color = Color(accent.r * 0.18, accent.g * 0.18, accent.b * 0.18, 0.96).lerp(Color(0.08, 0.08, 0.12, 0.96), 0.45)
+		_plate_style.border_color = accent.lightened(0.35)
+		_plate_style.shadow_size = 8
+		_plate_panel.z_index = 16
+		if _plate_title_label != null:
+			_plate_title_label.add_theme_color_override("font_color", Color.WHITE)
+		if _plate_prompt_label != null:
+			_plate_prompt_label.add_theme_color_override("font_color", Color(1.0, 0.94, 0.62))
+			_plate_prompt_label.text = "✦ %s ✦" % station_subtitle.replace("[", "").replace("]", "")
+		if _highlight_ring != null and _highlight_ring.material_override is StandardMaterial3D:
+			var mat: StandardMaterial3D = _highlight_ring.material_override as StandardMaterial3D
+			mat.emission_energy_multiplier = 2.4
+			_highlight_ring.scale = Vector3(1.18, 1.0, 1.18)
+		if _station_light != null:
+			_station_light.light_energy = 0.90
+	else:
+		_plate_style.bg_color = Color(0.035, 0.035, 0.045, 0.90)
+		_plate_style.border_color = Color(accent.r * 0.65, accent.g * 0.65, accent.b * 0.65, 0.75)
+		_plate_style.shadow_size = 4
+		_plate_panel.z_index = 4
+		if _plate_title_label != null:
+			_plate_title_label.add_theme_color_override("font_color", accent.lightened(0.30))
+		if _plate_prompt_label != null:
+			_plate_prompt_label.add_theme_color_override("font_color", Color(0.82, 0.82, 0.86, 0.80))
+			_plate_prompt_label.text = station_subtitle
+		if _highlight_ring != null and _highlight_ring.material_override is StandardMaterial3D:
+			var mat: StandardMaterial3D = _highlight_ring.material_override as StandardMaterial3D
+			mat.emission_energy_multiplier = 1.0
+			_highlight_ring.scale = Vector3(1.0, 1.0, 1.0)
+		if _station_light != null:
+			_station_light.light_energy = 0.55
+
+
+func _get_player() -> Node3D:
+	var tree := get_tree()
+	if tree == null:
+		return null
+	var p_nodes := tree.get_nodes_in_group("player")
+	if not p_nodes.is_empty():
+		return p_nodes[0] as Node3D
+	var scene: Node = tree.current_scene
+	if scene == null:
+		scene = get_parent()
+	if scene != null:
+		if "player" in scene and scene.player != null and scene.player is Node3D:
+			return scene.player as Node3D
+		var found = scene.find_child("player", true, false)
+		if found is Node3D:
+			return found as Node3D
+		found = scene.find_child("Player", true, false)
+		if found is Node3D:
+			return found as Node3D
+	return null
+
+
+func _handle_interaction_click() -> void:
+	var p_node: Node3D = _get_player()
+
+	if p_node == null:
+		trigger_interaction()
+		return
+
+	var dist_xz: float = Vector2(p_node.global_position.x - global_position.x, p_node.global_position.z - global_position.z).length()
+	if dist_xz <= interaction_radius * 1.5:
+		# Perto o suficiente: aciona imediatamente!
+		_pending_interact_player = null
+		if "chase_direction" in p_node:
+			p_node.set("chase_direction", Vector3.ZERO)
+		trigger_interaction()
+	else:
+		# Se estiver distante, o herói caminha suavemente até o NPC/Waypoint e abre a janela ao chegar!
+		_pending_interact_player = p_node
+		var move_vec := Vector3(global_position.x - p_node.global_position.x, 0.0, global_position.z - p_node.global_position.z)
+		if "chase_direction" in p_node:
+			p_node.set("chase_direction", move_vec.normalized())
+		var scene: Node = get_tree().current_scene if get_tree() != null else null
+		if scene != null and "status_label" in scene and scene.status_label != null:
+			scene.status_label.text = "✦ A caminho de: %s..." % station_title
+			if "_status_timer" in scene:
+				scene._status_timer = 2.0
+
+
+func _process(delta: float) -> void:
+	# 1. Movimentação automática até a estação quando clicada de longe
+	if _pending_interact_player != null:
+		var has_manual: bool = false
+		if _pending_interact_player.has_method("has_manual_move_input"):
+			has_manual = _pending_interact_player.has_manual_move_input()
+		if not is_instance_valid(_pending_interact_player) or has_manual:
+			_pending_interact_player = null
+		else:
+			var p_pos: Vector3 = _pending_interact_player.global_position
+			var dist_xz: float = Vector2(p_pos.x - global_position.x, p_pos.z - global_position.z).length()
+			if dist_xz <= interaction_radius * 1.15:
+				if "chase_direction" in _pending_interact_player:
+					_pending_interact_player.set("chase_direction", Vector3.ZERO)
+				_pending_interact_player = null
+				trigger_interaction()
+			else:
+				var move_vec := Vector3(global_position.x - p_pos.x, 0.0, global_position.z - p_pos.z)
+				if "chase_direction" in _pending_interact_player:
+					_pending_interact_player.set("chase_direction", move_vec.normalized())
+
+	# 2. Atualização da posição 2D da placa flutuante na tela
+	_update_screen_plate()
+
+
+func _update_screen_plate() -> void:
+	if not is_instance_valid(_plate_panel):
+		_create_screen_plate()
+	if not is_instance_valid(_plate_panel):
+		return
+
+	if not is_visible_in_tree():
+		_plate_panel.visible = false
+		return
+
+	# Oculta se alguma janela modal bloqueante estiver aberta (Inventário / Diálogo)
+	var tree := get_tree()
+	if tree != null:
+		for m in tree.get_nodes_in_group("blocking_modal"):
+			if m is CanvasItem and (m as CanvasItem).visible:
+				_plate_panel.visible = false
+				return
+
+	var vp: Viewport = get_viewport()
+	if vp == null:
+		return
+	var cam: Camera3D = vp.get_camera_3d()
+	if cam == null:
+		return
+
+	var label_height: float = 1.95 if (station_id == "stash" or station_id == "waypoint" or station_id == "scribe_crafting") else 2.55
+	var world_anchor: Vector3 = global_position + Vector3(0.0, label_height, 0.0)
+
+	if cam.is_position_behind(world_anchor):
+		_plate_panel.visible = false
+		return
+
+	var screen_pt: Vector2 = cam.unproject_position(world_anchor)
+	var vp_size: Vector2 = vp.get_visible_rect().size
+
+	if screen_pt.x < -120.0 or screen_pt.x > vp_size.x + 120.0 or screen_pt.y < -120.0 or screen_pt.y > vp_size.y + 120.0:
+		_plate_panel.visible = false
+		return
+
+	_plate_panel.visible = true
+	var sz: Vector2 = _plate_panel.size
+	if sz.x < 30.0:
+		sz = _plate_panel.get_combined_minimum_size()
+	_plate_panel.position = Vector2(screen_pt.x - sz.x * 0.5, screen_pt.y - sz.y)
 
 
 func _get_accent_color() -> Color:
@@ -276,7 +631,7 @@ func update_proximity(player_pos: Vector3, delta: float) -> bool:
 
 	if _label_prompt != null:
 		_label_prompt.visible = _player_in_range
-	if _highlight_ring != null:
+	if _highlight_ring != null and not _is_hovered:
 		var scale_f: float = (1.07 + 0.05 * sin(_pulse_time * 1.4)) if _player_in_range else 1.0
 		_highlight_ring.scale = Vector3(scale_f, 1.0, scale_f)
 

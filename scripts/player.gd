@@ -122,6 +122,7 @@ func set_lobby_mode(enabled: bool) -> void:
 			visual.rotation.z = 0.0
 
 func _ready() -> void:
+	add_to_group("player")
 	motion_mode = CharacterBody3D.MOTION_MODE_GROUNDED
 	floor_stop_on_slope = true
 	floor_constant_speed = true

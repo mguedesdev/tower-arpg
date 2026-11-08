@@ -261,10 +261,18 @@ func _unhandled_input(event: InputEvent) -> void:
 									return
 					# 2. Clique para interagir com NPC / Baú / Waypoint da Vila
 					for station in _active_interactables:
-						if is_instance_valid(station) and station.is_player_in_range():
+						if is_instance_valid(station):
 							var d_xz: float = Vector2(hit_pos.x - station.global_position.x, hit_pos.z - station.global_position.z).length()
-							if d_xz <= 2.2:
-								station.trigger_interaction()
+							if d_xz <= 2.6:
+								station._handle_interaction_click()
+								get_viewport().set_input_as_handled()
+								return
+					# 3. Clique para atravessar Portão de Zona
+					for gate in _active_portals:
+						if is_instance_valid(gate):
+							var d_xz: float = Vector2(hit_pos.x - gate.global_position.x, hit_pos.z - gate.global_position.z).length()
+							if d_xz <= 3.2:
+								gate._handle_transition_click()
 								get_viewport().set_input_as_handled()
 								return
 
