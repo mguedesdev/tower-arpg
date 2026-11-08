@@ -261,13 +261,13 @@ func _test_main_scene_inventory_integration() -> void:
 	_check(bw_high > bw_normal and is_equal_approx(pad_high, pad_normal), "19e. Item no chão em destaque ganha apenas contorno mais grosso (3px) sem expandir de tamanho")
 	drop_test.queue_free()
 
-	# Teste de Iluminação Global Clara e Sombras 3D (Sem Ciclo de Noite nem Lanterna)
+	# Teste de Iluminação Ambiente Suave (Sem Sol cegante, Sem Sombras e Sem Ciclo de Noite/Lanterna)
 	var dn_hud = main_node.get("day_night_hud")
 	var sun_node: DirectionalLight3D = main_node.get_node_or_null("Sun") as DirectionalLight3D
 	var w_env: WorldEnvironment = main_node.get_node_or_null("WorldEnvironment") as WorldEnvironment
 	_check(dn_hud == null, "19f. Sistema de Dia/Noite completamente removido (sem DayNightCycleHUD)")
-	_check(sun_node != null and sun_node.shadow_enabled and sun_node.light_energy >= 1.20, "19g. Luz Direcional do Sol ativa com sombras 3D e iluminação clara e brilhante")
-	_check(w_env != null and w_env.environment != null and w_env.environment.ambient_light_energy >= 0.40, "19h. Iluminação ambiente clara e permanente garantida (cenário nunca fica escuro)")
+	_check(sun_node == null, "19g. Sol direcional e sombras removidos completamente (sem nó Sun)")
+	_check(w_env != null and w_env.environment != null and w_env.environment.ambient_light_energy >= 0.40, "19h. Iluminação ambiente suave sem clarão excessivo garantida")
 
 	# Teste do Mapa do Ato 1 em Tela Cheia (Waypoint vs Tecla M + Pausa + 8 Locais)
 	var wm: WorldMapModal = main_node.world_map_modal

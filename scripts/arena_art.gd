@@ -100,11 +100,7 @@ func _mesh_instance(mesh_label: String, mesh: Mesh, mat: Material, spawn_positio
 	node.mesh = mesh
 	node.material_override = mat
 	node.position = spawn_position
-	var std_mat := mat as StandardMaterial3D
-	if std_mat != null and (std_mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED or std_mat.emission_enabled):
-		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	else:
-		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(node)
 	return node
 
@@ -193,12 +189,10 @@ func _build_altar() -> void:
 	shrine_light.name = "ShrineFireLight"
 	shrine_light.position = Vector3(0.0, 2.25, 0.0)
 	shrine_light.light_color = Color(1.0, 0.62, 0.28)
-	shrine_light.light_energy = 0.75
+	shrine_light.light_energy = 0.55
 	shrine_light.omni_range = 8.0
 	shrine_light.omni_attenuation = 1.35
-	shrine_light.shadow_enabled = true
-	shrine_light.shadow_blur = 0.0
-	shrine_light.shadow_bias = 0.04
+	shrine_light.shadow_enabled = false
 	add_child(shrine_light)
 
 func _build_perimeter_ring() -> void:
@@ -343,12 +337,10 @@ func _brazier(pos: Vector3) -> void:
 	brazier_light.name = "BrazierFireLight"
 	brazier_light.position = Vector3(0.0, 1.45, 0.0)
 	brazier_light.light_color = Color(1.0, 0.62, 0.28)
-	brazier_light.light_energy = 0.65
+	brazier_light.light_energy = 0.45
 	brazier_light.omni_range = 4.5
 	brazier_light.omni_attenuation = 1.45
-	brazier_light.shadow_enabled = true
-	brazier_light.shadow_blur = 0.0
-	brazier_light.shadow_bias = 0.04
+	brazier_light.shadow_enabled = false
 	root.add_child(brazier_light)
 
 func _add_box_to(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
@@ -359,7 +351,7 @@ func _add_box_to(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> M
 	node.mesh = mesh
 	node.material_override = _material("part_box", color)
 	node.position = pos
-	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
 	return node
 
@@ -374,7 +366,7 @@ func _add_cylinder_to(parent: Node3D, pos: Vector3, radius: float, height: float
 	node.mesh = mesh
 	node.material_override = _material("part_cyl", color)
 	node.position = pos
-	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
 	return node
 
@@ -402,12 +394,10 @@ func _build_town_encampment() -> void:
 	camp_light.name = "TownCampfireLight"
 	camp_light.position = Vector3(0.0, 2.15, 0.0)
 	camp_light.light_color = Color(1.0, 0.64, 0.30)
-	camp_light.light_energy = 1.15
+	camp_light.light_energy = 0.70
 	camp_light.omni_range = 7.5
 	camp_light.omni_attenuation = 1.45
-	camp_light.shadow_enabled = true
-	camp_light.shadow_blur = 0.0
-	camp_light.shadow_bias = 0.04
+	camp_light.shadow_enabled = false
 	add_child(camp_light)
 
 	# Muralhas baixas do Acampamento com abertura larga no Portão Norte (Z = -16.5)

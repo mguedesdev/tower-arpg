@@ -20,8 +20,8 @@ size = Vector3(52, 0.4, 52)
 background_mode = 1
 background_color = Color(0.055, 0.06, 0.075, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.52, 0.58, 0.64, 1)
-ambient_light_energy = 0.45
+ambient_light_color = Color(0.70, 0.72, 0.76, 1)
+ambient_light_energy = 0.85
 
 [sub_resource type="StandardMaterial3D" id="StoneMaterial"]
 albedo_color = Color(0.26, 0.27, 0.31, 1)
@@ -49,16 +49,6 @@ script = ExtResource("1_main")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("ArenaEnvironment")
-
-[node name="Sun" type="DirectionalLight3D" parent="."]
-rotation = Vector3(-1.02, 0.72, 0)
-light_color = Color(0.98, 0.99, 1, 1)
-light_energy = 1.35
-shadow_enabled = true
-shadow_bias = 0.015
-shadow_blur = 0.0
-directional_shadow_mode = 0
-directional_shadow_max_distance = 45.0
 
 [node name="Ground" type="StaticBody3D" parent="."]
 

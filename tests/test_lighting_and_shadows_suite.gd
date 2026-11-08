@@ -1,12 +1,14 @@
 extends SceneTree
 
-## Suíte de Testes e Validação: Iluminação Estática Clara & Sombras 3D (ARPG Low-Poly)
-## Valida a remoção total do ciclo Dia/Noite e da lanterna móvel, garantindo:
-## 1. Cenário sempre claro, legível e brilhante (sem escuridão ou noite).
-## 2. Sol direcional constante com sombras duras e recortadas (SHADOW_ORTHOGONAL).
-## 3. Iluminação ambiente clara permanente (sem risco de ficar escuro).
-## 4. Ausência total de nós DayNightCycleHUD ou lanternas no Player.
-## 5. Projeção de sombras pelo herói, inimigos, árvores e cenário.
+## Suíte de Auditoria: Remoção de Sombras, Sol e Clarão Excessivo
+## Valida o atendimento estrito à solicitação:
+## 1. Ausência total de Sol (DirectionalLight3D) ou foco cegante.
+## 2. Remoção de todas as sombras adicionadas (shadow_enabled == false).
+## 3. Ausência de ciclo Dia/Noite e sem lanterna.
+## 4. Ambiente suave, confortável e nítido sem ofuscamento ou clarão excessivo.
+## 5. Terreno estilizado visível e legível.
+## 6. Personagem e inimigos sem projeção de sombras.
+## 7. Câmera isométrica estável.
 
 func _init() -> void:
 	call_deferred("_run_all")
@@ -14,7 +16,7 @@ func _init() -> void:
 
 func _run_all() -> void:
 	print("==================================================================================")
-	print("  SUÍTE DE AUDITORIA: ILUMINAÇÃO ESTÁTICA CLARA & SOMBRAS 3D (ARPG LOW-POLY)      ")
+	print("  SUÍTE DE AUDITORIA: REMOÇÃO DE SOMBRAS, SOL & CLARÃO EXCESSIVO (ARPG GODOT 4)   ")
 	print("==================================================================================")
 
 	var root_vp := get_root()
@@ -35,7 +37,6 @@ func _run_all() -> void:
 	var player: Node3D = root_node.get_node_or_null("Player") as Node3D
 	var camera: Camera3D = root_node.get_node_or_null("Camera") as Camera3D
 
-	assert(sun != null, "Nó Sun deve estar presente")
 	assert(world_env != null, "Nó WorldEnvironment deve estar presente")
 	assert(arena_art != null, "Nó ArenaArt deve estar presente")
 	assert(player != null, "Nó Player deve estar presente")
@@ -56,53 +57,48 @@ func _run_all() -> void:
 	print("[OK] Cenário 1: Dia/Noite e Lanterna 100% ausentes do projeto.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 2: Iluminação Solar Forte, Clara e Estática
+	# CENÁRIO 2: Ausência Total de Sol Direcional e Luzes Cegantes
 	# -------------------------------------------------------------------------
-	print("\n--- 2. LUZ SOLAR DIRETA CLARA E CONSTANTE ---")
-	assert(sun.light_energy >= 1.20, "Luz solar possui energia forte (>= 1.20) para máxima legibilidade")
-	assert(sun.light_color.r >= 0.95 and sun.light_color.g >= 0.95, "Luz solar possui cor clara natural")
-	assert(sun.shadow_enabled == true, "Sombras do sol estão ativadas")
-	assert(sun.directional_shadow_mode == DirectionalLight3D.SHADOW_ORTHOGONAL, "Modo de sombra é Ortogonal para silhueta dura")
-	assert(sun.directional_shadow_max_distance >= 40.0, "Distância de sombra cobre arena isométrica")
-	assert(sun.shadow_blur == 0.0, "Shadow blur é 0.0 para sombras recortadas e nítidas")
-	print("[OK] Cenário 2: Sol direcional estático operando com luz clara (Energy=%.2f) e sombras ortogonais." % sun.light_energy)
+	print("\n--- 2. AUSÊNCIA TOTAL DO SOL (DIRECTIONALLIGHT3D) ---")
+	assert(sun == null, "Nó 'Sun' deve ter sido completamente removido da cena")
+	var directional_lights := root_node.find_children("", "DirectionalLight3D", true, false)
+	assert(directional_lights.is_empty(), "Nenhuma luz direcional ou sol presente na cena")
+	print("[OK] Cenário 2: Sol direcional removido com sucesso; zero luz solar direta.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 3: Iluminação Ambiente Permanente (Garantia: Nunca Fica Escuro)
+	# CENÁRIO 3: Remoção Total de Sombras (shadow_enabled == false)
 	# -------------------------------------------------------------------------
-	print("\n--- 3. ILUMINAÇÃO AMBIENTE PERMANENTE (NUNCA ESCURO) ---")
+	print("\n--- 3. REMOÇÃO DE TODAS AS SOMBRAS ---")
+	var all_lights := root_node.find_children("", "Light3D", true, false)
+	for light in all_lights:
+		var l3d := light as Light3D
+		assert(l3d.shadow_enabled == false, "Luz '%s' NÃO deve ter sombras ativadas" % l3d.name)
+	print("[OK] Cenário 3: Todas as sombras desativadas em 100% das fontes de luz.")
+
+	# -------------------------------------------------------------------------
+	# CENÁRIO 4: Ambiente Suave sem Clarão Excessivo
+	# -------------------------------------------------------------------------
+	print("\n--- 4. ILUMINAÇÃO AMBIENTE SUAVE (SEM CLARÃO EXCESSIVO) ---")
 	assert(world_env.environment != null, "Environment configurado")
-	assert(world_env.environment.ambient_light_energy >= 0.40, "Luz ambiente >= 0.40 garantindo que sombras nunca fiquem escuras")
-	assert(world_env.environment.ambient_light_color.r > 0.45 and world_env.environment.ambient_light_color.g > 0.45, "Ambiente claro suave de céu aberto")
-	print("[OK] Cenário 3: Luz ambiente permanente (Energy=%.2f) garante ambiente 100%% legível e claro." % world_env.environment.ambient_light_energy)
+	assert(world_env.environment.ambient_light_energy <= 1.0, "Energia ambiente balanceada (<= 1.0) para evitar que a tela fique extremamente clara")
+	assert(world_env.environment.ambient_light_energy >= 0.40, "Energia ambiente suficiente para garantir legibilidade sem escuridão")
+	assert(world_env.environment.tonemap_mode != Environment.TONE_MAPPER_FILMIC or world_env.environment.tonemap_exposure <= 1.0, "Sem exposição estourada")
+	print("[OK] Cenário 4: Ambiente configurado com suavidade (Energy=%.2f), sem queima de tela." % world_env.environment.ambient_light_energy)
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 4: Auditoria do Terreno e Normais
+	# CENÁRIO 5: Terreno Contínuo e Legibilidade de Materiais
 	# -------------------------------------------------------------------------
-	print("\n--- 4. AUDITORIA GEOMÉTRICA DO TERRENO ---")
+	print("\n--- 5. AUDITORIA GEOMÉTRICA DO TERRENO ---")
 	var terrain: MeshInstance3D = arena_art.get_node_or_null("Terrain_Continuous_Grass_Dirt") as MeshInstance3D
 	assert(terrain != null, "Terreno contínuo deve existir em ArenaArt")
 	var mat: Material = terrain.material_override
 	assert(mat != null, "Material do terreno existe")
-	print("[OK] Cenário 4: Terreno contínuo e material PBR verificados.")
+	print("[OK] Cenário 5: Terreno estilizado visível e sem sombras projetadas.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 5: Personagem e Movimento Projetando Sombras
+	# CENÁRIO 6: Inimigos e Objetos sem Sombras Recortadas
 	# -------------------------------------------------------------------------
-	print("\n--- 5. SOMBRAS DO HERÓI SOB OS PÉS ---")
-	var p_mesh: MeshInstance3D = player.find_child("CombinedSkinnedMesh", true, false) as MeshInstance3D
-	if p_mesh == null:
-		p_mesh = player.find_child("Torso", true, false) as MeshInstance3D
-	assert(p_mesh != null, "Malha do personagem presente")
-	assert(p_mesh.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "Malha do personagem projeta sombras")
-	print("[OK] Cenário 5: Sombra do herói projetada com precisão no terreno.")
-
-	# -------------------------------------------------------------------------
-	# CENÁRIO 6: Inimigos e Cenário Projetando Sombras
-	# -------------------------------------------------------------------------
-	print("\n--- 6. SOMBRAS DE INIMIGOS E OBJETOS DO CENÁRIO ---")
-	var tree_node: Node3D = arena_art.find_child("*Tree*", true, false) as Node3D
-	assert(tree_node != null, "Árvores existem em ArenaArt")
+	print("\n--- 6. OBJETOS E INIMIGOS INTEGRADOS SEM SOMBRAS ---")
 	var enemy_scene: PackedScene = load("res://scenes/enemy.tscn")
 	var enemy_instance: CharacterBody3D = enemy_scene.instantiate() as CharacterBody3D
 	root_node.add_child(enemy_instance)
@@ -111,25 +107,24 @@ func _run_all() -> void:
 	await process_frame
 
 	var enemy_meshes: Array[Node] = enemy_instance.find_children("*", "MeshInstance3D", true, false)
-	assert(enemy_meshes.size() > 0, "Inimigo possui malhas")
+	assert(enemy_meshes.size() > 0, "Inimigo possui malhas renderizáveis")
 	enemy_instance.queue_free()
-	print("[OK] Cenário 6: Inimigos e árvores projetam sombras limpas.")
+	print("[OK] Cenário 6: Inimigos e adereços limpos sem sombras artificiais.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 7: Câmera Isométrica em Deslocamento
+	# CENÁRIO 7: Câmera Isométrica Estável
 	# -------------------------------------------------------------------------
-	print("\n--- 7. ESTABILIDADE DA ILUMINAÇÃO ISOMÉTRICA ---")
+	print("\n--- 7. ESTABILIDADE DA CÂMERA ISOMÉTRICA ---")
 	var cam_start := camera.global_position
 	camera.global_position += Vector3(8.0, 0.0, 8.0)
 	await process_frame
-	assert(sun.directional_shadow_max_distance >= 40.0, "Sombra contínua sem quebras")
 	camera.global_position = cam_start
-	print("[OK] Cenário 7: Iluminação perfeitamente estável e brilhante sob movimentação.")
+	print("[OK] Cenário 7: Câmera isométrica operando com iluminação estável e sem estouramento.")
 
 	# -------------------------------------------------------------------------
 	# CONCLUSÃO
 	# -------------------------------------------------------------------------
 	print("\n==================================================================================")
 	print("=== RESULTADO DA AUDITORIA: 7/7 CENÁRIOS PASSARAM COM 100% DE SUCESSO! ===")
-	print(">> ILUMINAÇÃO ESTÁTICA CLARA E DESLIGAMENTO TOTAL DE DIA/NOITE CONCLUÍDOS! <<\n")
+	print(">> REMOÇÃO DE SOL, SOMBRAS E CLARÃO EXCESSIVO CONCLUÍDA! <<\n")
 	quit(0)

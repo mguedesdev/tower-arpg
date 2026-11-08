@@ -1183,25 +1183,16 @@ func _on_form_changed(value: String) -> void:
 func _setup_static_lighting() -> void:
 	var sun: DirectionalLight3D = get_node_or_null("Sun") as DirectionalLight3D
 	if sun != null:
-		sun.rotation = Vector3(-1.02, 0.72, 0.0)
-		sun.light_color = Color(1.0, 0.98, 0.95, 1.0)
-		sun.light_energy = 1.35
-		sun.shadow_enabled = true
-		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-		sun.directional_shadow_max_distance = 45.0
-		sun.shadow_bias = 0.015
-		sun.shadow_normal_bias = 1.0
-		sun.shadow_blur = 0.0
-		sun.shadow_opacity = 1.0
+		sun.queue_free()
 	var w_env: WorldEnvironment = get_node_or_null("WorldEnvironment") as WorldEnvironment
 	if w_env != null and w_env.environment != null:
 		var env: Environment = w_env.environment.duplicate() as Environment
 		env.background_mode = Environment.BG_COLOR
 		env.background_color = Color(0.045, 0.05, 0.065, 1.0)
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		env.ambient_light_color = Color(0.55, 0.60, 0.68, 1.0)
-		env.ambient_light_energy = 0.50
-		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-		env.tonemap_exposure = 1.05
+		env.ambient_light_color = Color(0.70, 0.72, 0.76, 1.0)
+		env.ambient_light_energy = 0.85
+		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+		env.tonemap_exposure = 1.0
 		w_env.environment = env
 
