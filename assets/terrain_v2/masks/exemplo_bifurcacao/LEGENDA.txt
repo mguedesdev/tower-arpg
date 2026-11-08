@@ -1,0 +1,1 @@
+Base R=terra, G=pedra, B=vazio. Detalhes R=grama_com_pedrinhas, G=terra_com_pedrinhas, B=trilha_pedregosa. Máscaras não devem repetir.
