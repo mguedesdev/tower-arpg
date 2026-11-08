@@ -94,20 +94,31 @@ func _run_all_tests() -> void:
 		deco.queue_free()
 
 	# -------------------------------------------------------------------------
-	# 4. AUSÊNCIA DE SOMBRAS EM TODOS OS MODELOS
+	# 4. CONFIGURAÇÃO DE SOMBRAS (ÁRVORES CAST / VEGETAÇÃO RASTEIRA OFF)
 	# -------------------------------------------------------------------------
-	print("\n--- 4. AUSÊNCIA TOTAL DE SOMBRAS NOS MODELOS ---")
-	var shadow_test: Node3D = NatureProp3DScript.new()
-	shadow_test.configure("res://assets/nature_megakit/Pine.glb", NatureProp3DScript.PropCategory.TREE_PINE)
-	var meshes: Array[Node] = shadow_test.find_children("", "MeshInstance3D", true, false)
-	_check(meshes.size() > 0, "Modelo carregou MeshInstance3D com sucesso")
-	var all_no_shadow: bool = true
-	for mi in meshes:
-		if (mi as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
-			all_no_shadow = false
+	print("\n--- 4. CONFIGURAÇÃO SELETIVA DE SOMBRAS ---")
+	var tree_shadow_test: Node3D = NatureProp3DScript.new()
+	tree_shadow_test.configure("res://assets/nature_megakit/Pine.glb", NatureProp3DScript.PropCategory.TREE_PINE)
+	var tree_meshes: Array[Node] = tree_shadow_test.find_children("", "MeshInstance3D", true, false)
+	_check(tree_meshes.size() > 0, "Árvore carregou MeshInstance3D com sucesso")
+	var tree_casts: bool = true
+	for mi in tree_meshes:
+		if (mi as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON:
+			tree_casts = false
 			break
-	_check(all_no_shadow, "Todas as malhas do modelo têm cast_shadow desligado (SHADOW_CASTING_SETTING_OFF)")
-	shadow_test.queue_free()
+	_check(tree_casts, "Árvores têm cast_shadow ativado (SHADOW_CASTING_SETTING_ON) para silhuetas reconhecíveis")
+	tree_shadow_test.queue_free()
+
+	var deco_shadow_test: Node3D = NatureProp3DScript.new()
+	deco_shadow_test.configure("res://assets/nature_megakit/Grass.glb", NatureProp3DScript.PropCategory.GRASS_LOW)
+	var deco_meshes: Array[Node] = deco_shadow_test.find_children("", "MeshInstance3D", true, false)
+	var deco_no_shadow: bool = true
+	for mi in deco_meshes:
+		if (mi as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			deco_no_shadow = false
+			break
+	_check(deco_no_shadow, "Vegetação rasteira tem cast_shadow desligado (SHADOW_CASTING_SETTING_OFF) para performance")
+	deco_shadow_test.queue_free()
 
 	# -------------------------------------------------------------------------
 	# 5. ZONAS DE EXCLUSÃO E REGRAS DE AMBIENTAÇÃO NA FLORESTA DE ARATH

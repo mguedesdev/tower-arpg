@@ -1,8 +1,9 @@
 extends Node3D
 class_name NatureProp3D
-## Elemento de ambientação 3D estilizado do Stylized Nature MegaKit.
-## Gerencia instanciacao de malha, colisores simplificados de tronco/rocha (sem colidir na copa),
-## ausencia de sombras e transparencia inteligente quando obstrui a visao da camera isometrica.
+## Elemento de ambientação 3D estilizado do Stylized Nature MegaKit (Godot 4).
+## Gerencia instanciação de malha, materiais estilizados sem bordas pretas,
+## sombras nítidas e otimizadas (apenas em árvores e rochas), colisores cilíndricos de tronco
+## e transparência suave quando obstrui a visão da câmera isométrica.
 
 enum PropCategory {
 	TREE_NORMAL,
@@ -27,14 +28,14 @@ enum PropCategory {
 var _static_body: StaticBody3D = null
 var _collision_shape: CollisionShape3D = null
 var _meshes: Array[MeshInstance3D] = []
-var _original_materials: Array[Material] = []
 var _fade_materials: Array[StandardMaterial3D] = []
 var _is_faded: bool = false
 var _target_alpha: float = 1.0
 var _current_alpha: float = 1.0
 
-# Cache de PackedScenes para evitar re-leitura de disco repetida
+# Cache estático de PackedScenes e Materiais Otimizados para altíssima performance
 static var _scene_cache: Dictionary = {}
+static var _material_cache: Dictionary = {}
 
 
 static func get_cached_scene(path: String) -> PackedScene:
@@ -86,25 +87,59 @@ func _setup_visual() -> void:
 func _find_and_prepare_meshes(node: Node) -> void:
 	if node is MeshInstance3D:
 		var mi := node as MeshInstance3D
-		# Regra central: desligar todas as sombras conforme solicitacao
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_meshes.append(mi)
 
-		# Se for arvore com copa alta, prepara materiais com suporte a fade transparente
-		if _is_tree_category():
-			var m: Mesh = mi.mesh
-			if m != null:
-				for s in range(m.get_surface_count()):
-					var mat: Material = mi.get_surface_override_material(s)
-					if mat == null:
-						mat = m.surface_get_material(s)
-					if mat is StandardMaterial3D:
-						var std := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
-						mi.set_surface_override_material(s, std)
-						_fade_materials.append(std)
+		var should_cast_shadow: bool = _should_cast_shadow()
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if should_cast_shadow else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+		var m: Mesh = mi.mesh
+		if m != null:
+			for s in range(m.get_surface_count()):
+				var original_mat: Material = m.surface_get_material(s)
+				if original_mat is StandardMaterial3D:
+					var sm := original_mat as StandardMaterial3D
+					var mat_key: String = "%s_s%d" % [model_path, s]
+					var optimized_mat: StandardMaterial3D = null
+
+					if _material_cache.has(mat_key):
+						optimized_mat = _material_cache[mat_key] as StandardMaterial3D
+					else:
+						optimized_mat = sm.duplicate() as StandardMaterial3D
+						optimized_mat.metallic = 0.0
+						
+						# Se for superfície de folha/vegetação com canal alpha
+						if sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or sm.albedo_texture != null and "Leaf" in sm.resource_name or "Leaves" in sm.resource_name:
+							optimized_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+							optimized_mat.alpha_scissor_threshold = 0.50
+							optimized_mat.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+							optimized_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+							optimized_mat.roughness = 0.85
+							optimized_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+						else:
+							# Tronco ou rocha
+							optimized_mat.cull_mode = BaseMaterial3D.CULL_BACK
+							optimized_mat.roughness = 0.90
+
+						_material_cache[mat_key] = optimized_mat
+
+					mi.set_surface_override_material(s, optimized_mat)
+
+					if _is_tree_category():
+						# Para árvores, guardamos referência caso precise de fade por oclusão isométrica
+						_fade_materials.append(optimized_mat)
 
 	for child in node.get_children():
 		_find_and_prepare_meshes(child)
+
+
+func _should_cast_shadow() -> bool:
+	# Apenas árvores e rochas médias projetam sombras nítidas no terreno.
+	# Vegetação rasteira, flores, cogumelos e pedregulhos não projetam sombra (performance 60 FPS).
+	match category:
+		PropCategory.TREE_NORMAL, PropCategory.TREE_PINE, PropCategory.TREE_DEAD, PropCategory.TREE_TWISTED, PropCategory.ROCK_MEDIUM:
+			return true
+		_:
+			return false
 
 
 func _setup_collision() -> void:
@@ -144,7 +179,7 @@ func _setup_collision() -> void:
 			trunk_height = 1.30 * base_scale.y
 			col_offset_y = trunk_height * 0.5
 		_:
-			# Vegetação rasteira, arbustos, flores e pedrinhas NUNCA bloqueiam movimentacao
+			# Vegetação rasteira, arbustos, flores e pedrinhas NUNCA bloqueiam movimentação
 			is_blocking = false
 
 	if is_blocking and trunk_radius > 0.0 and trunk_height > 0.0:
@@ -183,7 +218,6 @@ func _process(delta: float) -> void:
 	if cam == null:
 		return
 
-	# Checa se esta árvore está no cone entre o jogador e a câmera isométrica (+X, +Z)
 	var player_nodes := get_tree().get_nodes_in_group("player")
 	if player_nodes.is_empty():
 		return
@@ -194,9 +228,7 @@ func _process(delta: float) -> void:
 	var p_pos := player_node.global_position
 	var t_pos := global_position
 
-	# No Godot a câmera isométrica olha a partir de (+X, +Z) em direção ao player.
-	# Um objeto bloqueia a linha de visão se sua posição está a sudeste (+X, +Z) do player
-	# a uma distância moderada (entre 0.8m e 6.5m em X e Z).
+	# Checa se esta árvore está no cone entre o jogador e a câmera isométrica (+X, +Z)
 	var dx: float = t_pos.x - p_pos.x
 	var dz: float = t_pos.z - p_pos.z
 	var should_fade: bool = false
@@ -207,7 +239,7 @@ func _process(delta: float) -> void:
 		if lateral_dist < (2.2 * base_scale.x) and dist_along_diagonal < 7.5:
 			should_fade = true
 
-	_target_alpha = 0.32 if should_fade else 1.0
+	_target_alpha = 0.35 if should_fade else 1.0
 
 	if not is_equal_approx(_current_alpha, _target_alpha):
 		_current_alpha = move_toward(_current_alpha, _target_alpha, delta * 4.5)
@@ -216,5 +248,6 @@ func _process(delta: float) -> void:
 				mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 				mat.albedo_color.a = _current_alpha
 			else:
-				mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+				mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+				mat.alpha_scissor_threshold = 0.50
 				mat.albedo_color.a = 1.0

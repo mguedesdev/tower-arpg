@@ -33,6 +33,7 @@ const GROUND_ITEM_SCRIPT: Script = preload("res://game/items/ground_item_3d.gd")
 const VFX_EFFECT_SCRIPT: Script = preload("res://scripts/vfx/tower_vfx_effect.gd")
 const VFX_SPAWNER = preload("res://scripts/vfx/tower_vfx_spawner.gd")
 const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
+const WorldLightingServiceScript = preload("res://game/environment/world_lighting_service.gd")
 
 @onready var player: TowerPlayer = $Player
 @onready var camera: Camera3D = $Camera
@@ -401,6 +402,8 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 
 	if arena_art != null and arena_art.has_method("rebuild_campaign_zone"):
 		arena_art.call("rebuild_campaign_zone", zone_def)
+
+	WorldLightingServiceScript.apply_lighting_profile(self, zone_id)
 
 	if title_text_label != null:
 		title_text_label.text = zone_def.title.to_upper()
@@ -1180,18 +1183,10 @@ func _update_arpg_xp_display(lvl: int, cur_xp: int, req_xp: int) -> void:
 	_arpg_xp_label.text = "✦ Nível %d  •  %d / %d XP (%.1f%%)" % [lvl, cur_xp, req_xp, pct]
 
 
+func load_zone(zone_id: String) -> void:
+	_load_campaign_zone(zone_id)
+
+
 func _setup_static_lighting() -> void:
-	var sun: DirectionalLight3D = get_node_or_null("Sun") as DirectionalLight3D
-	if sun != null:
-		sun.queue_free()
-	var w_env: WorldEnvironment = get_node_or_null("WorldEnvironment") as WorldEnvironment
-	if w_env != null and w_env.environment != null:
-		var env: Environment = w_env.environment.duplicate() as Environment
-		env.background_mode = Environment.BG_COLOR
-		env.background_color = Color(0.045, 0.05, 0.065, 1.0)
-		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		env.ambient_light_color = Color(0.70, 0.72, 0.76, 1.0)
-		env.ambient_light_energy = 0.85
-		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-		env.tonemap_exposure = 1.0
-		w_env.environment = env
+	var z_id: String = current_zone_id if not current_zone_id.is_empty() else "town"
+	WorldLightingServiceScript.apply_lighting_profile(self, z_id)

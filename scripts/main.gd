@@ -33,6 +33,7 @@ const GROUND_ITEM_SCRIPT: Script = preload("res://game/items/ground_item_3d.gd")
 const VFX_EFFECT_SCRIPT: Script = preload("res://scripts/vfx/tower_vfx_effect.gd")
 const VFX_SPAWNER = preload("res://scripts/vfx/tower_vfx_spawner.gd")
 const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
+const WorldLightingServiceScript = preload("res://game/environment/world_lighting_service.gd")
 
 @onready var player: TowerPlayer = $Player
 @onready var attack: TowerAttackController = $Player/AttackController
@@ -1181,18 +1182,5 @@ func _on_form_changed(value: String) -> void:
 
 
 func _setup_static_lighting() -> void:
-	var sun: DirectionalLight3D = get_node_or_null("Sun") as DirectionalLight3D
-	if sun != null:
-		sun.queue_free()
-	var w_env: WorldEnvironment = get_node_or_null("WorldEnvironment") as WorldEnvironment
-	if w_env != null and w_env.environment != null:
-		var env: Environment = w_env.environment.duplicate() as Environment
-		env.background_mode = Environment.BG_COLOR
-		env.background_color = Color(0.045, 0.05, 0.065, 1.0)
-		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		env.ambient_light_color = Color(0.70, 0.72, 0.76, 1.0)
-		env.ambient_light_energy = 0.85
-		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-		env.tonemap_exposure = 1.0
-		w_env.environment = env
+	WorldLightingServiceScript.apply_lighting_profile(self, "town")
 
