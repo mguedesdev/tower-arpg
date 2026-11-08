@@ -261,20 +261,13 @@ func _test_main_scene_inventory_integration() -> void:
 	_check(bw_high > bw_normal and is_equal_approx(pad_high, pad_normal), "19e. Item no chão em destaque ganha apenas contorno mais grosso (3px) sem expandir de tamanho")
 	drop_test.queue_free()
 
-	# Teste do Sistema de Dia e Noite, Sombras 3D e Relógio de Sol/Lua no HUD (sem hora digital)
-	var dn_hud: DayNightCycleHUD = main_node.day_night_hud
+	# Teste de Iluminação Global Clara e Sombras 3D (Sem Ciclo de Noite nem Lanterna)
+	var dn_hud = main_node.get("day_night_hud")
 	var sun_node: DirectionalLight3D = main_node.get_node_or_null("Sun") as DirectionalLight3D
-	_check(dn_hud != null and sun_node != null and sun_node.shadow_enabled, "19f. DayNightCycleHUD ativo no HUD e Luz Direcional (Sun) com sombras 3D habilitadas")
-	_check(dn_hud.get_child_count() == 0, "19g. Relógio do HUD é puramente visual/animado (sem texto ou números de horas)")
-	dn_hud.set_time_of_day(0.50) # Meio-Dia
-	var noon_energy: float = sun_node.light_energy
-	var noon_rot: Vector3 = sun_node.rotation
-	var noon_phase: String = dn_hud.get_current_phase_id()
-	dn_hud.set_time_of_day(0.0) # Meia-Noite
-	var night_energy: float = sun_node.light_energy
-	var night_rot: Vector3 = sun_node.rotation
-	var night_phase: String = dn_hud.get_current_phase_id()
-	_check(noon_phase == "noon" and night_phase == "night" and noon_energy > night_energy and not noon_rot.is_equal_approx(night_rot), "19h. Ciclo Dia/Noite interpola energia solar, cor e ângulo das sombras 3D entre Meio-Dia e Noite")
+	var w_env: WorldEnvironment = main_node.get_node_or_null("WorldEnvironment") as WorldEnvironment
+	_check(dn_hud == null, "19f. Sistema de Dia/Noite completamente removido (sem DayNightCycleHUD)")
+	_check(sun_node != null and sun_node.shadow_enabled and sun_node.light_energy >= 1.20, "19g. Luz Direcional do Sol ativa com sombras 3D e iluminação clara e brilhante")
+	_check(w_env != null and w_env.environment != null and w_env.environment.ambient_light_energy >= 0.40, "19h. Iluminação ambiente clara e permanente garantida (cenário nunca fica escuro)")
 
 	# Teste do Mapa do Ato 1 em Tela Cheia (Waypoint vs Tecla M + Pausa + 8 Locais)
 	var wm: WorldMapModal = main_node.world_map_modal

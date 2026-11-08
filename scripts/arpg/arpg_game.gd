@@ -11,7 +11,6 @@ const BOSS_MODEL_PATH: String = "res://assets/models/skeleton_boss.glb"
 const MALAKOR_SCENE: PackedScene = preload("res://scenes/enemies/boss_malakor.tscn")
 const MALAKOR_MODEL_PATH: String = "res://assets/models/boss_malakor.glb"
 const BOSS_HEALTH_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/boss_health_bar_hud.gd")
-const DAY_NIGHT_HUD_SCRIPT: Script = preload("res://game/ui/campaign/day_night_cycle_hud.gd")
 
 const RUN_PROGRESSION_SCRIPT: Script = preload("res://core/progression/run_progression_service.gd")
 const CAMPAIGN_ZONE_DEF_SCRIPT = preload("res://game/campaign/campaign_zone_definition.gd")
@@ -63,7 +62,6 @@ var town_npc_modal: TownNpcModal
 var world_map_modal: WorldMapModal
 var inventory_modal: InventoryEquipmentModal
 var boss_health_bar_hud: Control = null
-var day_night_hud: DayNightCycleHUD = null
 
 var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
@@ -181,10 +179,8 @@ func _ready() -> void:
 	boss_health_bar_hud = BOSS_HEALTH_BAR_HUD_SCRIPT.new() as Control
 	$HUD.add_child(boss_health_bar_hud)
 
-	# Relógio de Sol e Lua no HUD + Sistema de Dia/Noite, Luz Direcional e Sombras 3D
-	day_night_hud = DAY_NIGHT_HUD_SCRIPT.new() as DayNightCycleHUD
-	$HUD.add_child(day_night_hud)
-	day_night_hud.bind_world(get_node_or_null("Sun") as DirectionalLight3D, get_node_or_null("WorldEnvironment") as WorldEnvironment)
+	# Iluminação Global Clara, Estática e Nítida (Estilo ARPG Isométrico - Sem Ciclo Escuro de Noite)
+	_setup_static_lighting()
 
 	# Mapa de Tela Cheia do Ato 1 (Teleporte via Waypoint ou Consulta via tecla [M])
 	world_map_modal = WORLD_MAP_MODAL_SCRIPT.new() as WorldMapModal
@@ -206,9 +202,6 @@ func _ready() -> void:
 	_on_mana_changed(player.mana, player.max_mana)
 
 	player.bind_equipment(equipment)
-	if player.belt_lantern != null:
-		player.belt_lantern.bind_day_night(day_night_hud)
-		player.belt_lantern.set_zone_context(current_zone_id)
 
 	if camera != null and camera.has_method("set_lobby_mode"):
 		camera.set_lobby_mode(false, true)
@@ -288,9 +281,6 @@ func _unhandled_input(event: InputEvent) -> void:
 					station.trigger_interaction()
 					get_viewport().set_input_as_handled()
 					return
-		elif event.keycode == KEY_T and day_night_hud != null:
-			day_night_hud.advance_to_next_phase()
-			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_ESCAPE:
 			_toggle_pause_menu()
 			get_viewport().set_input_as_handled()
@@ -411,10 +401,6 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 
 	if arena_art != null and arena_art.has_method("rebuild_campaign_zone"):
 		arena_art.call("rebuild_campaign_zone", zone_def)
-	if day_night_hud != null:
-		day_night_hud.set_zone_context(zone_id)
-	if player != null and player.belt_lantern != null:
-		player.belt_lantern.set_zone_context(zone_id)
 
 	if title_text_label != null:
 		title_text_label.text = zone_def.title.to_upper()
@@ -1192,3 +1178,30 @@ func _update_arpg_xp_display(lvl: int, cur_xp: int, req_xp: int) -> void:
 	_arpg_xp_bar.value = float(cur_xp)
 	var pct: float = (float(cur_xp) / float(maxi(1, req_xp))) * 100.0
 	_arpg_xp_label.text = "✦ Nível %d  •  %d / %d XP (%.1f%%)" % [lvl, cur_xp, req_xp, pct]
+
+
+func _setup_static_lighting() -> void:
+	var sun: DirectionalLight3D = get_node_or_null("Sun") as DirectionalLight3D
+	if sun != null:
+		sun.rotation = Vector3(-1.02, 0.72, 0.0)
+		sun.light_color = Color(1.0, 0.98, 0.95, 1.0)
+		sun.light_energy = 1.35
+		sun.shadow_enabled = true
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+		sun.directional_shadow_max_distance = 45.0
+		sun.shadow_bias = 0.015
+		sun.shadow_normal_bias = 1.0
+		sun.shadow_blur = 0.0
+		sun.shadow_opacity = 1.0
+	var w_env: WorldEnvironment = get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if w_env != null and w_env.environment != null:
+		var env: Environment = w_env.environment.duplicate() as Environment
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = Color(0.045, 0.05, 0.065, 1.0)
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.55, 0.60, 0.68, 1.0)
+		env.ambient_light_energy = 0.50
+		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		env.tonemap_exposure = 1.05
+		w_env.environment = env
+

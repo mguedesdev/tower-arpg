@@ -199,7 +199,6 @@ func _build_altar() -> void:
 	shrine_light.shadow_enabled = true
 	shrine_light.shadow_blur = 0.0
 	shrine_light.shadow_bias = 0.04
-	shrine_light.add_to_group("day_night_torch_light")
 	add_child(shrine_light)
 
 func _build_perimeter_ring() -> void:
@@ -350,7 +349,6 @@ func _brazier(pos: Vector3) -> void:
 	brazier_light.shadow_enabled = true
 	brazier_light.shadow_blur = 0.0
 	brazier_light.shadow_bias = 0.04
-	brazier_light.add_to_group("day_night_torch_light")
 	root.add_child(brazier_light)
 
 func _add_box_to(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
@@ -410,7 +408,6 @@ func _build_town_encampment() -> void:
 	camp_light.shadow_enabled = true
 	camp_light.shadow_blur = 0.0
 	camp_light.shadow_bias = 0.04
-	camp_light.add_to_group("day_night_torch_light")
 	add_child(camp_light)
 
 	# Muralhas baixas do Acampamento com abertura larga no Portão Norte (Z = -16.5)

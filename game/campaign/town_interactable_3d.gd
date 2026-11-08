@@ -118,7 +118,6 @@ func _build_visuals() -> void:
 	_station_light.omni_attenuation = 1.5
 	_station_light.shadow_blur = 0.0
 	_station_light.position = Vector3(0.0, 1.8, 0.3)
-	_station_light.add_to_group("day_night_torch_light")
 	add_child(_station_light)
 
 	match station_id:

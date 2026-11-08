@@ -23,7 +23,6 @@ const MANA_GLOBE_HUD_SCRIPT: Script = preload("res://game/ui/campaign/mana_globe
 const SKILL_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/skill_bar_hud.gd")
 const EXPERIENCE_SERVICE_SCRIPT: Script = preload("res://core/progression/experience_service.gd")
 const EXPERIENCE_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/experience_bar_hud.gd")
-const DAY_NIGHT_HUD_SCRIPT: Script = preload("res://game/ui/campaign/day_night_cycle_hud.gd")
 const ITEM_DEF_SCRIPT = preload("res://core/items/item_definition.gd")
 const ITEM_INST_SCRIPT = preload("res://core/items/item_instance.gd")
 const ITEM_DB_SCRIPT = preload("res://core/items/item_database.gd")
@@ -73,7 +72,6 @@ var skill_bar_hud: SkillBarHUD
 var experience_service: RefCounted
 var experience_bar_hud: Control
 var inventory_modal: InventoryEquipmentModal
-var day_night_hud: DayNightCycleHUD = null
 var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var stash_grid: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
 var equipment: CharacterEquipment = CharacterEquipment.new()
@@ -185,15 +183,11 @@ func _ready() -> void:
 	inventory_modal.bind_context(backpack, equipment, player.stats)
 	_grant_starter_items()
 
-	day_night_hud = DAY_NIGHT_HUD_SCRIPT.new() as DayNightCycleHUD
-	$HUD.add_child(day_night_hud)
-	day_night_hud.bind_world(get_node_or_null("Sun") as DirectionalLight3D, get_node_or_null("WorldEnvironment") as WorldEnvironment)
+	# Iluminação Global Clara, Estática e Nítida (Estilo ARPG Isométrico - Sem Ciclo Escuro de Noite)
+	_setup_static_lighting()
 
 	if player != null:
 		player.bind_equipment(equipment)
-		if player.belt_lantern != null:
-			player.belt_lantern.bind_day_night(day_night_hud)
-			player.belt_lantern.set_zone_context(current_zone_id)
 
 	world_map_modal = WORLD_MAP_MODAL_SCRIPT.new() as WorldMapModal
 	$HUD.add_child(world_map_modal)
@@ -848,10 +842,6 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 
 	if arena_art != null and arena_art.has_method("rebuild_campaign_zone"):
 		arena_art.call("rebuild_campaign_zone", zone_def)
-	if day_night_hud != null:
-		day_night_hud.set_zone_context(zone_id)
-	if player != null and player.belt_lantern != null:
-		player.belt_lantern.set_zone_context(zone_id)
 
 	if title_text_label != null:
 		title_text_label.text = zone_def.title.to_upper()
@@ -1188,3 +1178,30 @@ func _on_mana_changed(current: int, maximum: int) -> void:
 
 func _on_form_changed(value: String) -> void:
 	form_label.text = "Ataque: " + value
+
+
+func _setup_static_lighting() -> void:
+	var sun: DirectionalLight3D = get_node_or_null("Sun") as DirectionalLight3D
+	if sun != null:
+		sun.rotation = Vector3(-1.02, 0.72, 0.0)
+		sun.light_color = Color(1.0, 0.98, 0.95, 1.0)
+		sun.light_energy = 1.35
+		sun.shadow_enabled = true
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+		sun.directional_shadow_max_distance = 45.0
+		sun.shadow_bias = 0.015
+		sun.shadow_normal_bias = 1.0
+		sun.shadow_blur = 0.0
+		sun.shadow_opacity = 1.0
+	var w_env: WorldEnvironment = get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if w_env != null and w_env.environment != null:
+		var env: Environment = w_env.environment.duplicate() as Environment
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = Color(0.045, 0.05, 0.065, 1.0)
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.55, 0.60, 0.68, 1.0)
+		env.ambient_light_energy = 0.50
+		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		env.tonemap_exposure = 1.05
+		w_env.environment = env
+

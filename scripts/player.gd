@@ -41,7 +41,6 @@ const KNIGHT_MODEL_PATH: String = "res://assets/models/knight.glb"
 const DEFAULT_CLASS_PATH: String = "res://content/classes/warrior_class.tres"
 const SkinnedCache = preload("res://core/utilities/skinned_model_cache.gd")
 const OverheadHUDScript = preload("res://core/combat/player_overhead_hud_3d.gd")
-const BeltLantern3DScript = preload("res://game/campaign/belt_lantern_3d.gd")
 @export_range(0.1, 4.0, 0.05) var knight_visual_scale: float = 1.0
 @export_range(-180.0, 180.0, 5.0) var knight_yaw_degrees: float = 0.0
 @export var character_definition: CharacterDefinition
@@ -50,7 +49,6 @@ const BeltLantern3DScript = preload("res://game/campaign/belt_lantern_3d.gd")
 @onready var attack_controller: Node = $AttackController
 @onready var skill_controller: PlayerSkillController = get_node_or_null("SkillController") as PlayerSkillController
 var overhead_hud: PlayerOverheadHUD3D
-var belt_lantern: BeltLantern3D = null
 
 var stats: CharacterStats = CharacterStats.new()
 var health: int = 100:
@@ -142,8 +140,6 @@ func _ready() -> void:
 		character_definition = load(DEFAULT_CLASS_PATH) as CharacterDefinition
 	_initialize_stats()
 	_load_real_knight_if_available()
-	belt_lantern = BeltLantern3DScript.new()
-	belt_lantern.setup_on_character(self)
 	animation_player = visual.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if animation_player != null:
 		_configure_imported_animations()
@@ -214,9 +210,8 @@ func heal(amount: int) -> void:
 		health = mini(max_health, health + amount)
 
 
-func bind_equipment(p_equipment: CharacterEquipment) -> void:
-	if belt_lantern != null:
-		belt_lantern.bind_equipment(p_equipment)
+func bind_equipment(_p_equipment: CharacterEquipment) -> void:
+	pass
 
 
 func _on_stats_changed() -> void:
