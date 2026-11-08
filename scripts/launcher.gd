@@ -21,11 +21,29 @@ func _ready() -> void:
 
 
 func _on_play_arpg_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/arpg/arpg_game.tscn")
+	var lm := LoadingManager.get_instance()
+	if lm != null:
+		lm.transition_to_scene(
+			"res://scenes/arpg/arpg_game.tscn",
+			"DARK FANTASY ARPG",
+			"Ato 1: As Terras de Velen • Explorando o mundo...",
+			"res://assets/ui/world_map/01_vila_de_velen.png"
+		)
+	else:
+		get_tree().change_scene_to_file("res://scenes/arpg/arpg_game.tscn")
 
 
 func _on_play_tower_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/tower/tower_game.tscn")
+	var lm := LoadingManager.get_instance()
+	if lm != null:
+		lm.transition_to_scene(
+			"res://scenes/tower/tower_game.tscn",
+			"INFINITY TOWER",
+			"Arena da Torre do Santuário • Sobrevivência por Ondas...",
+			""
+		)
+	else:
+		get_tree().change_scene_to_file("res://scenes/tower/tower_game.tscn")
 
 
 func _on_quit_pressed() -> void:

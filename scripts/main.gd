@@ -236,6 +236,9 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_campaign_mode or in_lobby or game_over:
 		return
+	var lm := LoadingManager.get_instance()
+	if lm != null and lm.is_loading():
+		return
 	if world_map_modal != null and world_map_modal.visible:
 		return
 	if town_npc_modal != null and town_npc_modal.visible:
@@ -825,7 +828,19 @@ func _start_campaign_mode() -> void:
 	_load_campaign_zone("town")
 
 
-func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
+func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null, use_loading_screen: bool = true) -> void:
+	if not campaign_zones.has(zone_id):
+		return
+
+	var lm := LoadingManager.get_instance()
+	if use_loading_screen and lm != null:
+		lm.transition_to_region(self, zone_id, custom_spawn)
+		return
+
+	_execute_load_campaign_zone_direct(zone_id, custom_spawn)
+
+
+func _execute_load_campaign_zone_direct(zone_id: String, custom_spawn: Variant = null) -> void:
 	if not campaign_zones.has(zone_id):
 		return
 	var zone_def: CampaignZoneDefinition = campaign_zones[zone_id] as CampaignZoneDefinition

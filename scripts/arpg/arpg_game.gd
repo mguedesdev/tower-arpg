@@ -208,7 +208,8 @@ func _ready() -> void:
 		camera.set_lobby_mode(false, true)
 
 	# Inicia diretamente na Vila Segura
-	_load_campaign_zone("town")
+	var is_headless: bool = (DisplayServer.get_name() == "headless")
+	_load_campaign_zone("town", null, not is_headless)
 
 
 func _process(delta: float) -> void:
@@ -218,6 +219,9 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if game_over:
+		return
+	var lm := LoadingManager.get_instance()
+	if lm != null and lm.is_loading():
 		return
 	if world_map_modal != null and world_map_modal.visible:
 		return
@@ -382,7 +386,30 @@ func _clear_ground_items() -> void:
 			child.queue_free()
 
 
-func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
+func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null, use_loading_screen: bool = true) -> void:
+	if not campaign_zones.has(zone_id):
+		return
+
+	var lm := LoadingManager.get_instance()
+	if lm != null and lm.is_loading() and not use_loading_screen:
+		_execute_load_campaign_zone_direct(zone_id, custom_spawn)
+		return
+
+	if DisplayServer.get_name() == "headless" and not use_loading_screen:
+		_execute_load_campaign_zone_direct(zone_id, custom_spawn)
+		return
+
+	if use_loading_screen and lm != null:
+		if lm.is_loading():
+			_execute_load_campaign_zone_direct(zone_id, custom_spawn)
+			return
+		lm.transition_to_region(self, zone_id, custom_spawn)
+		return
+
+	_execute_load_campaign_zone_direct(zone_id, custom_spawn)
+
+
+func _execute_load_campaign_zone_direct(zone_id: String, custom_spawn: Variant = null) -> void:
 	if not campaign_zones.has(zone_id):
 		return
 	var zone_def: CampaignZoneDefinition = campaign_zones[zone_id] as CampaignZoneDefinition
@@ -700,7 +727,7 @@ func _on_waypoint_travel_requested(dest_zone_id: String) -> void:
 	if not campaign_zones.has(dest_zone_id):
 		return
 	var zdef: CampaignZoneDefinition = campaign_zones[dest_zone_id] as CampaignZoneDefinition
-	_load_campaign_zone(dest_zone_id, zdef.waypoint_pos + Vector3(0.0, 0.0, 1.8))
+	_load_campaign_zone(dest_zone_id, zdef.waypoint_pos + Vector3(0.0, 0.0, 1.8), true)
 
 
 func _on_zone_gate_crossed(target_zone_id: String, origin_zone_id: String) -> void:
@@ -712,7 +739,7 @@ func _on_zone_gate_crossed(target_zone_id: String, origin_zone_id: String) -> vo
 		spawn_pos = target_def.next_gate_pos + Vector3(0.0, 0.0, 2.8)
 	elif target_def.prev_zone_id == origin_zone_id:
 		spawn_pos = target_def.prev_gate_pos + Vector3(0.0, 0.0, -2.8)
-	_load_campaign_zone(target_zone_id, spawn_pos)
+	_load_campaign_zone(target_zone_id, spawn_pos, true)
 
 
 func _on_enemy_died(_xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
@@ -1186,8 +1213,8 @@ func _update_arpg_xp_display(lvl: int, cur_xp: int, req_xp: int) -> void:
 	_arpg_xp_label.text = "✦ Nível %d  •  %d / %d XP (%.1f%%)" % [lvl, cur_xp, req_xp, pct]
 
 
-func load_zone(zone_id: String) -> void:
-	_load_campaign_zone(zone_id)
+func load_zone(zone_id: String, custom_spawn: Variant = null, use_loading_screen: bool = false) -> void:
+	_load_campaign_zone(zone_id, custom_spawn, use_loading_screen)
 
 
 func _setup_static_lighting() -> void:

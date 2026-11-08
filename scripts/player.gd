@@ -44,6 +44,7 @@ const OverheadHUDScript = preload("res://core/combat/player_overhead_hud_3d.gd")
 @export_range(0.1, 4.0, 0.05) var knight_visual_scale: float = 1.0
 @export_range(-180.0, 180.0, 5.0) var knight_yaw_degrees: float = 0.0
 @export var character_definition: CharacterDefinition
+@export var input_enabled: bool = true
 
 @onready var visual: Node3D = $Visual
 @onready var attack_controller: Node = $AttackController
@@ -311,6 +312,9 @@ func pull_towards(target_position: Vector3, duration: float = 0.40) -> void:
 
 func _physics_process(delta: float) -> void:
 	if not alive:
+		return
+	if not input_enabled:
+		velocity = Vector3.ZERO
 		return
 	if _is_being_pulled:
 		_pull_timer -= delta
