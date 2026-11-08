@@ -77,16 +77,13 @@ func bind_world(sun: DirectionalLight3D, world_env: WorldEnvironment) -> void:
 	_world_env = world_env
 	if _sun_light != null:
 		_sun_light.shadow_enabled = true
-		_sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-		_sun_light.directional_shadow_max_distance = 64.0
-		_sun_light.directional_shadow_blend_splits = true
+		_sun_light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+		_sun_light.directional_shadow_max_distance = 45.0
 		_sun_light.light_angular_distance = 0.0
-		_sun_light.shadow_bias = 0.012
-		_sun_light.shadow_normal_bias = 1.2
-		_sun_light.shadow_blur = 0.05
-		_sun_light.directional_shadow_split_1 = 0.12
-		_sun_light.directional_shadow_split_2 = 0.28
-		_sun_light.directional_shadow_split_3 = 0.55
+		_sun_light.shadow_bias = 0.015
+		_sun_light.shadow_normal_bias = 1.0
+		_sun_light.shadow_blur = 0.0
+		_sun_light.shadow_opacity = 1.0
 	if _world_env != null and _world_env.environment != null:
 		_env_instance = _world_env.environment.duplicate() as Environment
 		_env_instance.tonemap_mode = Environment.TONE_MAPPER_FILMIC
@@ -219,11 +216,11 @@ func _evaluate_lighting_state(t: float) -> Dictionary:
 	# • Tarde: tonalidade dourada/âmbar moderada, sombras alongadas de entardecer.
 	# • Noite: luar azul e atmosfera dark fantasy com ambiente azul-violeta límpido para excelente legibilidade de relevo e caminhos.
 	var kf_night := {
-		"sun_color": Color(0.48, 0.62, 0.90),
-		"sun_energy": 0.65,
-		"shadow_opacity": 0.80,
-		"ambient_color": Color(0.34, 0.40, 0.58),
-		"ambient_energy": 0.25,
+		"sun_color": Color(0.42, 0.55, 0.88),
+		"sun_energy": 0.50,
+		"shadow_opacity": 0.85,
+		"ambient_color": Color(0.22, 0.26, 0.40),
+		"ambient_energy": 0.24,
 		"bg_color": Color(0.02, 0.025, 0.045),
 		"pitch": -0.78,
 		"yaw": 0.45,
@@ -232,8 +229,8 @@ func _evaluate_lighting_state(t: float) -> Dictionary:
 	var kf_dawn := {
 		"sun_color": Color(0.98, 0.92, 0.85),
 		"sun_energy": 1.20,
-		"shadow_opacity": 0.90,
-		"ambient_color": Color(0.52, 0.58, 0.68),
+		"shadow_opacity": 1.0,
+		"ambient_color": Color(0.48, 0.54, 0.65),
 		"ambient_energy": 0.30,
 		"bg_color": Color(0.06, 0.07, 0.12),
 		"pitch": -0.52,
@@ -243,8 +240,8 @@ func _evaluate_lighting_state(t: float) -> Dictionary:
 	var kf_morning := {
 		"sun_color": Color(0.98, 0.99, 1.0),
 		"sun_energy": 1.35,
-		"shadow_opacity": 0.92,
-		"ambient_color": Color(0.56, 0.62, 0.74),
+		"shadow_opacity": 1.0,
+		"ambient_color": Color(0.52, 0.58, 0.70),
 		"ambient_energy": 0.32,
 		"bg_color": Color(0.08, 0.12, 0.18),
 		"pitch": -0.92,
@@ -254,8 +251,8 @@ func _evaluate_lighting_state(t: float) -> Dictionary:
 	var kf_afternoon := {
 		"sun_color": Color(0.98, 0.99, 1.0),
 		"sun_energy": 1.35,
-		"shadow_opacity": 0.92,
-		"ambient_color": Color(0.56, 0.62, 0.74),
+		"shadow_opacity": 1.0,
+		"ambient_color": Color(0.52, 0.58, 0.70),
 		"ambient_energy": 0.32,
 		"bg_color": Color(0.08, 0.12, 0.18),
 		"pitch": -0.92,
@@ -265,8 +262,8 @@ func _evaluate_lighting_state(t: float) -> Dictionary:
 	var kf_dusk := {
 		"sun_color": Color(0.98, 0.82, 0.68),
 		"sun_energy": 1.10,
-		"shadow_opacity": 0.88,
-		"ambient_color": Color(0.44, 0.42, 0.56),
+		"shadow_opacity": 1.0,
+		"ambient_color": Color(0.42, 0.40, 0.55),
 		"ambient_energy": 0.28,
 		"bg_color": Color(0.06, 0.05, 0.09),
 		"pitch": -0.50,

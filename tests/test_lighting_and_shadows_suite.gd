@@ -58,11 +58,13 @@ func _run_all() -> void:
 	assert(geom_n.y > 0.90, "Normal geométrica da face do terreno deve apontar para cima (+Y) para receber luz e sombras!")
 	print("[OK] Auditoria Geométrica: Normal frontal do terreno aponta para cima (+Y = %.4f). Winding CCW verificado." % geom_n.y)
 
-	var sh_mat := terrain.material_override as ShaderMaterial
-	assert(sh_mat != null, "Material do terreno deve ser ShaderMaterial")
-	var sh_code: String = sh_mat.shader.code
-	assert(sh_code.contains("render_mode cull_back"), "Shader do terreno deve utilizar cull_back padrão para renderização frontal correta.")
-	print("[OK] Auditoria Shader: terrain_ground.gdshader utiliza render_mode cull_back.")
+	var mat_std := terrain.material_override as StandardMaterial3D
+	assert(mat_std != null, "Material do terreno deve ser StandardMaterial3D nativo do Godot")
+	assert(mat_std.albedo_texture != null, "Textura de grama albedo deve estar carregada no material")
+	assert(mat_std.detail_enabled == true, "Detail texturing deve estar ativo para blending de terra")
+	assert(mat_std.detail_albedo != null, "Textura de terra (soil) deve estar carregada no detail_albedo")
+	assert(mat_std.detail_mask != null, "Mascara de ruido (noise) deve estar carregada no detail_mask")
+	print("[OK] Auditoria Material: StandardMaterial3D nativo com grama, terra e mascara de blending verificado.")
 
 	# -------------------------------------------------------------------------
 	# CENÁRIO 1: Personagem parado ao Meio-Dia (time_of_day = 0.50)
@@ -72,8 +74,10 @@ func _run_all() -> void:
 	await process_frame
 
 	assert(sun.shadow_enabled == true, "Sombras do sol devem estar habilitadas")
-	assert(sun.directional_shadow_mode == DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS, "Modo de sombra deve ser PSSM 4 Splits para cobertura suave no ARPG")
-	assert(sun.directional_shadow_max_distance >= 60.0, "Distância máxima da sombra deve cobrir toda a arena isométrica (>= 60m)")
+	assert(sun.directional_shadow_mode == DirectionalLight3D.SHADOW_ORTHOGONAL, "Modo de sombra deve ser Ortogonal para silhueta dura e sem emendas de cascata")
+	assert(sun.directional_shadow_max_distance >= 40.0, "Distancia maxima da sombra deve cobrir a arena isometrica (>= 40m)")
+	assert(sun.shadow_blur == 0.0, "Shadow blur deve ser 0.0 para sombras duras e recortadas")
+	assert(int(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality")) == 0, "Filtro de sombra direcional deve ser Hard (qualidade 0)")
 	assert(sun.light_color.r > 0.95 and sun.light_color.g > 0.95 and sun.light_color.b > 0.98, "Luz solar ao meio-dia deve ser clara, neutra/branca, sem amarelado excessivo")
 	assert(sun.light_energy >= 1.20, "Energia solar ao meio-dia deve garantir contraste limpo")
 
@@ -200,9 +204,9 @@ func _run_all() -> void:
 	var cam_start_pos := camera.global_position
 	camera.global_position += Vector3(12.0, 0.0, 12.0)
 	await process_frame
-	assert(sun.directional_shadow_max_distance >= 60.0, "Cascades cobrem a visão da câmera com folga sem recortes abruptos")
+	assert(sun.directional_shadow_max_distance >= 40.0, "Projecao ortogonal cobre a visao da camera com folga sem recortes abruptos")
 	camera.global_position = cam_start_pos
-	print("[OK] Câmera em Movimento: Estabilidade das cascatas de sombra mantida em deslocamento isométrico.")
+	print("[OK] Camera em Movimento: Estabilidade e nitidez das sombras mantida em deslocamento isometrico.")
 
 	# -------------------------------------------------------------------------
 	# AVALIAÇÃO DE DESEMPENHO

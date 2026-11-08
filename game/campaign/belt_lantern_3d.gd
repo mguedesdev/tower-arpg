@@ -319,7 +319,7 @@ func _build_lantern_visual() -> void:
 	_omni_light.omni_range = DEFAULT_LIGHT_RANGE
 	_omni_light.omni_attenuation = DEFAULT_ATTENUATION
 	_omni_light.shadow_enabled = shadow_enabled
-	_omni_light.shadow_bias = 0.06
-	_omni_light.shadow_normal_bias = 1.2
-	_omni_light.shadow_blur = 0.12
+	_omni_light.shadow_bias = 0.03
+	_omni_light.shadow_normal_bias = 1.0
+	_omni_light.shadow_blur = 0.0
 	_lantern_model_root.add_child(_omni_light)

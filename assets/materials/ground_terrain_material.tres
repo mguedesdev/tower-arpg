@@ -1,0 +1,13 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/grass_light_tile.png" id="1_rv1vo"]
+[ext_resource type="Texture2D" path="res://assets/textures/soil_moist_tile.png" id="2_8n7f3"]
+[ext_resource type="Texture2D" path="res://assets/textures/terrain_blend_noise.png" id="3_5jyw5"]
+
+[resource]
+albedo_texture = ExtResource("1_rv1vo")
+roughness = 0.95
+detail_enabled = true
+detail_mask = ExtResource("3_5jyw5")
+detail_albedo = ExtResource("2_8n7f3")
+uv1_scale = Vector3(10, 10, 1)

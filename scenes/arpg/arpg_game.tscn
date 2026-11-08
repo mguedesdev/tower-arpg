@@ -1,9 +1,10 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/arpg/arpg_game.gd" id="1_arpg"]
 [ext_resource type="Script" path="res://scripts/camera_follow.gd" id="2_camera"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
 [ext_resource type="Script" path="res://scripts/arena_art.gd" id="4_arena_art"]
+[ext_resource type="Material" path="res://assets/materials/ground_terrain_material.tres" id="5_ground_mat"]
 
 [sub_resource type="StandardMaterial3D" id="GroundMaterial"]
 albedo_color = Color(0.12, 0.10, 0.10, 1)
@@ -19,8 +20,8 @@ size = Vector3(52, 0.4, 52)
 background_mode = 1
 background_color = Color(0.045, 0.05, 0.065, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.22, 0.42, 0.60, 1)
-ambient_light_energy = 0.56
+ambient_light_color = Color(0.48, 0.52, 0.62, 1)
+ambient_light_energy = 0.35
 
 [sub_resource type="StyleBoxFlat" id="TitleHudPanel"]
 bg_color = Color(0.045, 0.05, 0.06, 0.94)
@@ -42,17 +43,21 @@ environment = SubResource("ArenaEnvironment")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
 rotation = Vector3(-1.02, 0.72, 0)
-light_color = Color(0.68, 0.80, 0.95, 1)
-light_energy = 0.95
+light_color = Color(0.98, 0.99, 1, 1)
+light_energy = 1.35
 shadow_enabled = true
+shadow_bias = 0.015
+shadow_blur = 0.0
+directional_shadow_mode = 0
+directional_shadow_max_distance = 45.0
 
 [node name="Ground" type="StaticBody3D" parent="."]
 
 [node name="GroundVisual" type="MeshInstance3D" parent="Ground"]
-visible = false
+visible = true
 position = Vector3(0, -0.2, 0)
 mesh = SubResource("GroundMesh")
-surface_material_override/0 = SubResource("GroundMaterial")
+surface_material_override/0 = ExtResource("5_ground_mat")
 
 [node name="GroundCollision" type="CollisionShape3D" parent="Ground"]
 position = Vector3(0, -0.2, 0)

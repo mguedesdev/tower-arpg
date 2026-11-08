@@ -141,39 +141,32 @@ func _ring_mesh(inner_radius: float, outer_radius: float, segments: int = 72) ->
 	return mesh
 
 func _build_ground(noise_seed: int = 90420) -> void:
-	# Uma unica malha continua substitui os antigos 676 quadrados verdes.
-	# Mantemos a colisao existente em main.tscn, pois esta etapa e SOMENTE visual.
-	# O relevo e sutil e fica abaixo do piso fisico para evitar obstaculos falsos.
+	# Material padrao nativo PBR do Godot com texturas estilizadas de grama, terra e mascara
+	var terrain_mat: StandardMaterial3D = load("res://assets/materials/ground_terrain_material.tres") as StandardMaterial3D
+	if terrain_mat == null:
+		var grass_tex: Texture2D = load("res://assets/textures/grass_light_tile.png") as Texture2D
+		var dirt_tex: Texture2D = load("res://assets/textures/soil_moist_tile.png") as Texture2D
+		var blend_tex: Texture2D = load("res://assets/textures/terrain_blend_noise.png") as Texture2D
+		terrain_mat = StandardMaterial3D.new()
+		terrain_mat.albedo_texture = grass_tex
+		terrain_mat.roughness = 0.95
+		terrain_mat.detail_enabled = true
+		terrain_mat.detail_mask = blend_tex
+		terrain_mat.detail_albedo = dirt_tex
+		terrain_mat.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+		terrain_mat.uv1_scale = Vector3(10.0, 10.0, 1.0)
+		terrain_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+
+	# Garante que o GroundVisual da cena principal esteja visivel e com o material de terreno
+	var ground_vis: MeshInstance3D = get_node_or_null("../Ground/GroundVisual") as MeshInstance3D
+	if ground_vis != null:
+		ground_vis.visible = true
+		ground_vis.material_override = terrain_mat
+
 	var soil_base := _box(Vector3(0.0, -0.37, 0.0), Vector3(ARENA_SIZE + 6.0, 0.60, ARENA_SIZE + 6.0), COLOR_SOIL_DARK)
 	soil_base.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
-	var terrain_shader: Shader = load("res://assets/materials/terrain_ground.gdshader") as Shader
-	var grass_light_texture: Texture2D = load("res://assets/textures/grass_light_tile.png") as Texture2D
-	var grass_dark_texture: Texture2D = load("res://assets/textures/grass_dark_tile.png") as Texture2D
-	var dirt_texture: Texture2D = load("res://assets/textures/soil_moist_tile.png") as Texture2D
-	var blend_texture: Texture2D = load("res://assets/textures/terrain_blend_noise.png") as Texture2D
-	if terrain_shader == null or grass_dark_texture == null or dirt_texture == null or blend_texture == null:
-		push_error("Terreno v0.16: shader ou texturas ausentes em res://assets/.")
-		var fallback := _box(Vector3(0.0, -0.055, 0.0), Vector3(ARENA_SIZE, 0.08, ARENA_SIZE), COLOR_GRASS_B)
-		fallback.name = "Ground_Fallback_Assets_Missing"
-		return
-
-	if grass_light_texture == null:
-		grass_light_texture = grass_dark_texture
-
-	var material := ShaderMaterial.new()
-	material.shader = terrain_shader
-	material.set_shader_parameter("grass_light_tex", grass_light_texture)
-	material.set_shader_parameter("grass_dark_tex", grass_dark_texture)
-	material.set_shader_parameter("grass_tex", grass_light_texture)
-	material.set_shader_parameter("dirt_tex", dirt_texture)
-	material.set_shader_parameter("blend_noise_tex", blend_texture)
-	material.set_shader_parameter("color_boost", 1.08)
-	material.set_shader_parameter("ambient_fill", 0.015)
-	material.set_shader_parameter("dirt_mix_width", 0.28)
-	material.set_shader_parameter("grass_noise_scale", 0.16)
-
-	# Noise apenas na construcao, nao ha calculo procedural por frame.
+	# Noise apenas na construcao para o relevo suave
 	var terrain_noise := FastNoiseLite.new()
 	terrain_noise.seed = noise_seed
 	terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -195,45 +188,25 @@ func _build_ground(noise_seed: int = 90420) -> void:
 	var spacing: float = ARENA_SIZE / float(TERRAIN_STEPS)
 	var heights := PackedFloat32Array()
 	heights.resize(side * side)
-	var dirt_weights := PackedFloat32Array()
-	dirt_weights.resize(side * side)
 
 	for zi in range(side):
 		for xi in range(side):
 			var px: float = float(xi) * spacing - ARENA_SIZE * 0.5
 			var pz: float = float(zi) * spacing - ARENA_SIZE * 0.5
 			var radial: float = Vector2(px, pz).length()
-			var broad: float = terrain_noise.get_noise_2d(px, pz)
 			var detail: float = detail_noise.get_noise_2d(px, pz)
 			var relief: float = relief_noise.get_noise_2d(px, pz)
 
-			# Centro plano, bordas com uma ondulacao minima para preservar a jogabilidade.
-			var relief_factor: float = smoothstep(10.0, 18.0, radial)
-			var height: float = clampf(-0.030 + relief_factor * (relief * 0.042 + detail * 0.012), -0.075, -0.012)
-
-			# Clareira do altar/vila e estrada sinuosa Norte-Sul (no modo Campanha ARPG)
-			var altar_dirt: float = 1.0 - smoothstep(5.5, 9.0, radial + broad * 1.0)
-			var curving_trail: float = pz - sin(px * 0.22) * 1.5
-			var trail_width: float = absf(curving_trail) + broad * 0.35
-			var dirt_trail: float = (1.0 - smoothstep(0.9, 2.2, trail_width)) * smoothstep(5.5, 9.5, absf(px)) * 0.84
-			if _is_campaign_mode:
-				var ns_road_center: float = sin(pz * 0.16) * (0.8 if _is_town_zone else 2.6)
-				var ns_dist: float = absf(px - ns_road_center) + broad * 0.28
-				var ns_road: float = 1.0 - smoothstep(1.6, 3.1, ns_dist)
-				dirt_trail = maxf(dirt_trail, ns_road * 0.96)
-				if _is_town_zone:
-					altar_dirt = 1.0 - smoothstep(8.2, 11.8, radial + broad * 0.8)
-			var dirt_patches: float = smoothstep(0.17, 0.65, broad * 0.88 + detail * 0.25 + 0.21) * 0.66
-			var dirt_mask: float = clampf(maxf(altar_dirt * 0.95, maxf(dirt_trail, dirt_patches)), 0.0, 1.0)
+			# Centro perfeitamente nivelado com a fisica (Y=0.0), bordas com relevo suave organico
+			var relief_factor: float = smoothstep(12.0, 20.0, radial)
+			var height: float = clampf(relief_factor * (relief * 0.025 + detail * 0.010), -0.018, 0.024)
 
 			var idx: int = zi * side + xi
 			heights[idx] = height
-			dirt_weights[idx] = dirt_mask
 
 	var positions := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
-	var colors := PackedColorArray()
 	var indices := PackedInt32Array()
 
 	for zi in range(side):
@@ -241,10 +214,8 @@ func _build_ground(noise_seed: int = 90420) -> void:
 			var px: float = float(xi) * spacing - ARENA_SIZE * 0.5
 			var pz: float = float(zi) * spacing - ARENA_SIZE * 0.5
 			var idx: int = zi * side + xi
-			positions.append(Vector3(px, heights[idx], pz))
-			uvs.append(Vector2(px / TEXTURE_WORLD_METERS, pz / TEXTURE_WORLD_METERS))
-			# O canal vermelho da cor do vertice define a quantidade de terra.
-			colors.append(Color(dirt_weights[idx], 0.0, 0.0, 1.0))
+			positions.append(Vector3(px, heights[idx] + 0.001, pz))
+			uvs.append(Vector2((px + ARENA_SIZE * 0.5) / ARENA_SIZE, (pz + ARENA_SIZE * 0.5) / ARENA_SIZE))
 
 			var left_x: int = maxi(xi - 1, 0)
 			var right_x: int = mini(xi + 1, TERRAIN_STEPS)
@@ -254,9 +225,6 @@ func _build_ground(noise_seed: int = 90420) -> void:
 			var gradient_z: float = (heights[down_z * side + xi] - heights[up_z * side + xi]) / (maxi(up_z - down_z, 1) * spacing)
 			normals.append(Vector3(gradient_x, 1.0, gradient_z).normalized())
 
-	# Indices com winding frontal CCW (Counter-Clockwise) voltado para cima (+Y),
-	# garantindo que as normais geométricas apontem para o sol e o terreno receba
-	# luz direcional e sombras 3D perfeitamente com cull_back padrão do Godot 4.
 	for zi in range(TERRAIN_STEPS):
 		for xi in range(TERRAIN_STEPS):
 			var a: int = zi * side + xi
@@ -275,11 +243,10 @@ func _build_ground(noise_seed: int = 90420) -> void:
 	arrays[Mesh.ARRAY_VERTEX] = positions
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var terrain_mesh := ArrayMesh.new()
 	terrain_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	var terrain_node := _mesh_instance("Terrain_Continuous_Grass_Dirt", terrain_mesh, material)
+	var terrain_node := _mesh_instance("Terrain_Continuous_Grass_Dirt", terrain_mesh, terrain_mat)
 	terrain_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	print("Cenario v0.16: terreno continuo criado (%d vertices, %d triangulos)." % [positions.size(), int(float(indices.size()) / 3.0)])
 
@@ -320,6 +287,8 @@ func _build_altar() -> void:
 	shrine_light.omni_range = 8.0
 	shrine_light.omni_attenuation = 1.35
 	shrine_light.shadow_enabled = true
+	shrine_light.shadow_blur = 0.0
+	shrine_light.shadow_bias = 0.04
 	shrine_light.add_to_group("day_night_torch_light")
 	add_child(shrine_light)
 
@@ -511,6 +480,9 @@ func _brazier(pos: Vector3) -> void:
 	brazier_light.light_energy = 0.65
 	brazier_light.omni_range = 4.5
 	brazier_light.omni_attenuation = 1.45
+	brazier_light.shadow_enabled = true
+	brazier_light.shadow_blur = 0.0
+	brazier_light.shadow_bias = 0.04
 	brazier_light.add_to_group("day_night_torch_light")
 	root.add_child(brazier_light)
 
@@ -568,6 +540,9 @@ func _build_town_encampment() -> void:
 	camp_light.light_energy = 1.15
 	camp_light.omni_range = 7.5
 	camp_light.omni_attenuation = 1.45
+	camp_light.shadow_enabled = true
+	camp_light.shadow_blur = 0.0
+	camp_light.shadow_bias = 0.04
 	camp_light.add_to_group("day_night_torch_light")
 	add_child(camp_light)
 
