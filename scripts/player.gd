@@ -21,7 +21,19 @@ signal died
 @export_range(90.0, 720.0, 10.0) var combat_turn_degrees: float = 540.0
 @export_range(0.1, 0.8, 0.05) var attack_facing_hold: float = 0.22
 @export var gravity_strength: float = 23.0
-@export var max_health: int = 100
+@export var max_health: int = 100:
+	set(value):
+		var safe_val: int = maxi(1, value)
+		if max_health == safe_val:
+			return
+		max_health = safe_val
+		if health > max_health:
+			health = max_health
+		if stats != null and int(stats.get_max_health()) != max_health:
+			stats.set_base_stat(CharacterStats.STAT_MAX_HEALTH, float(max_health))
+		if overhead_hud != null:
+			overhead_hud.update_health(health, max_health)
+		health_changed.emit(health, max_health)
 
 # O arquivo GLB e carregado automaticamente na execucao, sem editar a cena.
 # Se nao existir, mantemos o personagem de teste.
@@ -41,7 +53,17 @@ var overhead_hud: PlayerOverheadHUD3D
 var belt_lantern: BeltLantern3D = null
 
 var stats: CharacterStats = CharacterStats.new()
-var health: int = 100
+var health: int = 100:
+	set(value):
+		var safe_val: int = clampi(value, 0, max_health)
+		if health == safe_val:
+			return
+		health = safe_val
+		if stats != null and stats.current_health != health:
+			stats.set_current_health(health)
+		if overhead_hud != null:
+			overhead_hud.update_health(health, max_health)
+		health_changed.emit(health, max_health)
 var mana: int = 60
 var max_mana: int = 60
 var alive: bool = true
@@ -169,10 +191,26 @@ func _sync_from_stats() -> void:
 	if stats == null:
 		return
 	move_speed = stats.get_move_speed()
-	max_health = stats.get_max_health()
-	health = stats.current_health
+	var new_max: int = stats.get_max_health()
+	var new_cur: int = stats.current_health
+	max_health = new_max
+	health = new_cur
+	if overhead_hud != null:
+		overhead_hud.update_health(health, max_health)
+	health_changed.emit(health, max_health)
 	max_mana = stats.get_max_mana()
 	mana = stats.current_mana
+	mana_changed.emit(mana, max_mana)
+
+
+func heal(amount: int) -> void:
+	if not alive or amount <= 0:
+		return
+	if stats != null:
+		stats.heal(amount)
+		_sync_from_stats()
+	else:
+		health = mini(max_health, health + amount)
 
 
 func bind_equipment(p_equipment: CharacterEquipment) -> void:
@@ -185,8 +223,10 @@ func _on_stats_changed() -> void:
 
 
 func _on_internal_health_changed(current_hp: int, maximum_hp: int) -> void:
-	health = current_hp
 	max_health = maximum_hp
+	health = current_hp
+	if overhead_hud != null:
+		overhead_hud.update_health(health, max_health)
 	health_changed.emit(health, max_health)
 
 

@@ -779,8 +779,10 @@ func _process(delta: float) -> void:
 		var gain_mp: float = float(gains.get("mana", 0.0))
 
 		if gain_hp > 0.0 and "health" in player:
-			player.health = minf(max_hp, cur_hp + gain_hp)
+			player.health = int(minf(max_hp, cur_hp + gain_hp))
 			update_health(int(player.health), int(max_hp))
+			if player.get("overhead_hud") != null:
+				player.overhead_hud.update_health(int(player.health), int(max_hp))
 		if gain_mp > 0.0 and "mana" in player:
 			player.mana = minf(max_mp, cur_mp + gain_mp)
 

@@ -668,7 +668,10 @@ func _on_potion_consumed(heal_amount: int, p_type: String = "health") -> void:
 			status_label.text = "💧 Poção consumida! +%d de Mana restaurada (%d/%d)." % [heal_amount, player.mana, player.max_mana]
 			_status_timer = 3.0
 	else:
-		player.health = mini(player.max_health, player.health + heal_amount)
+		if player.has_method("heal"):
+			player.call("heal", heal_amount)
+		else:
+			player.health = mini(player.max_health, player.health + heal_amount)
 		_on_health_changed(player.health, player.max_health)
 		VFX_SPAWNER.spin(self as Node3D, player.global_position + Vector3.UP * 0.5, 1.2)
 		if status_label != null:
@@ -998,6 +1001,8 @@ func _on_health_changed(current: int, maximum: int) -> void:
 		health_label.text = "Vida: %d / %d" % [current, maximum]
 	if health_globe_hud != null:
 		health_globe_hud.update_health(current, maximum)
+	if player != null and player.get("overhead_hud") != null:
+		player.overhead_hud.update_health(current, maximum)
 
 
 func _on_mana_changed(current: int, maximum: int) -> void:
