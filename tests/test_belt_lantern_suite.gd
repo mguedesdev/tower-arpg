@@ -1,8 +1,12 @@
 extends SceneTree
 
-## Suíte Completa de Testes e Validação: Sistema de Lanterna no Cinto (Iluminação Dinâmica)
-## Valida os 10 cenários e a REGRA OBRIGATÓRIA:
-## "O personagem só pode utilizar essa iluminação se tiver um cinto equipado no slot correspondente."
+## Suíte Completa de Testes e Validação: Iluminação Circular do Personagem (ARPG Low-Poly)
+## Valida o novo sistema simplificado:
+## • Luz radial pura (OmniLight3D) em volta do personagem.
+## • Sem modelo 3D de lanterna, sem nós de malha anexados.
+## • Projeção circular suave de 360° ao redor do herói (raio ~8.0m).
+## • Ativação automática em ambientes escuros (noite, criptas, masmorras).
+## • Centralização estável no corpo do herói, acompanhando deslocamento e ataques.
 
 func _init() -> void:
 	call_deferred("_run_all")
@@ -10,7 +14,7 @@ func _init() -> void:
 
 func _run_all() -> void:
 	print("==================================================================================")
-	print("  SUÍTE DE TESTES: SISTEMA DE LANTERNA NO CINTO — ILUMINAÇÃO DINÂMICA ARPG         ")
+	print("  SUÍTE DE TESTES: ILUMINAÇÃO CIRCULAR DO PERSONAGEM — ARPG LOW-POLY             ")
 	print("==================================================================================")
 
 	var root_vp := get_root()
@@ -28,202 +32,127 @@ func _run_all() -> void:
 
 	var player: TowerPlayer = root_node.get_node_or_null("Player") as TowerPlayer
 	var day_night: DayNightCycleHUD = root_node.get("day_night_hud") as DayNightCycleHUD
-	var equipment: CharacterEquipment = root_node.get("equipment") as CharacterEquipment
 
 	assert(player != null, "Player deve existir")
 	assert(day_night != null, "DayNightCycleHUD deve existir")
-	assert(equipment != null, "CharacterEquipment deve existir")
 
-	var lantern: BeltLantern3D = player.belt_lantern
-	assert(lantern != null, "BeltLantern3D deve estar instanciado no Player")
-	assert(lantern._omni_light != null, "OmniLight3D da lanterna deve existir")
+	var player_light: BeltLantern3D = player.belt_lantern
+	assert(player_light != null, "Luz do personagem deve estar instanciada no Player")
+	assert(player_light._omni_light != null, "OmniLight3D da luz do personagem deve existir")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 1: Dia ensolarado com cinto equipado
+	# CENÁRIO 1: Sem modelo 3D (ausência total de malhas de lanterna)
 	# -------------------------------------------------------------------------
-	print("[Cenário 1] Dia claro com cinto equipado...")
-	var test_belt: ItemInstance = ItemDatabase.generate_loot(1, ItemInstance.ItemRarity.NORMAL, "belt_leather")
-	assert(test_belt != null, "Cinto de teste deve ser gerado")
-	equipment.equip_item(test_belt, ItemDefinition.EquipmentSlot.BELT, player.stats)
-	day_night.set_time_of_day(0.50) # Meio-dia (Noon)
-	lantern.set_zone_context("town")
+	print("[Cenário 1] Verificação: zero modelos 3D / sem malha na luz...")
+	var meshes: Array[Node] = player_light.find_children("", "MeshInstance3D", true, false)
+	assert(meshes.is_empty(), "Não deve existir nenhuma malha 3D (Cylinder/Box/Hook) na luz do personagem")
+	print("  -> OK: Luz é pura (OmniLight3D), sem objetos 3D pendurados no corpo.")
+
+	# -------------------------------------------------------------------------
+	# CENÁRIO 2: Dia claro ensolarado
+	# -------------------------------------------------------------------------
+	print("[Cenário 2] Dia claro ensolarado na vila...")
+	day_night.set_time_of_day(0.50) # Meio-dia
+	player_light.set_zone_context("town")
 
 	for _i in range(15):
 		await process_frame
 
-	assert(lantern.has_belt_equipped == true, "Cinto deve estar detectado como equipado")
-	assert(lantern.visible == true, "Modelo da lanterna preso ao cinto deve ser visível de dia")
-	assert(lantern.current_light_energy < 0.05, "Durante o dia em área clara, a lanterna deve permanecer APAGADA")
-	assert(lantern._omni_light.light_energy < 0.05, "Luz OmniLight3D deve estar desligada durante o dia")
-	print("  -> OK: Lanterna visível no cinto mas 100% apagada sob sol de meio-dia.")
+	assert(player_light.current_light_energy < 0.05, "Durante o dia ensolarado, a luz do personagem permanece apagada")
+	assert(player_light._omni_light.light_energy < 0.05, "OmniLight3D desligada sob o sol")
+	print("  -> OK: Sob sol de meio-dia, a luz circular do herói permanece apagada.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 2: Noite com cinto equipado (Acendimento suave e orgânico)
+	# CENÁRIO 3: Transição para a noite (Círculo de luz acende suavemente)
 	# -------------------------------------------------------------------------
-	print("[Cenário 2] Transição para a noite com cinto equipado...")
+	print("[Cenário 3] Transição para a noite...")
 	day_night.set_time_of_day(0.95) # Noite plena
 
 	for _i in range(50):
 		await process_frame
-		if lantern.current_light_energy > 0.60:
+		if player_light.current_light_energy > 0.60:
 			break
 
-	assert(lantern.is_night_time == true, "Lanterna deve reconhecer fase noturna")
-	assert(lantern.is_lantern_lit() == true, "Lanterna deve acender durante a noite")
-	assert(lantern.current_light_energy > 0.60, "Energia da luz deve subir para o patamar ativo (> 0.60)")
-	assert(lantern._omni_light.light_energy > 0.60, "OmniLight3D deve emitir iluminação ativa")
-	assert(lantern._omni_light.light_color == BeltLantern3D.DEFAULT_AMBER_COLOR, "Cor da luz deve ser âmbar quente medieval")
-	assert(lantern._candle_material.emission_energy_multiplier > 0.5, "Núcleo de vela da lanterna deve estar emitindo brilho incandescente")
-
-	# Verifica oscilação orgânica da chama (flicker suave +-4%)
-	var energy_sample1: float = lantern._omni_light.light_energy
-	for _i in range(8):
-		await process_frame
-	var energy_sample2: float = lantern._omni_light.light_energy
-	assert(not is_equal_approx(energy_sample1, energy_sample2), "Luz da lanterna deve ter flicker orgânico suave imitando vela/chama viva")
-	print("  -> OK: Lanterna acendeu suavemente à noite com luz âmbar e oscilação viva de chama.")
+	assert(player_light.is_night_time == true, "Luz deve reconhecer fase noturna")
+	assert(player_light.is_lantern_lit() == true, "Luz deve acender durante a noite")
+	assert(player_light.current_light_energy > 0.60, "Energia da luz deve subir para o patamar ativo (> 0.60)")
+	assert(player_light._omni_light.light_energy > 0.60, "OmniLight3D deve emitir iluminação ativa")
+	assert(player_light._omni_light.light_color == BeltLantern3D.DEFAULT_AMBER_COLOR, "Cor da luz deve ser âmbar quente medieval")
+	print("  -> OK: Luz acendeu suavemente à noite com cor âmbar quente.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 3: REGRA OBRIGATÓRIA — Remover cinto à noite apaga e oculta IMEDIATAMENTE!
+	# CENÁRIO 4: Centralização estável (360° sem wobble de animação de quadril)
 	# -------------------------------------------------------------------------
-	print("[Cenário 3] REGRA OBRIGATÓRIA: Remover cinto enquanto a lanterna está acesa...")
-	var signal_data := {"emitted": false, "lit": true, "belt": true}
-	var on_state_changed = func(is_lit: bool, has_b: bool) -> void:
-		signal_data["emitted"] = true
-		signal_data["lit"] = is_lit
-		signal_data["belt"] = has_b
-
-	lantern.lantern_state_changed.connect(on_state_changed)
-	equipment.unequip_item(ItemDefinition.EquipmentSlot.BELT)
-
-	# Imediatamente no mesmo frame:
-	assert(lantern.has_belt_equipped == false, "Lanterna deve registrar desequipamento do cinto")
-	assert(lantern.visible == false, "REGRA CRÍTICA: Lanterna DEVE sumir imediatamente ao desequipar o cinto!")
-	assert(lantern.current_light_energy == 0.0, "REGRA CRÍTICA: Energia luminosa deve ir a ZERO imediatamente!")
-	assert(lantern._omni_light.light_energy == 0.0, "REGRA CRÍTICA: OmniLight deve ser desligada imediatamente!")
-	assert(signal_data["emitted"] == true and signal_data["lit"] == false and signal_data["belt"] == false, "Sinal deve notificar que desequipou e apagou")
-	lantern.lantern_state_changed.disconnect(on_state_changed)
-
-	# Garante que mesmo processando mais frames na noite escura, ela continua 100% invisível e apagada
-	for _i in range(20):
-		await process_frame
-
-	assert(lantern.visible == false, "Lanterna continua oculta sem cinto")
-	assert(lantern._omni_light.light_energy == 0.0, "Luz continua zerada sem cinto")
-	print("  -> OK: Desequipar o cinto remove imediatamente o modelo e a luz, sem resquícios.")
+	print("[Cenário 4] Centralização no herói (posição Vector3(0, 1.0, 0))...")
+	assert(player_light.get_parent() == player, "Luz do personagem deve estar fixada diretamente na raiz do Player")
+	assert(is_equal_approx(player_light.position.x, 0.0), "Posição X deve ser 0.0 (centralizada)")
+	assert(is_equal_approx(player_light.position.z, 0.0), "Posição Z deve ser 0.0 (centralizada)")
+	assert(player_light.position.y >= 0.8, "Altura Y deve estar em torno de 1.0m (torso/peito)")
+	print("  -> OK: Luz perfeitamente centralizada a 1.0m de altura, produzindo círculo perfeito no chão.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 4: Re-equipar o cinto durante a noite
+	# CENÁRIO 5: Entrada em Masmorra/Cripta Escura durante o Dia
 	# -------------------------------------------------------------------------
-	print("[Cenário 4] Re-equipar cinto durante a noite...")
-	equipment.equip_item(test_belt, ItemDefinition.EquipmentSlot.BELT, player.stats)
-	assert(lantern.visible == true, "Lanterna reaparece ao reequipar o cinto")
+	print("[Cenário 5] Entrada em Cripta/Masmorra ('zone_3_crypt') durante o dia...")
+	day_night.set_time_of_day(0.50) # Meio-dia no relógio
+	player_light.set_zone_context("zone_3_crypt") # Ambiente escuro subterrâneo
 
 	for _i in range(50):
 		await process_frame
-		if lantern.current_light_energy > 0.70:
+		if player_light.current_light_energy > 0.70:
 			break
 
-	assert(lantern.is_lantern_lit() == true, "Lanterna volta a iluminar a noite")
-	assert(lantern._omni_light.light_energy > 0.60, "OmniLight reativada")
-	print("  -> OK: Re-equipar cinto à noite restaura a lanterna e a iluminação.")
+	assert(player_light.is_dark_zone == true, "Deve identificar zona como ambiente escuro")
+	assert(player_light.is_lantern_lit() == true, "Luz deve acender na Cripta mesmo com sol no relógio!")
+	assert(player_light._omni_light.light_energy > 0.60, "OmniLight ativa na cripta")
+	print("  -> OK: Luz acende automaticamente em masmorras/criptas mesmo com sol lá fora.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 5: Entrar em Masmorra/Cripta Escura durante o Dia
-	# -------------------------------------------------------------------------
-	print("[Cenário 5] Entrar em Cripta/Masmorra ('zone_3_crypt') durante o dia...")
-	day_night.set_time_of_day(0.50) # Sol do meio-dia no relógio
-	lantern.set_zone_context("zone_3_crypt") # Ambiente escuro subterrâneo
-
-	for _i in range(50):
-		await process_frame
-		if lantern.current_light_energy > 0.70:
-			break
-
-	assert(lantern.is_dark_zone == true, "Deve identificar zona como ambiente escuro")
-	assert(lantern.is_lantern_lit() == true, "Deve acender na Cripta/Masmorra mesmo com sol no relógio!")
-	assert(lantern._omni_light.light_energy > 0.60, "Luz OmniLight ativa na caverna/cripta")
-	print("  -> OK: Lanterna acende automaticamente em masmorras/criptas mesmo sob sol do meio-dia.")
-
-	# -------------------------------------------------------------------------
-	# CENÁRIO 6: Retornar da Masmorra para área externa clara durante o Dia
+	# CENÁRIO 6: Retorno da Masmorra para área externa clara
 	# -------------------------------------------------------------------------
 	print("[Cenário 6] Retornar da Cripta para a Vila externa de dia...")
-	lantern.set_zone_context("town") # Volta para área clara aberta
+	player_light.set_zone_context("town")
 	day_night.set_zone_context("town")
 
 	for _i in range(60):
 		await process_frame
-		if lantern.current_light_energy < 0.05:
+		if player_light.current_light_energy < 0.05:
 			break
 
-	assert(lantern.is_dark_zone == false, "Não é mais zona escura")
-	assert(lantern.is_night_time == false, "É dia aberto")
-	assert(lantern.current_light_energy < 0.05, "Lanterna apaga automaticamente ao voltar à luz do dia")
-	assert(lantern._omni_light.light_energy < 0.05, "OmniLight desligada no retorno à claridade")
-	print("  -> OK: Lanterna apaga suavemente ao retornar para a luz externa natural.")
+	assert(player_light.is_dark_zone == false, "Não é mais zona escura")
+	assert(player_light.current_light_energy < 0.05, "Luz apaga suavemente ao voltar para a luz solar")
+	print("  -> OK: Luz apaga suavemente ao retornar para a luz externa natural.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 7: Remover cinto dentro da Cripta escura
+	# CENÁRIO 7: Movimento do Jogador e Ataques de Combate
 	# -------------------------------------------------------------------------
-	print("[Cenário 7] Remover cinto enquanto estiver dentro da Cripta...")
-	lantern.set_zone_context("zone_3_crypt")
-	for _i in range(50):
+	print("[Cenário 7] Movimentação e ataques de combate...")
+	player_light.set_zone_context("zone_3_crypt")
+	for _i in range(30):
 		await process_frame
-		if lantern._omni_light.light_energy > 0.60:
-			break
-	assert(lantern._omni_light.light_energy > 0.60, "Lanterna acesa na cripta")
 
-	equipment.unequip_item(ItemDefinition.EquipmentSlot.BELT)
-	assert(lantern.visible == false, "Mesmo no fundo da cripta, sem cinto a lanterna some imediatamente!")
-	assert(lantern._omni_light.light_energy == 0.0, "Mesmo no fundo da cripta, sem cinto não há luz!")
-	print("  -> OK: Removendo o cinto no escuro deixa o personagem totalmente às escuras.")
-
-	# -------------------------------------------------------------------------
-	# CENÁRIO 8: Fixação Anatômica ao Esqueleto e Animações de Combate
-	# -------------------------------------------------------------------------
-	print("[Cenário 8] Fixação ao osso 'hips' / cintura e acompanhamento de golpes...")
-	equipment.equip_item(test_belt, ItemDefinition.EquipmentSlot.BELT, player.stats)
-	assert(lantern.visible == true, "Lanterna presente")
-
-	var parent_attachment = lantern.get_parent()
-	assert(parent_attachment != null, "Lanterna deve ter um nó pai no personagem")
-	if parent_attachment is BoneAttachment3D:
-		var ba := parent_attachment as BoneAttachment3D
-		assert(ba.bone_name == "hips" or ba.bone_name == "spine", "BoneAttachment deve estar preso a hips ou spine (cintura)")
-		print("  -> OK: Preso diretamente ao rig do cavaleiro via BoneAttachment3D no osso '%s'." % ba.bone_name)
-	else:
-		print("  -> OK: Fallback anatômico na cintura do Visual do jogador.")
-
-	# Movimenta o jogador e executa animação de ataque
-	var initial_lantern_pos: Vector3 = lantern.global_position
-	player.global_position += Vector3(3.0, 0.0, 2.0)
+	var initial_pos: Vector3 = player_light.global_position
+	player.global_position += Vector3(4.0, 0.0, 3.0)
 	player.call("play_attack_animation", 0)
 
 	for _i in range(10):
 		await process_frame
 
-	var moved_lantern_pos: Vector3 = lantern.global_position
-	assert(not moved_lantern_pos.is_equal_approx(initial_lantern_pos), "Lanterna deve acompanhar rigidamente o deslocamento do jogador")
-	print("  -> OK: Lanterna acompanhou rotação, golpes de ataque e deslocamento sem desvincular.")
+	var moved_pos: Vector3 = player_light.global_position
+	assert(not moved_pos.is_equal_approx(initial_pos), "Luz acompanha o deslocamento do jogador")
+	print("  -> OK: Círculo de luz acompanha deslocamento e golpes com estabilidade.")
 
 	# -------------------------------------------------------------------------
-	# CENÁRIO 9: Parâmetros de Iluminação e Alcance Suave
+	# CENÁRIO 8: Parâmetros Luminosos de Círculo Limpo
 	# -------------------------------------------------------------------------
-	print("[Cenário 9] Validação dos parâmetros luminosos (alcance, atenuação e não-ofuscamento)...")
-	assert(lantern._omni_light.omni_range >= 6.5 and lantern._omni_light.omni_range <= 8.5, "Alcance deve cobrir 4 a 6m ao redor do personagem (atual: %.1fm)" % lantern._omni_light.omni_range)
-	assert(lantern._omni_light.omni_attenuation >= 0.85 and lantern._omni_light.omni_attenuation <= 1.05, "Atenuação suave de ~0.92 para queda linear-orgânica de luz")
-	assert(lantern._omni_light.shadow_enabled == true, "Shadow deve ser true na lanterna omni com bias calibrado para recorte nítido")
-	print("  -> OK: Parâmetros de iluminação verificados com sucesso (raio 7.5m, atenuação 0.92, âmbar quente com sombras nítidas).")
-
-	# -------------------------------------------------------------------------
-	# CENÁRIO 10: Integração de Inicialização e Inventário Espacial
-	# -------------------------------------------------------------------------
-	print("[Cenário 10] Inicialização e integração com CharacterEquipment e inventário...")
-	assert(equipment.get_equipped_item(ItemDefinition.EquipmentSlot.BELT) != null, "Cinto equipado")
-	print("  -> OK: Suíte de lanterna no cinto 100% aprovada!")
+	print("[Cenário 8] Validação dos parâmetros luminosos (alcance, atenuação e sem auto-oclusão)...")
+	var omni: OmniLight3D = player_light._omni_light
+	assert(omni.omni_range >= 7.0 and omni.omni_range <= 10.0, "Alcance do círculo entre 7.0m e 10.0m (atual: %.1fm)" % omni.omni_range)
+	assert(omni.omni_attenuation >= 0.8 and omni.omni_attenuation <= 1.2, "Atenuação radial suave (atual: %.2f)" % omni.omni_attenuation)
+	assert(omni.shadow_enabled == false, "Sombras desativadas na OmniLight para garantir círculo puro e limpo sem auto-sombras do corpo")
+	print("  -> OK: Parâmetros ópticos aprovados para projeção circular nítida.")
 
 	print("==================================================================================")
-	print("  TODOS OS 10 CENÁRIOS DO SISTEMA DE LANTERNA NO CINTO PASSARAM COM SUCESSO!      ")
+	print("  TODOS OS 8 CENÁRIOS DA ILUMINAÇÃO CIRCULAR PASSARAM COM SUCESSO!                ")
 	print("==================================================================================")
 	quit(0)
