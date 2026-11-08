@@ -21,6 +21,8 @@ const WORLD_MAP_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/world_map
 const HEALTH_GLOBE_HUD_SCRIPT: Script = preload("res://game/ui/campaign/health_globe_hud.gd")
 const MANA_GLOBE_HUD_SCRIPT: Script = preload("res://game/ui/campaign/mana_globe_hud.gd")
 const SKILL_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/skill_bar_hud.gd")
+const EXPERIENCE_SERVICE_SCRIPT: Script = preload("res://core/progression/experience_service.gd")
+const EXPERIENCE_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/experience_bar_hud.gd")
 const DAY_NIGHT_HUD_SCRIPT: Script = preload("res://game/ui/campaign/day_night_cycle_hud.gd")
 const ITEM_DEF_SCRIPT = preload("res://core/items/item_definition.gd")
 const ITEM_INST_SCRIPT = preload("res://core/items/item_instance.gd")
@@ -68,6 +70,8 @@ var world_map_modal: WorldMapModal
 var health_globe_hud: HealthGlobeHUD
 var mana_globe_hud: ManaGlobeHUD
 var skill_bar_hud: SkillBarHUD
+var experience_service: RefCounted
+var experience_bar_hud: Control
 var inventory_modal: InventoryEquipmentModal
 var day_night_hud: DayNightCycleHUD = null
 var backpack: SpatialInventoryGrid = SpatialInventoryGrid.new(10, 6)
@@ -152,6 +156,13 @@ func _ready() -> void:
 	if player != null and player.skill_controller != null:
 		skill_bar_hud.bind_controller(player.skill_controller)
 	skill_bar_hud.visible = false
+
+	experience_service = EXPERIENCE_SERVICE_SCRIPT.new(1, 0)
+	experience_bar_hud = EXPERIENCE_BAR_HUD_SCRIPT.new() as Control
+	$HUD.add_child(experience_bar_hud)
+	experience_bar_hud.bind_service(experience_service)
+	experience_bar_hud.bind_hotbar(skill_bar_hud)
+	experience_bar_hud.visible = false
 
 	health_globe_hud = HEALTH_GLOBE_HUD_SCRIPT.new() as HealthGlobeHUD
 	$HUD.add_child(health_globe_hud)

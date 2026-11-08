@@ -13,6 +13,8 @@ class_name SkillBarHUD
 ## • Exibição em tempo real de cooldown, custo de mana, indisponibilidade e feedback de uso.
 ## • mouse_filter da moldura é IGNORE para não bloquear cliques no gameplay.
 
+signal layout_updated()
+
 const BASE_SIZE := Vector2(820, 291)
 const TEX_FRAME := preload("res://assets/ui/hud/02_hotbar_6_skills_base.png")
 
@@ -487,6 +489,7 @@ func _open_picker(slot_idx: int) -> void:
 
 	_picker_panel.visible = true
 	_relayout_picker()
+	layout_updated.emit()
 
 
 func _relayout_picker() -> void:
@@ -522,6 +525,7 @@ func _relayout() -> void:
 	var margin_y: float = 6.0
 	position = Vector2((vp.x - size.x) * 0.5, vp.y - size.y - margin_y)
 	_relayout_picker()
+	layout_updated.emit()
 
 
 func _get_icon(path: String) -> Texture2D:

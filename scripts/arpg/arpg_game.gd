@@ -22,6 +22,8 @@ const WORLD_MAP_MODAL_SCRIPT: Script = preload("res://game/ui/campaign/world_map
 const HEALTH_GLOBE_HUD_SCRIPT: Script = preload("res://game/ui/campaign/health_globe_hud.gd")
 const MANA_GLOBE_HUD_SCRIPT: Script = preload("res://game/ui/campaign/mana_globe_hud.gd")
 const SKILL_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/skill_bar_hud.gd")
+const EXPERIENCE_SERVICE_SCRIPT: Script = preload("res://core/progression/experience_service.gd")
+const EXPERIENCE_BAR_HUD_SCRIPT: Script = preload("res://game/ui/campaign/experience_bar_hud.gd")
 const ITEM_DEF_SCRIPT = preload("res://core/items/item_definition.gd")
 const ITEM_INST_SCRIPT = preload("res://core/items/item_instance.gd")
 const ITEM_DB_SCRIPT = preload("res://core/items/item_database.gd")
@@ -52,6 +54,8 @@ var area_level: int = 1
 var gold: int = 150
 
 var run_progression: RunProgressionService
+var experience_service: RefCounted
+var experience_bar_hud: Control
 var health_globe_hud: HealthGlobeHUD
 var mana_globe_hud: ManaGlobeHUD
 var skill_bar_hud: SkillBarHUD
@@ -133,6 +137,13 @@ func _ready() -> void:
 		skill_bar_hud.bind_controller(player.skill_controller)
 		player.skill_controller.set_enabled(true)
 	skill_bar_hud.visible = true
+
+	experience_service = EXPERIENCE_SERVICE_SCRIPT.new(1, 0)
+	experience_bar_hud = EXPERIENCE_BAR_HUD_SCRIPT.new() as Control
+	$HUD.add_child(experience_bar_hud)
+	experience_bar_hud.bind_service(experience_service)
+	experience_bar_hud.bind_hotbar(skill_bar_hud)
+	experience_service.level_gained.connect(_on_experience_level_gained)
 
 	var controls_plate: Node = $HUD.get_node_or_null("ControlsPlate")
 	if controls_plate != null:
@@ -474,18 +485,35 @@ func _spawn_campaign_packs(zone_def: CampaignZoneDefinition) -> void:
 			var scene_to_use: PackedScene = ENEMY_SCENE
 			var archetype: String = "melee"
 			var rank_val: int = LootBalanceConfig.MonsterClass.NORMAL
+			var r_roll: float = rng.randf()
+
 			if is_boss:
 				scene_to_use = BOSS_SCENE
 				archetype = "tank"
-				rank_val = LootBalanceConfig.MonsterClass.RARE
+				# Caveirão (Pesado/Tanque): Líder de pack (idx == 0) é Raro, os demais seguem probabilidade
+				if idx == 0 or r_roll < 0.40:
+					rank_val = LootBalanceConfig.MonsterClass.RARE
+				elif r_roll < 0.75:
+					rank_val = LootBalanceConfig.MonsterClass.MAGIC
+				else:
+					rank_val = LootBalanceConfig.MonsterClass.NORMAL
 			elif is_wolf:
 				scene_to_use = WOLF_SCENE
 				archetype = "melee"
-				if rng.randf() < 0.12:
+				if r_roll < 0.03:
+					rank_val = LootBalanceConfig.MonsterClass.RARE
+				elif r_roll < 0.12:
 					rank_val = LootBalanceConfig.MonsterClass.MAGIC
+				else:
+					rank_val = LootBalanceConfig.MonsterClass.NORMAL
 			else:
-				if rng.randf() < 0.15:
+				# Caveira: 88% Normal, 9% Mágico, 3% Raro
+				if r_roll < 0.03:
+					rank_val = LootBalanceConfig.MonsterClass.RARE
+				elif r_roll < 0.12:
 					rank_val = LootBalanceConfig.MonsterClass.MAGIC
+				else:
+					rank_val = LootBalanceConfig.MonsterClass.NORMAL
 
 			var enemy: TowerEnemy = scene_to_use.instantiate() as TowerEnemy
 			enemy.aggro_radius = 10.5
@@ -680,21 +708,16 @@ func _on_zone_gate_crossed(target_zone_id: String, origin_zone_id: String) -> vo
 
 
 func _on_enemy_died(_xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
-	if not game_over:
-		var xp_val: int = 3
-		var gold_gain: int = randi_range(5, 11)
-		if is_instance_valid(enemy):
-			if enemy.is_mini_boss:
-				xp_val = 28
-				gold_gain = randi_range(32, 50)
-			elif enemy.xp_reward_multiplier > 1:
-				xp_val = 6
-				gold_gain = randi_range(12, 22)
-		run_progression.grant_xp(xp_val)
-		_on_gold_changed(gold + gold_gain)
+	if not game_over and is_instance_valid(enemy):
+		var m_lvl: int = maxi(1, enemy.monster_level)
+		var fam: String = "skeleton"
+		if enemy is TowerWolfEnemy:
+			fam = "wolf"
+		elif enemy.is_mini_boss or enemy is BossMalakor:
+			fam = "skeleton_boss"
 
-	if is_instance_valid(enemy):
 		var m_class: int = LootBalanceConfig.MonsterClass.NORMAL
+		var is_boss: bool = (enemy is BossMalakor) or enemy.is_mini_boss
 		if enemy is BossMalakor:
 			m_class = LootBalanceConfig.MonsterClass.BOSS
 		elif enemy.monster_rank != LootBalanceConfig.MonsterClass.NORMAL:
@@ -703,7 +726,23 @@ func _on_enemy_died(_xp_mult: int = 1, enemy: TowerEnemy = null) -> void:
 			m_class = LootBalanceConfig.MonsterClass.RARE
 		elif enemy.xp_reward_multiplier > 1:
 			m_class = LootBalanceConfig.MonsterClass.MAGIC
-		_maybe_drop_loot_at(enemy.global_position, enemy.is_mini_boss, m_class, enemy.monster_level)
+
+		var xp_val: int = 22
+		if experience_service != null:
+			var b_id: String = "malakor" if (enemy is BossMalakor) else ""
+			xp_val = experience_service.calculate_kill_xp(m_lvl, fam, m_class, is_boss, b_id)
+			experience_service.add_xp(xp_val, b_id)
+		elif run_progression != null:
+			run_progression.grant_xp(xp_val)
+
+		var gold_gain: int = randi_range(5, 11)
+		if is_boss:
+			gold_gain = randi_range(32, 50)
+		elif m_class != LootBalanceConfig.MonsterClass.NORMAL:
+			gold_gain = randi_range(12, 22)
+		_on_gold_changed(gold + gold_gain)
+
+		_maybe_drop_loot_at(enemy.global_position, is_boss, m_class, m_lvl)
 
 	kills += 1
 	enemies_left = maxi(enemies_left - 1, 0)
@@ -786,6 +825,10 @@ func _maybe_drop_loot_at(pos: Vector3, is_boss: bool = false, monster_class: int
 		_ground_items_root.add_child(ground_drop)
 		var spread := Vector3(randf_range(-0.6, 0.6), 0.0, randf_range(-0.6, 0.6))
 		ground_drop.setup_drop(item, pos + spread)
+
+
+func _on_experience_level_gained(new_lvl: int, _old_lvl: int = 1) -> void:
+	_on_level_gained(new_lvl)
 
 
 func _on_level_gained(new_lvl: int) -> void:
