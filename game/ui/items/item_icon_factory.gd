@@ -121,7 +121,8 @@ static func _generate_procedural_image(def: ItemDefinition) -> Image:
 		ItemDefinition.ItemCategory.AMULET:
 			_draw_amulet(img, w, h, accent_color, Color(0.25, 0.85, 0.95))
 		ItemDefinition.ItemCategory.CONSUMABLE:
-			_draw_potion(img, w, h, Color(0.95, 0.20, 0.20))
+			var liquid_col: Color = Color(0.20, 0.55, 0.95) if def.base_id.contains("mana") else Color(0.95, 0.20, 0.20)
+			_draw_potion(img, w, h, liquid_col)
 		_:
 			_draw_generic_box(img, w, h, accent_color)
 

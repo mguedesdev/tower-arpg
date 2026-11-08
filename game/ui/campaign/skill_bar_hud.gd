@@ -2,37 +2,54 @@ extends Control
 class_name SkillBarHUD
 
 ## ============================================================================
-## HOTBAR GÓTICA DE HABILIDADES — ARPG DARK FANTASY (GODOT 4)
+## HOTBAR MODULAR DEFINITIVA — 6 SKILLS CENTRAIS (GODOT 4)
 ## ============================================================================
 ## Rodapé central da tela:
-## • 6 slots configuráveis: [LMB] [RMB] [1] [2] [3] [4].
-## • Base visual na moldura oficial com simetria e ornamentos (hotbar_frame.png).
-## • Nenhum ícone permanente na arte-base: slots vazios exibem apenas o interior.
-## • Ícones carregados dinamicamente das habilidades atribuídas.
+## • 6 slots configuráveis: [LMB] [RMB] [Q] [E] [R] [F].
+## • Base visual oficial sem correntes (02_hotbar_6_skills_base.png).
+## • Nenhum ícone permanente na arte-base: slots vazios exibem apenas a cavidade.
 ## • 6 botões de seta ▲ dedicados para abrir o seletor em cada um dos 6 slots.
+## • Keyplates inferiores renderizam as teclas dinamicamente via InputMap.
 ## • Exibição em tempo real de cooldown, custo de mana, indisponibilidade e feedback de uso.
-## • Totalmente integrado ao PlayerSkillController sem duplicar controles de combate.
+## • mouse_filter da moldura é IGNORE para não bloquear cliques no gameplay.
 
-const BASE_SIZE := Vector2(938, 393)
-
-const TEX_FRAME := preload("res://assets/ui/hud/hotbar_frame.png")
+const BASE_SIZE := Vector2(820, 291)
+const TEX_FRAME := preload("res://assets/ui/hud/02_hotbar_6_skills_base.png")
 
 const GOLD := Color(0.92, 0.76, 0.38)
-const TEXT_COLOR := Color(0.94, 0.90, 0.82)
-const MUTED_COLOR := Color(0.60, 0.55, 0.48)
+const TEXT_COLOR := Color(0.95, 0.90, 0.82)
+const KEYPLATE_COLOR := Color(0.96, 0.88, 0.65)
 const MANA_BLUE := Color(0.42, 0.78, 1.0)
 const MANA_EMPTY := Color(1.0, 0.35, 0.35)
 
-# Coordenadas originais dos 6 slots na arte 938x393
 const SLOT_COUNT: int = 6
-const SLOT_CENTERS: Array[float] = [179.0, 296.0, 411.0, 526.0, 641.0, 756.0]
-const SLOT_Y_TOP: float = 160.0
-const SLOT_WIDTH: float = 98.0
-const SLOT_HEIGHT: float = 92.0
-const ARROW_Y: float = 138.0
-const ARROW_RADIUS: float = 16.0
+const SLOT_HOLES: Array[Rect2] = [
+	Rect2(52, 112, 99, 96),
+	Rect2(175, 112, 99, 96),
+	Rect2(298, 112, 98, 96),
+	Rect2(421, 112, 97, 96),
+	Rect2(542, 112, 99, 96),
+	Rect2(666, 112, 100, 96)
+]
+const ARROW_CENTERS: Array[Vector2] = [
+	Vector2(101, 85),
+	Vector2(224, 85),
+	Vector2(347, 85),
+	Vector2(469, 85),
+	Vector2(591, 85),
+	Vector2(716, 85)
+]
+const KEYPLATE_CENTERS: Array[Vector2] = [
+	Vector2(101, 239),
+	Vector2(224, 239),
+	Vector2(347, 239),
+	Vector2(469, 239),
+	Vector2(591, 239),
+	Vector2(716, 239)
+]
 
-@export_range(0.2, 1.0, 0.02) var ui_scale: float = 0.44
+@export_range(0.3, 1.2, 0.02) var user_scale_multiplier: float = 1.0
+var ui_scale: float = 0.76
 
 var controller: PlayerSkillController
 
@@ -43,6 +60,7 @@ var _slot_roots: Array[Control] = []
 var _slot_icons: Array[TextureRect] = []
 var _slot_arrow_btns: Array[Button] = []
 var _slot_click_btns: Array[Button] = []
+var _slot_key_labels: Array[Label] = []
 var _slot_cd_curtains: Array[ColorRect] = []
 var _slot_cd_labels: Array[Label] = []
 var _slot_mana_overlays: Array[ColorRect] = []
@@ -61,13 +79,16 @@ func _init() -> void:
 	name = "SkillBarHUD"
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_ui()
+	refresh_keyplate_labels()
 
 
 func _ready() -> void:
+	HudInputHelper.ensure_default_actions()
 	_relayout()
 	var vp := get_viewport()
 	if vp != null:
 		vp.size_changed.connect(_relayout)
+	refresh_keyplate_labels()
 
 
 func bind_controller(new_controller: PlayerSkillController) -> void:
@@ -97,7 +118,7 @@ func _build_ui() -> void:
 	_scaler.scale = Vector2(ui_scale, ui_scale)
 	add_child(_scaler)
 
-	# 1. Moldura de fundo oficial com todos os ornamentos e etiquetas (LMB, RMB, 1, 2, 3, 4)
+	# 1. Moldura oficial 02_hotbar_6_skills_base.png
 	_frame_rect = TextureRect.new()
 	_frame_rect.name = "HotbarFrame"
 	_frame_rect.texture = TEX_FRAME
@@ -106,119 +127,139 @@ func _build_ui() -> void:
 	_frame_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scaler.add_child(_frame_rect)
 
+	var empty_style := StyleBoxEmpty.new()
+
 	# 2. Configuração dos 6 slots
-	for i in range(PlayerSkillController.SLOT_COUNT):
-		var cx: float = SLOT_CENTERS[i]
-		var slot_x: float = cx - (SLOT_WIDTH * 0.5)
+	for i in range(SLOT_COUNT):
+		var hole: Rect2 = SLOT_HOLES[i]
+		var arrow_c: Vector2 = ARROW_CENTERS[i]
+		var key_c: Vector2 = KEYPLATE_CENTERS[i]
 
 		var slot_ctrl := Control.new()
 		slot_ctrl.name = "Slot_%d" % i
-		slot_ctrl.position = Vector2(slot_x, SLOT_Y_TOP)
-		slot_ctrl.size = Vector2(SLOT_WIDTH, SLOT_HEIGHT)
+		slot_ctrl.position = hole.position
+		slot_ctrl.size = hole.size
 		slot_ctrl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_scaler.add_child(slot_ctrl)
 
-		# Ícone dinâmico da habilidade atribuída (vazio por padrão)
+		# Ícone dinâmico centralizado no orifício
+		var icon_sz := Vector2(72, 72)
+		var icon_pos := (hole.size - icon_sz) * 0.5
 		var icon := TextureRect.new()
 		icon.name = "SkillIcon"
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.size = Vector2(66, 66)
-		icon.position = Vector2((SLOT_WIDTH - 66) * 0.5, (SLOT_HEIGHT - 66) * 0.5 - 2)
+		icon.size = icon_sz
+		icon.position = icon_pos
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot_ctrl.add_child(icon)
 
-		# Cortina de cooldown (desce de cima para baixo ou sobe)
+		# Cortina escura de cooldown
 		var cd_curtain := ColorRect.new()
 		cd_curtain.name = "CooldownCurtain"
 		cd_curtain.color = Color(0.02, 0.02, 0.03, 0.72)
-		cd_curtain.position = icon.position
-		cd_curtain.size = Vector2(icon.size.x, 0.0)
+		cd_curtain.position = icon_pos
+		cd_curtain.size = Vector2(icon_sz.x, 0.0)
 		cd_curtain.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot_ctrl.add_child(cd_curtain)
 
-		# Rótulo de segundos restantes do cooldown
+		# Contador numérico de recarga
 		var cd_lbl := Label.new()
 		cd_lbl.name = "CooldownLabel"
-		cd_lbl.position = icon.position
-		cd_lbl.size = icon.size
+		cd_lbl.position = icon_pos
+		cd_lbl.size = icon_sz
 		cd_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		cd_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		cd_lbl.add_theme_font_size_override("font_size", 22)
+		cd_lbl.add_theme_font_size_override("font_size", 20)
 		cd_lbl.add_theme_color_override("font_color", Color(1, 1, 1))
 		cd_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-		cd_lbl.add_theme_constant_override("outline_size", 6)
+		cd_lbl.add_theme_constant_override("outline_size", 5)
 		cd_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot_ctrl.add_child(cd_lbl)
 
-		# Indicador de indisponibilidade por falta de mana
+		# Filtro de mana insuficiente
 		var mana_overlay := ColorRect.new()
 		mana_overlay.name = "ManaOverlay"
-		mana_overlay.color = Color(0.04, 0.08, 0.22, 0.65)
-		mana_overlay.position = icon.position
-		mana_overlay.size = icon.size
+		mana_overlay.color = Color(0.05, 0.10, 0.28, 0.68)
+		mana_overlay.position = icon_pos
+		mana_overlay.size = icon_sz
 		mana_overlay.visible = false
 		mana_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot_ctrl.add_child(mana_overlay)
 
-		# Custo numérico de mana da habilidade
+		# Custo numérico de mana
 		var mana_lbl := Label.new()
 		mana_lbl.name = "ManaCostLabel"
-		mana_lbl.position = Vector2(icon.position.x + 2, icon.position.y + icon.size.y - 18)
-		mana_lbl.size = Vector2(icon.size.x - 4, 16)
+		mana_lbl.position = Vector2(icon_pos.x + 2, icon_pos.y + icon_sz.y - 18)
+		mana_lbl.size = Vector2(icon_sz.x - 4, 16)
 		mana_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		mana_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-		mana_lbl.add_theme_font_size_override("font_size", 12)
+		mana_lbl.add_theme_font_size_override("font_size", 11)
 		mana_lbl.add_theme_color_override("font_color", MANA_BLUE)
 		mana_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 		mana_lbl.add_theme_constant_override("outline_size", 4)
 		mana_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot_ctrl.add_child(mana_lbl)
 
-		# Flash de feedback ao conjurar
+		# Flash de conjuração
 		var flash := ColorRect.new()
 		flash.name = "FlashOverlay"
 		flash.color = Color(1.0, 0.95, 0.75, 0.0)
-		flash.position = icon.position
-		flash.size = icon.size
+		flash.position = icon_pos
+		flash.size = icon_sz
 		flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot_ctrl.add_child(flash)
 
-		# Botão invisível sobre o slot para hover / clique / tooltip
+		# Botão invisível sobre o orifício para clique / hover
 		var slot_btn := Button.new()
 		slot_btn.name = "SlotButton"
-		slot_btn.position = icon.position
-		slot_btn.size = icon.size
+		slot_btn.position = icon_pos
+		slot_btn.size = icon_sz
 		slot_btn.flat = true
 		slot_btn.focus_mode = Control.FOCUS_NONE
 		slot_btn.mouse_filter = Control.MOUSE_FILTER_STOP
-		var empty_style := StyleBoxEmpty.new()
 		slot_btn.add_theme_stylebox_override("normal", empty_style)
 		slot_btn.add_theme_stylebox_override("pressed", empty_style)
 		slot_btn.add_theme_stylebox_override("hover", _make_slot_hover_style())
 		var idx: int = i
-		slot_btn.pressed.connect(func() -> void: _open_picker(idx))
+		slot_btn.pressed.connect(func() -> void: _on_slot_clicked(idx))
 		slot_ctrl.add_child(slot_btn)
 
-		# Botão dedicado sobre a seta ▲ no topo do slot
+		# Botão dedicado sobre a seta ▲ no topo
+		var arrow_sz := Vector2(32, 28)
 		var arrow_btn := Button.new()
 		arrow_btn.name = "ArrowButton_%d" % i
-		arrow_btn.size = Vector2(ARROW_RADIUS * 2.0, ARROW_RADIUS * 2.0)
-		arrow_btn.position = Vector2(cx - ARROW_RADIUS, ARROW_Y - ARROW_RADIUS)
+		arrow_btn.size = arrow_sz
+		arrow_btn.position = arrow_c - (arrow_sz * 0.5)
 		arrow_btn.focus_mode = Control.FOCUS_NONE
 		arrow_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 		arrow_btn.flat = true
-		arrow_btn.tooltip_text = "Escolher habilidade para [%s]" % PlayerSkillController.SLOT_LABELS[i]
+		arrow_btn.tooltip_text = "Escolher habilidade para este slot"
 		arrow_btn.add_theme_stylebox_override("normal", empty_style)
 		arrow_btn.add_theme_stylebox_override("hover", _make_arrow_hover_style())
 		arrow_btn.add_theme_stylebox_override("pressed", _make_arrow_hover_style())
 		arrow_btn.pressed.connect(func() -> void: _open_picker(idx))
 		_scaler.add_child(arrow_btn)
 
+		# Rótulo de texto da tecla no keyplate inferior
+		var key_lbl := Label.new()
+		key_lbl.name = "KeyLabel_%d" % i
+		key_lbl.position = Vector2(key_c.x - 30, key_c.y - 12)
+		key_lbl.size = Vector2(60, 24)
+		key_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		key_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		key_lbl.add_theme_font_size_override("font_size", 12)
+		key_lbl.add_theme_color_override("font_color", KEYPLATE_COLOR)
+		key_lbl.add_theme_color_override("font_outline_color", Color(0.08, 0.05, 0.02, 0.95))
+		key_lbl.add_theme_constant_override("outline_size", 4)
+		key_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_scaler.add_child(key_lbl)
+
 		_slot_roots.append(slot_ctrl)
 		_slot_icons.append(icon)
 		_slot_arrow_btns.append(arrow_btn)
 		_slot_click_btns.append(slot_btn)
+		_slot_key_labels.append(key_lbl)
 		_slot_cd_curtains.append(cd_curtain)
 		_slot_cd_labels.append(cd_lbl)
 		_slot_mana_overlays.append(mana_overlay)
@@ -256,6 +297,123 @@ func _build_ui() -> void:
 	pv.add_child(_picker_list)
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if _picker_panel.visible:
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			_picker_panel.visible = false
+			get_viewport().set_input_as_handled()
+		elif event is InputEventMouseButton and event.pressed:
+			var local_p := _picker_panel.get_local_mouse_position()
+			if not Rect2(Vector2.ZERO, _picker_panel.size).has_point(local_p):
+				_picker_panel.visible = false
+
+
+func refresh_keyplate_labels() -> void:
+	for i in range(SLOT_COUNT):
+		if i < _slot_key_labels.size():
+			var lbl_str: String = HudInputHelper.get_skill_action_label(i)
+			_slot_key_labels[i].text = lbl_str
+
+
+func refresh_slots() -> void:
+	refresh_keyplate_labels()
+	for i in range(SLOT_COUNT):
+		var sid: String = controller.slots[i] if (controller != null and i < controller.slots.size()) else ""
+		var icon_ctrl: TextureRect = _slot_icons[i]
+		var mana_lbl: Label = _slot_mana_labels[i]
+		var btn: Button = _slot_click_btns[i]
+		var arrow_b: Button = _slot_arrow_btns[i]
+
+		if sid.is_empty() or controller == null or not controller.skills.has(sid):
+			icon_ctrl.texture = null
+			mana_lbl.text = ""
+			btn.tooltip_text = "Slot vazio [%s] — clique na seta acima para atribuir" % _slot_key_labels[i].text
+			arrow_b.tooltip_text = "Escolher habilidade para [%s]" % _slot_key_labels[i].text
+			continue
+
+		var def: SkillDefinition = controller.skills[sid] as SkillDefinition
+		icon_ctrl.texture = _get_icon(def.icon_path)
+		mana_lbl.text = str(def.mana_cost) if def.mana_cost > 0 else ""
+		btn.tooltip_text = "%s\nCusto de Mana: %d | Recarga: %.1fs\n%s" % [def.display_name, def.mana_cost, def.base_cooldown, def.description]
+		arrow_b.tooltip_text = "Substituir habilidade em [%s]" % _slot_key_labels[i].text
+
+
+func refresh_mana_availability(current_mana: int) -> void:
+	if controller == null:
+		return
+	for i in range(SLOT_COUNT):
+		var sid: String = controller.slots[i] if i < controller.slots.size() else ""
+		if sid.is_empty() or not controller.skills.has(sid):
+			_slot_mana_overlays[i].visible = false
+			continue
+		var def: SkillDefinition = controller.skills[sid] as SkillDefinition
+		var lacks_mana: bool = def.mana_cost > 0 and current_mana < def.mana_cost
+		_slot_mana_overlays[i].visible = lacks_mana
+		if lacks_mana:
+			_slot_mana_labels[i].add_theme_color_override("font_color", MANA_EMPTY)
+		else:
+			_slot_mana_labels[i].add_theme_color_override("font_color", MANA_BLUE)
+
+
+func _on_skill_cast(sid: String) -> void:
+	if controller == null:
+		return
+	for i in range(SLOT_COUNT):
+		if i < controller.slots.size() and controller.slots[i] == sid:
+			_trigger_flash(i)
+
+
+func _on_insufficient_mana(slot_idx: int, _cost: int) -> void:
+	if slot_idx >= 0 and slot_idx < _slot_mana_overlays.size():
+		var overlay := _slot_mana_overlays[slot_idx]
+		var tw := create_tween()
+		tw.tween_property(overlay, "color:a", 0.95, 0.08)
+		tw.tween_property(overlay, "color:a", 0.68, 0.20)
+
+
+func _trigger_flash(slot_idx: int) -> void:
+	if slot_idx < 0 or slot_idx >= _slot_flash_overlays.size():
+		return
+	var f := _slot_flash_overlays[slot_idx]
+	var tw := create_tween()
+	tw.tween_property(f, "color:a", 0.85, 0.06)
+	tw.tween_property(f, "color:a", 0.0, 0.25)
+
+
+func _process(delta: float) -> void:
+	if not visible:
+		return
+	if controller == null:
+		return
+
+	for i in range(SLOT_COUNT):
+		var sid: String = controller.slots[i] if i < controller.slots.size() else ""
+		var curtain: ColorRect = _slot_cd_curtains[i]
+		var cd_lbl: Label = _slot_cd_labels[i]
+
+		if sid.is_empty() or not controller.skills.has(sid):
+			curtain.size.y = 0.0
+			cd_lbl.text = ""
+			continue
+
+		var def: SkillDefinition = controller.skills[sid] as SkillDefinition
+		var rem: float = controller.get_cooldown_remaining(sid)
+		var total: float = def.get_cooldown(controller._stats())
+
+		if rem > 0.05 and total > 0.01:
+			var ratio: float = clampf(rem / total, 0.0, 1.0)
+			curtain.size.y = 72.0 * ratio
+			curtain.position.y = (96.0 - 72.0) * 0.5 + (72.0 * (1.0 - ratio))
+			cd_lbl.text = "%.1f" % rem if rem < 10.0 else "%d" % int(ceil(rem))
+		else:
+			curtain.size.y = 0.0
+			cd_lbl.text = ""
+
+
+func _on_slot_clicked(slot_idx: int) -> void:
+	_open_picker(slot_idx)
+
+
 func _open_picker(slot_idx: int) -> void:
 	if controller == null:
 		return
@@ -263,20 +421,20 @@ func _open_picker(slot_idx: int) -> void:
 		_picker_panel.visible = false
 		return
 	_picker_slot = slot_idx
-	var slot_name: String = PlayerSkillController.SLOT_LABELS[slot_idx]
-	_picker_title.text = "Atribuir Habilidade a [%s] (Máx. %d Ativas)" % [slot_name, PlayerSkillController.MAX_ACTIVE_SKILLS]
+	var key_label: String = _slot_key_labels[slot_idx].text
+	_picker_title.text = "Atribuir Habilidade a [%s]" % key_label
 
 	for child in _picker_list.get_children():
 		child.queue_free()
 
 	for sid in controller.get_assignable_skill_ids():
-		var def: SkillDefinition = controller.skills[sid]
+		var def: SkillDefinition = controller.skills[sid] as SkillDefinition
 		var btn := Button.new()
-		var tag: String = "  [Ataque Básico]" if def.is_basic_attack else ""
+		var tag: String = "  [Básico]" if def.is_basic_attack else ""
 		var mana_tag: String = "  (💧 %d)" % def.mana_cost if def.mana_cost > 0 else ""
 		var current: bool = controller.slots[slot_idx] == sid
 		btn.text = ("✔ " if current else "   ") + def.display_name + tag + mana_tag
-		btn.tooltip_text = "%s\nCusto de Mana: %d | Recarga: %.1fs\n%s" % [def.display_name, def.mana_cost, def.base_cooldown, def.description]
+		btn.tooltip_text = "%s\nCusto: %d | Recarga: %.1fs\n%s" % [def.display_name, def.mana_cost, def.base_cooldown, def.description]
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.icon = _get_icon(def.icon_path)
 		btn.expand_icon = false
@@ -298,133 +456,48 @@ func _open_picker(slot_idx: int) -> void:
 		btn.add_theme_stylebox_override("hover", h_style)
 		btn.add_theme_stylebox_override("pressed", h_style)
 
-		var allowed: bool = controller.can_assign(slot_idx, sid)
-		btn.disabled = not allowed
-		if not allowed:
-			btn.text += "  [Limite Atingido]"
-
-		var chosen: String = sid
+		var skill_to_assign: String = sid
 		btn.pressed.connect(func() -> void:
-			controller.assign_slot(_picker_slot, chosen)
+			controller.assign_skill_to_slot(_picker_slot, skill_to_assign)
 			_picker_panel.visible = false
+			refresh_slots()
 		)
 		_picker_list.add_child(btn)
 
+	# Botão para desequipar / limpar o slot
 	var clear_btn := Button.new()
-	clear_btn.text = "   — Deixar vazio —"
+	clear_btn.text = "   ✕ Deixar Slot Vazio"
 	clear_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	clear_btn.focus_mode = Control.FOCUS_NONE
 	clear_btn.add_theme_font_size_override("font_size", 12)
-	clear_btn.add_theme_color_override("font_color", MUTED_COLOR)
+	clear_btn.add_theme_color_override("font_color", Color(0.75, 0.45, 0.45))
+	var c_style := StyleBoxFlat.new()
+	c_style.bg_color = Color(0.12, 0.06, 0.06, 0.92)
+	c_style.border_color = Color(0.55, 0.25, 0.25, 0.8)
+	c_style.set_border_width_all(1)
+	c_style.set_corner_radius_all(4)
+	clear_btn.add_theme_stylebox_override("normal", c_style)
 	clear_btn.pressed.connect(func() -> void:
-		controller.assign_slot(_picker_slot, "")
+		controller.slots[_picker_slot] = ""
+		controller.slots_changed.emit()
 		_picker_panel.visible = false
+		refresh_slots()
 	)
 	_picker_list.add_child(clear_btn)
 
 	_picker_panel.visible = true
+	_relayout_picker()
+
+
+func _relayout_picker() -> void:
+	if not _picker_panel.visible or _picker_slot < 0:
+		return
 	_picker_panel.reset_size()
-	await get_tree().process_frame
-
-	var slot_ctrl: Control = _slot_roots[slot_idx]
-	var sp: Vector2 = slot_ctrl.global_position
-	var vp: Vector2 = get_viewport_rect().size
-	var px: float = clampf(sp.x + (SLOT_WIDTH * ui_scale * 0.5) - (_picker_panel.size.x * 0.5), 10.0, vp.x - _picker_panel.size.x - 10.0)
-	var py: float = maxf(10.0, global_position.y - _picker_panel.size.y - 12.0)
+	var hole: Rect2 = SLOT_HOLES[_picker_slot]
+	var slot_center_x: float = (hole.position.x + hole.size.x * 0.5) * ui_scale
+	var px: float = clampf(slot_center_x - _picker_panel.size.x * 0.5, 8.0, size.x - _picker_panel.size.x - 8.0)
+	var py: float = -_picker_panel.size.y - 12.0
 	_picker_panel.position = Vector2(px, py)
-
-
-func refresh_slots() -> void:
-	if controller == null:
-		return
-	for i in range(PlayerSkillController.SLOT_COUNT):
-		var def: SkillDefinition = controller.get_slot_skill(i)
-		if def == null:
-			_slot_icons[i].texture = null
-			_slot_click_btns[i].tooltip_text = "Slot [%s] vazio — clique na seta ▲ para atribuir" % PlayerSkillController.SLOT_LABELS[i]
-			_slot_mana_labels[i].text = ""
-			_slot_mana_overlays[i].visible = false
-		else:
-			_slot_icons[i].texture = _get_icon(def.icon_path)
-			_slot_click_btns[i].tooltip_text = "%s (Custo: %d Mana)\n%s" % [def.display_name, def.mana_cost, def.description]
-			if def.mana_cost > 0:
-				_slot_mana_labels[i].text = "%d" % def.mana_cost
-			else:
-				_slot_mana_labels[i].text = ""
-
-
-func refresh_mana_availability(mana_amount: int) -> void:
-	if controller == null:
-		return
-	for i in range(PlayerSkillController.SLOT_COUNT):
-		if i >= _slot_mana_overlays.size():
-			continue
-		var sid: String = controller.slots[i]
-		if sid.is_empty():
-			_slot_mana_overlays[i].visible = false
-			continue
-		var def: SkillDefinition = controller.skills.get(sid, null) as SkillDefinition
-		if def != null and def.mana_cost > 0:
-			var not_enough: bool = (mana_amount < def.mana_cost)
-			_slot_mana_overlays[i].visible = not_enough
-			_slot_mana_labels[i].add_theme_color_override("font_color", MANA_EMPTY if not_enough else MANA_BLUE)
-		else:
-			_slot_mana_overlays[i].visible = false
-
-
-func _process(_delta: float) -> void:
-	if controller == null or not visible:
-		return
-
-	var char_mana: int = 0
-	if controller.character != null:
-		char_mana = controller.character.mana
-
-	for i in range(PlayerSkillController.SLOT_COUNT):
-		var sid: String = controller.slots[i]
-		if sid.is_empty():
-			_slot_cd_curtains[i].size = Vector2(66, 0.0)
-			_slot_cd_labels[i].text = ""
-			_slot_mana_overlays[i].visible = false
-			continue
-
-		var ratio: float = controller.get_cooldown_ratio(sid)
-		var remaining: float = controller.get_cooldown_remaining(sid)
-
-		var icon_h: float = _slot_icons[i].size.y
-		_slot_cd_curtains[i].size = Vector2(_slot_icons[i].size.x, icon_h * ratio)
-		_slot_cd_curtains[i].position = Vector2(_slot_icons[i].position.x, _slot_icons[i].position.y + icon_h * (1.0 - ratio))
-		_slot_cd_labels[i].text = ("%.1f" % remaining) if remaining > 0.30 else ""
-
-		var def: SkillDefinition = controller.skills.get(sid, null)
-		if def != null and def.mana_cost > 0:
-			var not_enough_mana: bool = (char_mana < def.mana_cost)
-			_slot_mana_overlays[i].visible = not_enough_mana
-			_slot_mana_labels[i].add_theme_color_override("font_color", MANA_EMPTY if not_enough_mana else MANA_BLUE)
-		else:
-			_slot_mana_overlays[i].visible = false
-
-
-func _on_skill_cast(skill_id: String) -> void:
-	for i in range(PlayerSkillController.SLOT_COUNT):
-		if controller != null and controller.slots[i] == skill_id:
-			_trigger_slot_flash(i)
-
-
-func _on_insufficient_mana(slot_idx: int, _cost: int) -> void:
-	if slot_idx >= 0 and slot_idx < _slot_flash_overlays.size():
-		var flash: ColorRect = _slot_flash_overlays[slot_idx]
-		flash.color = Color(1.0, 0.2, 0.2, 0.55)
-		var tw := create_tween()
-		tw.tween_property(flash, "color", Color(1.0, 0.2, 0.2, 0.0), 0.25)
-
-
-func _trigger_slot_flash(slot_idx: int) -> void:
-	if slot_idx >= 0 and slot_idx < _slot_flash_overlays.size():
-		var flash: ColorRect = _slot_flash_overlays[slot_idx]
-		flash.color = Color(1.0, 0.95, 0.70, 0.65)
-		var tw := create_tween()
-		tw.tween_property(flash, "color", Color(1.0, 0.95, 0.70, 0.0), 0.20)
 
 
 func _relayout() -> void:
@@ -432,55 +505,50 @@ func _relayout() -> void:
 	if vp.x < 10.0:
 		return
 
-	var responsive_scale: float = clampf(vp.x / 1920.0 * 0.50, 0.36, 0.48)
-	ui_scale = responsive_scale
+	# Escala responsiva proporcional:
+	# 1920x1080 -> 0.76
+	# 1280x720  -> 0.50
+	var s: float = (vp.y / 1080.0) * 0.76
+	var max_w_scale: float = (vp.x - 120.0) / 1834.0
+	ui_scale = clampf(minf(s, max_w_scale) * user_scale_multiplier, 0.42, 0.95)
+
 	if _scaler != null:
 		_scaler.scale = Vector2(ui_scale, ui_scale)
 
 	custom_minimum_size = BASE_SIZE * ui_scale
 	size = custom_minimum_size
 
-	var center_x: float = (vp.x - size.x) * 0.5
-	var margin_y: float = 8.0
-	position = Vector2(center_x, vp.y - size.y - margin_y)
-
-
-func _input(event: InputEvent) -> void:
-	if _picker_panel == null or not _picker_panel.visible:
-		return
-	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
-		var mpos: Vector2 = (event as InputEventMouseButton).position
-		if _picker_panel.get_global_rect().has_point(mpos):
-			return
-		for abtn in _slot_arrow_btns:
-			if abtn.get_global_rect().has_point(mpos):
-				return
-		_picker_panel.visible = false
+	# Centralizado na base
+	var margin_y: float = 6.0
+	position = Vector2((vp.x - size.x) * 0.5, vp.y - size.y - margin_y)
+	_relayout_picker()
 
 
 func _get_icon(path: String) -> Texture2D:
 	if path.is_empty():
 		return null
 	if _icon_cache.has(path):
-		return _icon_cache[path]
-	var tex: Texture2D = load(path) as Texture2D if ResourceLoader.exists(path) else null
-	_icon_cache[path] = tex
-	return tex
+		return _icon_cache[path] as Texture2D
+	if ResourceLoader.exists(path):
+		var tex: Texture2D = load(path) as Texture2D
+		_icon_cache[path] = tex
+		return tex
+	return null
 
 
-static func _make_arrow_hover_style() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = Color(1.0, 0.85, 0.40, 0.35)
-	s.border_color = Color(1.0, 0.90, 0.50, 0.90)
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(12)
-	return s
+func _make_slot_hover_style() -> StyleBoxFlat:
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(1.0, 0.85, 0.35, 0.12)
+	st.border_color = GOLD
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(6)
+	return st
 
 
-static func _make_slot_hover_style() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = Color(1.0, 0.88, 0.45, 0.12)
-	s.border_color = Color(1.0, 0.80, 0.30, 0.75)
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(8)
-	return s
+func _make_arrow_hover_style() -> StyleBoxFlat:
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(1.0, 0.85, 0.35, 0.28)
+	st.border_color = GOLD
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(14)
+	return st

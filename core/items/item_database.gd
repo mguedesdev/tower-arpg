@@ -285,7 +285,7 @@ static func _initialize_catalog() -> void:
 		]
 	})
 
-	# Consumivel preservado para funcionamento de pocoes na campanha e lojas
+	# Consumiveis preservados para funcionamento de pocoes na campanha e lojas
 	_register("potion_health", "Frasco de Vida Puro", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
 		"rotatable": false,
 		"base_ilvl": 1, "req_lvl": 1,
@@ -293,6 +293,18 @@ static func _initialize_catalog() -> void:
 		"gold": 15,
 		"icon": "res://assets/items/potion.png",
 		"desc": "Elixir alquímico puro que restaura o vigor vital instantaneamente.",
+		"source": "comum",
+		"example_rarity": "normal",
+		"example_affixes": []
+	})
+
+	_register("potion_mana", "Frasco de Mana Puro", C.CONSUMABLE, S.NONE, Vector2i(1, 1), {
+		"rotatable": false,
+		"base_ilvl": 1, "req_lvl": 1,
+		"hp": 0,
+		"gold": 15,
+		"icon": "res://assets/items/potion.png",
+		"desc": "Elixir arcano puro que restaura a mana instantaneamente.",
 		"source": "comum",
 		"example_rarity": "normal",
 		"example_affixes": []

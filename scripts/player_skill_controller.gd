@@ -23,7 +23,7 @@ const SLOT_2: int = 3
 const SLOT_3: int = 4
 const SLOT_4: int = 5
 const SLOT_COUNT: int = 6
-const SLOT_LABELS: Array[String] = ["LMB", "RMB", "1", "2", "3", "4"]
+const SLOT_LABELS: Array[String] = ["LMB", "RMB", "Q", "E", "R", "F"]
 const MAX_ACTIVE_SKILLS: int = 4
 const PICK_RADIUS_PX: float = 34.0
 
@@ -156,10 +156,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _is_ui_blocking():
 		return
+	var slot_idx: int = -1
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		var slot_idx: int = -1
-		if mb.button_index == MOUSE_BUTTON_LEFT:
+		if InputMap.has_action("hud_skill_1") and event.is_action("hud_skill_1"):
+			slot_idx = SLOT_LMB
+		elif InputMap.has_action("hud_skill_2") and event.is_action("hud_skill_2"):
+			slot_idx = SLOT_RMB
+		elif mb.button_index == MOUSE_BUTTON_LEFT:
 			slot_idx = SLOT_LMB
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			slot_idx = SLOT_RMB
@@ -172,20 +176,27 @@ func _unhandled_input(event: InputEvent) -> void:
 		var key := event as InputEventKey
 		if key.echo:
 			return
-		var key_slot: int = -1
-		match key.physical_keycode:
-			KEY_1:
-				key_slot = SLOT_1
-			KEY_2:
-				key_slot = SLOT_2
-			KEY_3:
-				key_slot = SLOT_3
-			KEY_4:
-				key_slot = SLOT_4
-		if key_slot >= 0:
-			_held[key_slot] = key.pressed
+		var code: int = key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
+		if InputMap.has_action("hud_skill_3") and event.is_action("hud_skill_3"):
+			slot_idx = SLOT_1
+		elif InputMap.has_action("hud_skill_4") and event.is_action("hud_skill_4"):
+			slot_idx = SLOT_2
+		elif InputMap.has_action("hud_skill_5") and event.is_action("hud_skill_5"):
+			slot_idx = SLOT_3
+		elif InputMap.has_action("hud_skill_6") and event.is_action("hud_skill_6"):
+			slot_idx = SLOT_4
+		elif code == KEY_Q:
+			slot_idx = SLOT_1
+		elif code == KEY_E:
+			slot_idx = SLOT_2
+		elif code == KEY_R:
+			slot_idx = SLOT_3
+		elif code == KEY_F:
+			slot_idx = SLOT_4
+		if slot_idx >= 0:
+			_held[slot_idx] = key.pressed
 			if key.pressed:
-				_begin_action(key_slot)
+				_begin_action(slot_idx)
 				get_viewport().set_input_as_handled()
 
 
@@ -193,33 +204,38 @@ func _input(event: InputEvent) -> void:
 	# Soltar o botão do mouse ou tecla de skill sempre limpa o "segurar"
 	if event is InputEventMouseButton and not (event as InputEventMouseButton).pressed:
 		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT:
+		if (InputMap.has_action("hud_skill_1") and event.is_action("hud_skill_1")) or mb.button_index == MOUSE_BUTTON_LEFT:
 			_held[SLOT_LMB] = false
 			if _pending_slot == SLOT_LMB:
 				_cancel_pending()
-		elif mb.button_index == MOUSE_BUTTON_RIGHT:
+		elif (InputMap.has_action("hud_skill_2") and event.is_action("hud_skill_2")) or mb.button_index == MOUSE_BUTTON_RIGHT:
 			_held[SLOT_RMB] = false
 			if _pending_slot == SLOT_RMB:
 				_cancel_pending()
 	elif event is InputEventKey and not (event as InputEventKey).pressed:
 		var k := event as InputEventKey
-		match k.physical_keycode:
-			KEY_1:
-				_held[SLOT_1] = false
-				if _pending_slot == SLOT_1:
-					_cancel_pending()
-			KEY_2:
-				_held[SLOT_2] = false
-				if _pending_slot == SLOT_2:
-					_cancel_pending()
-			KEY_3:
-				_held[SLOT_3] = false
-				if _pending_slot == SLOT_3:
-					_cancel_pending()
-			KEY_4:
-				_held[SLOT_4] = false
-				if _pending_slot == SLOT_4:
-					_cancel_pending()
+		var code: int = k.physical_keycode if k.physical_keycode != KEY_NONE else k.keycode
+		var rel_slot: int = -1
+		if InputMap.has_action("hud_skill_3") and event.is_action("hud_skill_3"):
+			rel_slot = SLOT_1
+		elif InputMap.has_action("hud_skill_4") and event.is_action("hud_skill_4"):
+			rel_slot = SLOT_2
+		elif InputMap.has_action("hud_skill_5") and event.is_action("hud_skill_5"):
+			rel_slot = SLOT_3
+		elif InputMap.has_action("hud_skill_6") and event.is_action("hud_skill_6"):
+			rel_slot = SLOT_4
+		elif code == KEY_Q:
+			rel_slot = SLOT_1
+		elif code == KEY_E:
+			rel_slot = SLOT_2
+		elif code == KEY_R:
+			rel_slot = SLOT_3
+		elif code == KEY_F:
+			rel_slot = SLOT_4
+		if rel_slot >= 0:
+			_held[rel_slot] = false
+			if _pending_slot == rel_slot:
+				_cancel_pending()
 
 
 func _begin_action(slot_idx: int) -> void:

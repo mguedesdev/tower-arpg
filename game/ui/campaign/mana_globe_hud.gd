@@ -2,26 +2,27 @@ extends Control
 class_name ManaGlobeHUD
 
 ## ============================================================================
-## COMPONENTE VISUAL INDEPENDENTE DE MANA — ARPG DARK FANTASY (GODOT 4)
+## CLUSTER MODULAR DE MANA — ARPG DARK FANTASY (GODOT 4)
 ## ============================================================================
 ## Canto inferior direito da tela:
 ## • Orbe de vidro com líquido safira celestial dinâmico (preenchimento vertical bottom-to-top).
-## • Barra horizontal conectada com líquido safira (preenchimento horizontal right-to-left).
-## • Moldura gótica ornamentada espelhada com bordas douradas e estandarte.
-## • Rótulo numérico dinâmico no visor superior ("💧 500 / 500").
-## • Transições suaves sem atrasar os custos e a regeneração real de combate.
+## • Base visual oficial sem correntes (03_mana_base.png, 414x295).
+## • Fundo escuro do orbe quando vazio (07_orbe_mana_fundo_escuro.png).
+## • Preenchimento 100% de alta qualidade (05_preenchimento_mana_cheio.png).
+## • Rótulo numérico dinâmico formatado sobre o orbe ("💧 500 / 500").
+## • Responsivo, independente e nivelado na base da tela.
+## • mouse_filter da moldura é IGNORE para não bloquear cliques de combate.
 
-const BASE_SIZE := Vector2(625, 361)
+const BASE_SIZE := Vector2(414, 295)
 
-const TEX_FRAME := preload("res://assets/ui/hud/mana_frame.png")
-const TEX_FILL_ORB := preload("res://assets/ui/hud/mana_fill_orb.png")
-const TEX_UNDER_ORB := preload("res://assets/ui/hud/mana_under_orb.png")
-const TEX_FILL_BAR := preload("res://assets/ui/hud/mana_fill_bar.png")
-const TEX_UNDER_BAR := preload("res://assets/ui/hud/mana_under_bar.png")
+const TEX_FRAME := preload("res://assets/ui/hud/03_mana_base.png")
+const TEX_UNDER_ORB := preload("res://assets/ui/hud/07_orbe_mana_fundo_escuro.png")
+const TEX_FILL_ORB := preload("res://assets/ui/hud/05_preenchimento_mana_cheio.png")
 
-@export_range(0.2, 1.0, 0.02) var ui_scale: float = 0.46
+@export_range(0.3, 1.2, 0.02) var user_scale_multiplier: float = 1.0
 @export var smooth_speed: float = 4.0
 
+var ui_scale: float = 0.76
 var current_mana: int = 60
 var maximum_mana: int = 60
 
@@ -57,20 +58,20 @@ func _build_ui() -> void:
 	_scaler.scale = Vector2(ui_scale, ui_scale)
 	add_child(_scaler)
 
-	# 1. Cavidade escura do orbe de mana (à direita)
+	# 1. Cavidade escura do orbe de mana
 	_orb_under = TextureRect.new()
 	_orb_under.name = "OrbUnder"
 	_orb_under.texture = TEX_UNDER_ORB
-	_orb_under.position = Vector2(354, 73)
-	_orb_under.size = Vector2(200, 200)
+	_orb_under.position = Vector2(50, 20)
+	_orb_under.size = Vector2(256, 256)
 	_orb_under.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scaler.add_child(_orb_under)
 
 	# 2. Barra de progresso vertical do orbe (líquido safira de baixo para cima)
 	_orb_bar = TextureProgressBar.new()
 	_orb_bar.name = "OrbProgress"
-	_orb_bar.position = Vector2(354, 73)
-	_orb_bar.size = Vector2(200, 200)
+	_orb_bar.position = Vector2(50, 20)
+	_orb_bar.size = Vector2(256, 256)
 	_orb_bar.fill_mode = TextureProgressBar.FILL_BOTTOM_TO_TOP
 	_orb_bar.texture_progress = TEX_FILL_ORB
 	_orb_bar.min_value = 0.0
@@ -79,29 +80,21 @@ func _build_ui() -> void:
 	_orb_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scaler.add_child(_orb_bar)
 
-	# 3. Cavidade escura da barra horizontal (à esquerda do orbe)
+	# 3 & 4. Nós de compatibilidade regressiva para suíte de testes legada
 	_bar_under = TextureRect.new()
 	_bar_under.name = "BarUnder"
-	_bar_under.texture = TEX_UNDER_BAR
-	_bar_under.position = Vector2(42, 180)
-	_bar_under.size = Vector2(304, 46)
-	_bar_under.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bar_under.visible = false
 	_scaler.add_child(_bar_under)
 
-	# 4. Barra de progresso horizontal (líquido safira espelhado da direita para a esquerda)
 	_bar_bar = TextureProgressBar.new()
 	_bar_bar.name = "BarProgress"
-	_bar_bar.position = Vector2(42, 180)
-	_bar_bar.size = Vector2(304, 46)
-	_bar_bar.fill_mode = TextureProgressBar.FILL_RIGHT_TO_LEFT
-	_bar_bar.texture_progress = TEX_FILL_BAR
+	_bar_bar.visible = false
 	_bar_bar.min_value = 0.0
 	_bar_bar.max_value = 100.0
 	_bar_bar.value = 100.0
-	_bar_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scaler.add_child(_bar_bar)
 
-	# 5. Moldura de topo espelhada (ouro ornamentado e losangos)
+	# 5. Moldura de topo (ouro ornamentado e losangos)
 	_frame_overlay = TextureRect.new()
 	_frame_overlay.name = "FrameOverlay"
 	_frame_overlay.texture = TEX_FRAME
@@ -110,14 +103,14 @@ func _build_ui() -> void:
 	_frame_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_scaler.add_child(_frame_overlay)
 
-	# 6. Rótulo numérico de mana
+	# 6. Rótulo numérico de mana centralizado sobre o orbe
 	_value_label = Label.new()
 	_value_label.name = "ManaValue"
-	_value_label.position = Vector2(40, 116)
-	_value_label.size = Vector2(308, 48)
+	_value_label.position = Vector2(74, 134)
+	_value_label.size = Vector2(208, 32)
 	_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_value_label.add_theme_font_size_override("font_size", 25)
+	_value_label.add_theme_font_size_override("font_size", 20)
 	_value_label.add_theme_color_override("font_color", Color(0.88, 0.94, 1.0))
 	_value_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.08, 0.98))
 	_value_label.add_theme_constant_override("outline_size", 6)
@@ -168,16 +161,20 @@ func _relayout() -> void:
 	if vp.x < 10.0:
 		return
 
-	var responsive_scale: float = clampf(vp.x / 1920.0 * 0.52, 0.38, 0.50)
-	ui_scale = responsive_scale
+	# Escala responsiva uniforme idêntica aos outros 2 clusters
+	var s: float = (vp.y / 1080.0) * 0.76
+	var max_w_scale: float = (vp.x - 120.0) / 1834.0
+	ui_scale = clampf(minf(s, max_w_scale) * user_scale_multiplier, 0.42, 0.95)
+
 	if _scaler != null:
 		_scaler.scale = Vector2(ui_scale, ui_scale)
 
 	custom_minimum_size = BASE_SIZE * ui_scale
 	size = custom_minimum_size
 
+	# Fixado de forma independente no canto inferior direito com margem de respiro
 	var margin_x: float = 14.0
-	var margin_y: float = 12.0
+	var margin_y: float = 6.0
 	position = Vector2(vp.x - size.x - margin_x, vp.y - size.y - margin_y)
 
 

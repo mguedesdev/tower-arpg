@@ -119,6 +119,10 @@ func _ready() -> void:
 	# HUD Inferior: Orbe de Vida (Esquerda) + Barra de Habilidades (Centro) + Orbe de Mana (Direita)
 	health_globe_hud = HEALTH_GLOBE_HUD_SCRIPT.new() as HealthGlobeHUD
 	$HUD.add_child(health_globe_hud)
+	health_globe_hud.bind_context(backpack, player)
+	health_globe_hud.potion_consumed.connect(func(heal_amount: int, p_type: String) -> void:
+		_on_potion_consumed(heal_amount, p_type)
+	)
 
 	mana_globe_hud = MANA_GLOBE_HUD_SCRIPT.new() as ManaGlobeHUD
 	$HUD.add_child(mana_globe_hud)
@@ -615,15 +619,24 @@ func _on_inventory_context_action(item: ItemInstance) -> void:
 		town_npc_modal.select_crafting_item(item)
 
 
-func _on_potion_consumed(heal_amount: int) -> void:
+func _on_potion_consumed(heal_amount: int, p_type: String = "health") -> void:
 	if player == null or not player.alive:
 		return
-	player.health = mini(player.max_health, player.health + heal_amount)
-	_on_health_changed(player.health, player.max_health)
-	VFX_SPAWNER.spin(self as Node3D, player.global_position + Vector3.UP * 0.5, 1.2)
-	if status_label != null:
-		status_label.text = "♥ Poção consumida! +%d de Vida restaurada (%d/%d)." % [heal_amount, player.health, player.max_health]
-		_status_timer = 3.0
+	if p_type == "mana":
+		if "mana" in player:
+			player.mana = mini(player.max_mana, player.mana + heal_amount)
+			_on_mana_changed(player.mana, player.max_mana)
+		VFX_SPAWNER.spin(self as Node3D, player.global_position + Vector3.UP * 0.5, 1.2)
+		if status_label != null:
+			status_label.text = "💧 Poção consumida! +%d de Mana restaurada (%d/%d)." % [heal_amount, player.mana, player.max_mana]
+			_status_timer = 3.0
+	else:
+		player.health = mini(player.max_health, player.health + heal_amount)
+		_on_health_changed(player.health, player.max_health)
+		VFX_SPAWNER.spin(self as Node3D, player.global_position + Vector3.UP * 0.5, 1.2)
+		if status_label != null:
+			status_label.text = "♥ Poção consumida! +%d de Vida restaurada (%d/%d)." % [heal_amount, player.health, player.max_health]
+			_status_timer = 3.0
 
 
 func _on_town_heal_player_requested() -> void:

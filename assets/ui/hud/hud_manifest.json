@@ -1,0 +1,222 @@
+{
+  "name": "HUD modular escura — Vida / Skills / Mana",
+  "version": "1.0",
+  "coordinate_system": "pixels at native PNG dimensions; scale with frame, never independently stretch a slot",
+  "assets": {
+    "life_module": {
+      "file": "01_vida_pocoes_base.png",
+      "size": [
+        600,
+        298
+      ],
+      "anchor": "bottom_left",
+      "orb_hole": {
+        "x": 150,
+        "y": 65,
+        "w": 187,
+        "h": 183
+      },
+      "potion_slots": [
+        {
+          "id": "potion_1",
+          "hole": [
+            365,
+            132,
+            68,
+            78
+          ],
+          "arrow_center": [
+            398,
+            102
+          ],
+          "keyplate_center": [
+            399,
+            237
+          ]
+        },
+        {
+          "id": "potion_2",
+          "hole": [
+            459,
+            132,
+            67,
+            78
+          ],
+          "arrow_center": [
+            492,
+            102
+          ],
+          "keyplate_center": [
+            492,
+            237
+          ]
+        }
+      ]
+    },
+    "skills_module": {
+      "file": "02_hotbar_6_skills_base.png",
+      "size": [
+        820,
+        291
+      ],
+      "anchor": "bottom_center",
+      "slots": [
+        {
+          "id": "skill_1",
+          "hole": [
+            52,
+            112,
+            99,
+            96
+          ],
+          "arrow_center": [
+            101,
+            85
+          ],
+          "keyplate_center": [
+            101,
+            239
+          ]
+        },
+        {
+          "id": "skill_2",
+          "hole": [
+            175,
+            112,
+            99,
+            96
+          ],
+          "arrow_center": [
+            224,
+            85
+          ],
+          "keyplate_center": [
+            224,
+            239
+          ]
+        },
+        {
+          "id": "skill_3",
+          "hole": [
+            298,
+            112,
+            98,
+            96
+          ],
+          "arrow_center": [
+            347,
+            85
+          ],
+          "keyplate_center": [
+            347,
+            239
+          ]
+        },
+        {
+          "id": "skill_4",
+          "hole": [
+            421,
+            112,
+            97,
+            96
+          ],
+          "arrow_center": [
+            469,
+            85
+          ],
+          "keyplate_center": [
+            469,
+            239
+          ]
+        },
+        {
+          "id": "skill_5",
+          "hole": [
+            542,
+            112,
+            99,
+            96
+          ],
+          "arrow_center": [
+            591,
+            85
+          ],
+          "keyplate_center": [
+            591,
+            239
+          ]
+        },
+        {
+          "id": "skill_6",
+          "hole": [
+            666,
+            112,
+            100,
+            96
+          ],
+          "arrow_center": [
+            716,
+            85
+          ],
+          "keyplate_center": [
+            716,
+            239
+          ]
+        }
+      ]
+    },
+    "mana_module": {
+      "file": "03_mana_base.png",
+      "size": [
+        414,
+        295
+      ],
+      "anchor": "bottom_right",
+      "orb_hole": {
+        "x": 98,
+        "y": 69,
+        "w": 179,
+        "h": 180
+      }
+    },
+    "life_full": {
+      "file": "04_preenchimento_vida_cheio.png",
+      "size": [
+        256,
+        256
+      ]
+    },
+    "mana_full": {
+      "file": "05_preenchimento_mana_cheio.png",
+      "size": [
+        256,
+        256
+      ]
+    },
+    "life_dark": {
+      "file": "06_orbe_vida_fundo_escuro.png",
+      "size": [
+        256,
+        256
+      ]
+    },
+    "mana_dark": {
+      "file": "07_orbe_mana_fundo_escuro.png",
+      "size": [
+        256,
+        256
+      ]
+    }
+  },
+  "default_bindings": {
+    "skill_1": "Mouse Left",
+    "skill_2": "Mouse Right",
+    "skill_3": "Q",
+    "skill_4": "E",
+    "skill_5": "R",
+    "skill_6": "F",
+    "potion_1": "1",
+    "potion_2": "2"
+  },
+  "note": "Slots and numeric labels are empty on all production sprites; text/icons/hover/selection/cooldown are drawn at runtime. All hitboxes must be checked visually in Godot; coords are initial measurements."
+}

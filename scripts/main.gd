@@ -155,6 +155,10 @@ func _ready() -> void:
 
 	health_globe_hud = HEALTH_GLOBE_HUD_SCRIPT.new() as HealthGlobeHUD
 	$HUD.add_child(health_globe_hud)
+	health_globe_hud.bind_context(backpack, player)
+	health_globe_hud.potion_consumed.connect(func(heal_amount: int, p_type: String) -> void:
+		_on_potion_consumed(heal_amount, p_type)
+	)
 	health_globe_hud.visible = false
 
 	mana_globe_hud = MANA_GLOBE_HUD_SCRIPT.new() as ManaGlobeHUD
@@ -1095,6 +1099,18 @@ func _build_run_summary(is_victory: bool) -> RunSummaryState:
 		else:
 			summary.acquired_upgrade_titles.append(String(title_key))
 	return summary
+
+
+func _on_potion_consumed(heal_amount: int, p_type: String = "health") -> void:
+	if player == null or not player.alive:
+		return
+	if p_type == "mana":
+		if "mana" in player:
+			player.mana = mini(player.max_mana, player.mana + heal_amount)
+			_on_mana_changed(player.mana, player.max_mana)
+	else:
+		player.health = mini(player.max_health, player.health + heal_amount)
+		_on_health_changed(player.health, player.max_health)
 
 
 func _on_health_changed(current: int, maximum: int) -> void:
