@@ -24,6 +24,7 @@ const COLOR_FLAME: Color = Color(1.0, 0.52, 0.14)
 const COLOR_TREE: Color = Color(0.14, 0.11, 0.10)
 const COLOR_LEAF_DARK: Color = Color(0.08, 0.10, 0.07)
 const COLOR_ROCK: Color = Color(0.22, 0.23, 0.28)
+const StylizedTerrainServiceScript = preload("res://core/terrain/stylized_terrain_service.gd")
 
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _name_id: int = 0
@@ -46,7 +47,7 @@ func rebuild_tower_arena() -> void:
 	_is_campaign_mode = false
 	_is_town_zone = false
 	rng.seed = 9042026
-	_build_ground(90420)
+	_build_ground(90420, "lobby")
 	_build_altar()
 	_build_perimeter_ring()
 	_build_ruins()
@@ -60,11 +61,11 @@ func rebuild_tower_arena() -> void:
 func rebuild_campaign_zone(zone_def: Resource) -> void:
 	_clear_children()
 	_is_campaign_mode = true
-	_is_town_zone = bool(zone_def.get("is_safe_town")) if zone_def != null else false
-	var t_seed: int = int(zone_def.get("terrain_seed")) if zone_def != null else 77701
-	var z_id: String = String(zone_def.get("zone_id")) if zone_def != null else "town"
+	_is_town_zone = (zone_def.get("is_safe_town") == true) if zone_def != null else false
+	var t_seed: int = int(zone_def.get("terrain_seed")) if (zone_def != null and zone_def.get("terrain_seed") != null) else 77701
+	var z_id: String = String(zone_def.get("zone_id")) if (zone_def != null and zone_def.get("zone_id") != null) else "town"
 	rng.seed = t_seed
-	_build_ground(t_seed)
+	_build_ground(t_seed, z_id)
 	_build_perimeter_ring()
 	if _is_town_zone:
 		_build_town_encampment()
@@ -140,115 +141,24 @@ func _ring_mesh(inner_radius: float, outer_radius: float, segments: int = 72) ->
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
 
-func _build_ground(noise_seed: int = 90420) -> void:
-	# Material padrao nativo PBR do Godot com texturas estilizadas de grama, terra e mascara
-	var terrain_mat: StandardMaterial3D = load("res://assets/materials/ground_terrain_material.tres") as StandardMaterial3D
+func _build_ground(noise_seed: int = 90420, zone_id: String = "town") -> void:
+	# Material PBR com Shader estilizado (Kit 10) e mascaras de controle da regiao
+	var terrain_mat: Material = StylizedTerrainServiceScript.get_material_for_zone(zone_id, Vector2(12.0, 12.0))
 	if terrain_mat == null:
-		var grass_tex: Texture2D = load("res://assets/textures/grass_light_tile.png") as Texture2D
-		var dirt_tex: Texture2D = load("res://assets/textures/soil_moist_tile.png") as Texture2D
-		var blend_tex: Texture2D = load("res://assets/textures/terrain_blend_noise.png") as Texture2D
-		terrain_mat = StandardMaterial3D.new()
-		terrain_mat.albedo_texture = grass_tex
-		terrain_mat.roughness = 0.95
-		terrain_mat.detail_enabled = true
-		terrain_mat.detail_mask = blend_tex
-		terrain_mat.detail_albedo = dirt_tex
-		terrain_mat.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MIX
-		terrain_mat.uv1_scale = Vector3(10.0, 10.0, 1.0)
-		terrain_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		terrain_mat = load("res://assets/materials/ground_terrain_material.tres") as Material
 
-	# Garante que o GroundVisual da cena principal esteja visivel e com o material de terreno
+	# Desativa a malha provisoria do chao base para evitar z-fighting e artefatos de sombra
 	var ground_vis: MeshInstance3D = get_node_or_null("../Ground/GroundVisual") as MeshInstance3D
 	if ground_vis != null:
-		ground_vis.visible = true
-		ground_vis.material_override = terrain_mat
+		ground_vis.visible = false
 
 	var soil_base := _box(Vector3(0.0, -0.37, 0.0), Vector3(ARENA_SIZE + 6.0, 0.60, ARENA_SIZE + 6.0), COLOR_SOIL_DARK)
 	soil_base.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
-	# Noise apenas na construcao para o relevo suave
-	var terrain_noise := FastNoiseLite.new()
-	terrain_noise.seed = noise_seed
-	terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	terrain_noise.frequency = 0.082
-	terrain_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	terrain_noise.fractal_octaves = 3
-
-	var detail_noise := FastNoiseLite.new()
-	detail_noise.seed = 81873
-	detail_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	detail_noise.frequency = 0.37
-
-	var relief_noise := FastNoiseLite.new()
-	relief_noise.seed = 1129
-	relief_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	relief_noise.frequency = 0.13
-
-	var side: int = TERRAIN_STEPS + 1
-	var spacing: float = ARENA_SIZE / float(TERRAIN_STEPS)
-	var heights := PackedFloat32Array()
-	heights.resize(side * side)
-
-	for zi in range(side):
-		for xi in range(side):
-			var px: float = float(xi) * spacing - ARENA_SIZE * 0.5
-			var pz: float = float(zi) * spacing - ARENA_SIZE * 0.5
-			var radial: float = Vector2(px, pz).length()
-			var detail: float = detail_noise.get_noise_2d(px, pz)
-			var relief: float = relief_noise.get_noise_2d(px, pz)
-
-			# Centro perfeitamente nivelado com a fisica (Y=0.0), bordas com relevo suave organico
-			var relief_factor: float = smoothstep(12.0, 20.0, radial)
-			var height: float = clampf(relief_factor * (relief * 0.025 + detail * 0.010), -0.018, 0.024)
-
-			var idx: int = zi * side + xi
-			heights[idx] = height
-
-	var positions := PackedVector3Array()
-	var normals := PackedVector3Array()
-	var uvs := PackedVector2Array()
-	var indices := PackedInt32Array()
-
-	for zi in range(side):
-		for xi in range(side):
-			var px: float = float(xi) * spacing - ARENA_SIZE * 0.5
-			var pz: float = float(zi) * spacing - ARENA_SIZE * 0.5
-			var idx: int = zi * side + xi
-			positions.append(Vector3(px, heights[idx] + 0.001, pz))
-			uvs.append(Vector2((px + ARENA_SIZE * 0.5) / ARENA_SIZE, (pz + ARENA_SIZE * 0.5) / ARENA_SIZE))
-
-			var left_x: int = maxi(xi - 1, 0)
-			var right_x: int = mini(xi + 1, TERRAIN_STEPS)
-			var down_z: int = maxi(zi - 1, 0)
-			var up_z: int = mini(zi + 1, TERRAIN_STEPS)
-			var gradient_x: float = (heights[zi * side + left_x] - heights[zi * side + right_x]) / (maxi(right_x - left_x, 1) * spacing)
-			var gradient_z: float = (heights[down_z * side + xi] - heights[up_z * side + xi]) / (maxi(up_z - down_z, 1) * spacing)
-			normals.append(Vector3(gradient_x, 1.0, gradient_z).normalized())
-
-	for zi in range(TERRAIN_STEPS):
-		for xi in range(TERRAIN_STEPS):
-			var a: int = zi * side + xi
-			var b: int = a + 1
-			var c: int = a + side
-			var d: int = c + 1
-			indices.append(a)
-			indices.append(c)
-			indices.append(b)
-			indices.append(c)
-			indices.append(d)
-			indices.append(b)
-
-	var arrays: Array = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = positions
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	arrays[Mesh.ARRAY_INDEX] = indices
-	var terrain_mesh := ArrayMesh.new()
-	terrain_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	var terrain_node := _mesh_instance("Terrain_Continuous_Grass_Dirt", terrain_mesh, terrain_mat)
-	terrain_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	print("Cenario v0.16: terreno continuo criado (%d vertices, %d triangulos)." % [positions.size(), int(float(indices.size()) / 3.0)])
+	# Malha plana estilizada cobrindo a arena (52x52m), sem triangulos/quadrados grosseiros aparentes
+	var terrain_node := StylizedTerrainServiceScript.create_terrain_mesh_instance(Vector2(ARENA_SIZE, ARENA_SIZE), terrain_mat)
+	add_child(terrain_node)
+	print("Cenario v0.16: terreno continuo criado (Kit 10 / zona: %s)." % zone_id)
 
 func _build_altar() -> void:
 	# Degraus baixos nivelados com o piso fisico (y ~ 0.0) para que o personagem
@@ -333,52 +243,9 @@ func _build_rocks() -> void:
 		_rock_cluster(pos)
 
 func _build_grass_tufts() -> void:
-	var transforms: Array[Transform3D] = []
-	var colors: Array[Color] = []
-	var palette: Array[Color] = [COLOR_GRASS_A, COLOR_GRASS_B, COLOR_MOSS]
-
-	for i in range(130):
-		var angle := rng.randf_range(0.0, TAU)
-		var radius := rng.randf_range(4.5, ARENA_RADIUS - 1.5)
-		var pos := Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
-		if pos.length() < SAFE_RADIUS + 0.8:
-			continue
-		var tuft_rot_y := rng.randf_range(-PI, PI)
-		var tuft_basis := Basis.from_euler(Vector3(0.0, tuft_rot_y, 0.0))
-		for b in range(3):
-			var local_pos := Vector3(rng.randf_range(-0.08, 0.08), 0.17 + float(b) * 0.02, rng.randf_range(-0.08, 0.08))
-			var blade_h := 0.34 + rng.randf_range(0.0, 0.16)
-			var blade_rot := Vector3(rng.randf_range(-0.08, 0.08), rng.randf_range(-0.65, 0.65), rng.randf_range(-0.22, 0.22))
-			var blade_basis := tuft_basis * Basis.from_euler(blade_rot).scaled(Vector3(0.06, blade_h, 0.02))
-			var world_pos := pos + tuft_basis * local_pos
-			transforms.append(Transform3D(blade_basis, world_pos))
-			colors.append(palette[b % 3])
-
-	if transforms.is_empty():
-		return
-
-	var unit_box := BoxMesh.new()
-	unit_box.size = Vector3.ONE
-	var grass_mat := StandardMaterial3D.new()
-	grass_mat.vertex_color_use_as_albedo = true
-	grass_mat.vertex_color_is_srgb = true
-	grass_mat.roughness = 1.0
-	unit_box.material = grass_mat
-
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = unit_box
-	mm.instance_count = transforms.size()
-	for idx in range(transforms.size()):
-		mm.set_instance_transform(idx, transforms[idx])
-		mm.set_instance_color(idx, colors[idx])
-
-	var mmi := MultiMeshInstance3D.new()
-	mmi.name = "GrassTuftsMultiMesh"
-	mmi.multimesh = mm
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mmi)
+	# Decoração provisória antiga desativada: o novo terreno estilizado possui grama pintada à mão
+	# e variações orgânicas de pedrinhas integradas diretamente no shader do Kit 10.
+	pass
 
 func _build_braziers() -> void:
 	# Posicionados nas 4 diagonais do altar para emoldurar o personagem no Lobby e na batalha.

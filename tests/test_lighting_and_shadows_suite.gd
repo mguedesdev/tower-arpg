@@ -45,26 +45,35 @@ func _run_all() -> void:
 	# -------------------------------------------------------------------------
 	# VERIFICAÇÃO PRELIMINAR: Normais Geométricas do Terreno (Face Normals)
 	# -------------------------------------------------------------------------
-	var m: ArrayMesh = terrain.mesh as ArrayMesh
-	var surf_arrays: Array = m.surface_get_arrays(0)
-	var indices: PackedInt32Array = surf_arrays[Mesh.ARRAY_INDEX]
-	var verts: PackedVector3Array = surf_arrays[Mesh.ARRAY_VERTEX]
-	assert(indices.size() > 0, "Terreno deve possuir triângulos indexados")
+	if terrain.mesh is ArrayMesh:
+		var m: ArrayMesh = terrain.mesh as ArrayMesh
+		var surf_arrays: Array = m.surface_get_arrays(0)
+		var indices: PackedInt32Array = surf_arrays[Mesh.ARRAY_INDEX]
+		var verts: PackedVector3Array = surf_arrays[Mesh.ARRAY_VERTEX]
+		assert(indices.size() > 0, "Terreno deve possuir triângulos indexados")
+		var p0 := verts[indices[0]]
+		var p1 := verts[indices[1]]
+		var p2 := verts[indices[2]]
+		var geom_n := (p1 - p0).cross(p2 - p0).normalized()
+		assert(geom_n.y > 0.90, "Normal geométrica da face do terreno deve apontar para cima (+Y) para receber luz e sombras!")
+		print("[OK] Auditoria Geométrica: Normal frontal do terreno aponta para cima (+Y = %.4f). Winding CCW verificado." % geom_n.y)
+	elif terrain.mesh is PlaneMesh:
+		var pm: PlaneMesh = terrain.mesh as PlaneMesh
+		assert(pm.size.x >= 50.0 and pm.size.y >= 50.0, "PlaneMesh do terreno cobre toda a arena")
+		print("[OK] Auditoria Geométrica: PlaneMesh nativo contínuo cobrindo a arena (normal +Y nativa).")
 
-	var p0 := verts[indices[0]]
-	var p1 := verts[indices[1]]
-	var p2 := verts[indices[2]]
-	var geom_n := (p1 - p0).cross(p2 - p0).normalized()
-	assert(geom_n.y > 0.90, "Normal geométrica da face do terreno deve apontar para cima (+Y) para receber luz e sombras!")
-	print("[OK] Auditoria Geométrica: Normal frontal do terreno aponta para cima (+Y = %.4f). Winding CCW verificado." % geom_n.y)
-
-	var mat_std := terrain.material_override as StandardMaterial3D
-	assert(mat_std != null, "Material do terreno deve ser StandardMaterial3D nativo do Godot")
-	assert(mat_std.albedo_texture != null, "Textura de grama albedo deve estar carregada no material")
-	assert(mat_std.detail_enabled == true, "Detail texturing deve estar ativo para blending de terra")
-	assert(mat_std.detail_albedo != null, "Textura de terra (soil) deve estar carregada no detail_albedo")
-	assert(mat_std.detail_mask != null, "Mascara de ruido (noise) deve estar carregada no detail_mask")
-	print("[OK] Auditoria Material: StandardMaterial3D nativo com grama, terra e mascara de blending verificado.")
+	var mat: Material = terrain.material_override
+	assert(mat != null, "Material do terreno deve existir")
+	if mat is ShaderMaterial:
+		var s_mat := mat as ShaderMaterial
+		assert(s_mat.shader != null, "Shader do terreno (Kit 10) deve estar compilado")
+		assert(s_mat.get_shader_parameter("grass_tex") != null, "Textura de grama carregada no shader")
+		assert(s_mat.get_shader_parameter("dirt_tex") != null, "Textura de terra carregada no shader")
+		print("[OK] Auditoria Material: ShaderMaterial estilizado PBR (Kit 10) ativo com texturas de alta fidelidade.")
+	elif mat is StandardMaterial3D:
+		var mat_std := mat as StandardMaterial3D
+		assert(mat_std.albedo_texture != null, "Textura de grama albedo deve estar carregada no material")
+		print("[OK] Auditoria Material: StandardMaterial3D nativo verificado.")
 
 	# -------------------------------------------------------------------------
 	# CENÁRIO 1: Personagem parado ao Meio-Dia (time_of_day = 0.50)
