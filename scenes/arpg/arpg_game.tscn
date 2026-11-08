@@ -129,7 +129,7 @@ theme_override_colors/font_color = Color(0.98, 0.94, 0.84, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.03, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 16
-text = "Aproxime-se dos Mercadores/Baú e aperte [E] (ou clique neles), ou abra o Inventário [I]."
+text = "Aproxime-se dos Mercadores/Baú e clique neles, ou abra o Inventário [I]."
 horizontal_alignment = 1
 
 [node name="ControlsPlate" type="Panel" parent="HUD"]
@@ -149,5 +149,5 @@ offset_top = 8.0
 offset_right = 250.0
 offset_bottom = 54.0
 theme_override_font_sizes/font_size = 12
-text = "WASD: Mover | LMB: Ataque | 1-4: Skills
-[I]: Mochila | [E]/Clique: NPC | [ESC]: Menu"
+text = "WASD: Mover | LMB: Ataque | Skills: Hotbar
+[I]: Mochila | [Clique]: Interagir | [ESC]: Menu"

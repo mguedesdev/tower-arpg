@@ -234,6 +234,31 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if town_npc_modal != null and town_npc_modal.visible:
 		return
+
+	if event is InputEventMouseButton and event.pressed:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and camera != null:
+			var ray_origin: Vector3 = camera.project_ray_origin(mb.position)
+			var ray_dir: Vector3 = camera.project_ray_normal(mb.position)
+			if absf(ray_dir.y) > 0.001:
+				var t_hit: float = (0.8 - ray_origin.y) / ray_dir.y
+				if t_hit > 0.0:
+					var hit_pos: Vector3 = ray_origin + ray_dir * t_hit
+					for g_node in _ground_items_root.get_children():
+						if g_node is GroundItem3D and is_instance_valid(g_node):
+							var d_item: float = Vector2(hit_pos.x - g_node.global_position.x, hit_pos.z - g_node.global_position.z).length()
+							if d_item <= 1.8 and g_node.can_be_picked_up_by(player):
+								if _pickup_ground_item(g_node):
+									get_viewport().set_input_as_handled()
+									return
+					for station in _active_interactables:
+						if is_instance_valid(station) and station.is_player_in_range():
+							var d_xz: float = Vector2(hit_pos.x - station.global_position.x, hit_pos.z - station.global_position.z).length()
+							if d_xz <= 2.2:
+								station.trigger_interaction()
+								get_viewport().set_input_as_handled()
+								return
+
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_M:
 			if inventory_modal != null and inventory_modal.visible:
@@ -610,6 +635,17 @@ func _get_nearest_ground_item(max_dist: float = 3.8) -> GroundItem3D:
 	return nearest
 
 
+func _pickup_ground_item(g_node: GroundItem3D) -> bool:
+	if not is_instance_valid(g_node) or player == null:
+		return false
+	var it: ItemInstance = g_node.item_instance
+	if g_node.attempt_pickup(player):
+		if it != null:
+			notify_item_pickup(it)
+		return true
+	return false
+
+
 func _pickup_nearest_ground_item() -> bool:
 	var item: GroundItem3D = _get_nearest_ground_item(3.5)
 	if item != null:
@@ -809,7 +845,7 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 	player.velocity = Vector3.ZERO
 
 	# Waypoint Ancestral (presente na Vila e em todas as Zonas)
-	_spawn_town_station("waypoint", "✦ Waypoint Ancestral", "[E] Teleportar entre Zonas", zone_def.waypoint_pos, 0.0)
+	_spawn_town_station("waypoint", "✦ Waypoint Ancestral", "[Clique] Teleportar entre Zonas", zone_def.waypoint_pos, 0.0)
 
 	if zone_def.is_safe_town:
 		# Restaura a vida ao entrar na Vila segura
@@ -817,14 +853,14 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 		_on_health_changed(player.health, player.max_health)
 		enemies_left = 0
 		wave_label.text = "Zona: Vila Segura"
-		status_label.text = "Vila: aproxime-se do Baú/Mercadores e aperte [E], ou saia pelo Portão Norte!"
+		status_label.text = "Vila: aproxime-se do Baú/Mercadores e clique neles, ou saia pelo Portão Norte!"
 
 		# Interagíveis da Vila: Baú, Ferreiro, Arcanista, Sábio e Mesa do Escriba (Escrituras Arcanas)
-		_spawn_town_station("stash", "📦 Baú Pessoal (Stash)", "[E] Abrir Baú", Vector3(-5.8, 0.0, -3.5), 25.0)
-		_spawn_town_station("vendor_physical", "⚒ Ferreiro (Itens Físicos)", "[E] Negociar Armas & Armaduras", Vector3(-7.4, 0.0, 3.2), 65.0)
-		_spawn_town_station("vendor_magic", "🔮 Arcanista (Itens Mágicos)", "[E] Negociar Relíquias Mágicas", Vector3(7.4, 0.0, -3.2), -55.0)
-		_spawn_town_station("identifier_respec", "📜 Sábio (Identificar & Resetar Build)", "[E] Identificar Itens / Resetar Build", Vector3(-2.6, 0.0, -5.2), 15.0)
-		_spawn_town_station("scribe_crafting", "✒️ Mesa do Escriba (Escrituras Arcanas)", "[E] Inscrever & Fabricar Itens", Vector3(2.6, 0.0, -5.2), -15.0)
+		_spawn_town_station("stash", "📦 Baú Pessoal (Stash)", "[Clique] Abrir Baú", Vector3(-5.8, 0.0, -3.5), 25.0)
+		_spawn_town_station("vendor_physical", "⚒ Ferreiro (Itens Físicos)", "[Clique] Negociar Armas & Armaduras", Vector3(-7.4, 0.0, 3.2), 65.0)
+		_spawn_town_station("vendor_magic", "🔮 Arcanista (Itens Mágicos)", "[Clique] Negociar Relíquias Mágicas", Vector3(7.4, 0.0, -3.2), -55.0)
+		_spawn_town_station("identifier_respec", "📜 Sábio (Identificar & Resetar Build)", "[Clique] Identificar / Resetar Build", Vector3(-2.6, 0.0, -5.2), 15.0)
+		_spawn_town_station("scribe_crafting", "✒️ Mesa do Escriba (Escrituras Arcanas)", "[Clique] Inscrever & Fabricar Itens", Vector3(2.6, 0.0, -5.2), -15.0)
 
 		# Portão Norte saindo da Vila para a Zona 1 (Estrada Profanada)
 		_spawn_zone_gate(zone_def.zone_id, zone_def.next_zone_id, zone_def.next_zone_label, zone_def.next_gate_pos, false)
@@ -903,7 +939,7 @@ func _update_campaign_world(delta: float) -> void:
 				near_station = station
 
 	if near_station != null and (town_npc_modal == null or not town_npc_modal.visible):
-		status_label.text = "%s — Pressione [E] para interagir" % near_station.station_title
+		status_label.text = "%s — Clique para interagir" % near_station.station_title
 
 	for gate in _active_portals:
 		if is_instance_valid(gate):

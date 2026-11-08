@@ -233,17 +233,26 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT and camera != null:
-			# Permite clicar em um NPC / Baú / Waypoint com o mouse quando estiver próximo!
+			# Permite clicar em um NPC / Baú / Waypoint / Item caído com o mouse!
 			var ray_origin: Vector3 = camera.project_ray_origin(mb.position)
 			var ray_dir: Vector3 = camera.project_ray_normal(mb.position)
 			if absf(ray_dir.y) > 0.001:
 				var t_hit: float = (0.8 - ray_origin.y) / ray_dir.y
 				if t_hit > 0.0:
 					var hit_pos: Vector3 = ray_origin + ray_dir * t_hit
+					# 1. Clique para pegar item caído no chão
+					for g_node in _ground_items_root.get_children():
+						if g_node is GroundItem3D and is_instance_valid(g_node):
+							var d_item: float = Vector2(hit_pos.x - g_node.global_position.x, hit_pos.z - g_node.global_position.z).length()
+							if d_item <= 1.8 and g_node.can_be_picked_up_by(player):
+								if _pickup_ground_item(g_node):
+									get_viewport().set_input_as_handled()
+									return
+					# 2. Clique para interagir com NPC / Baú / Waypoint da Vila
 					for station in _active_interactables:
 						if is_instance_valid(station) and station.is_player_in_range():
 							var d_xz: float = Vector2(hit_pos.x - station.global_position.x, hit_pos.z - station.global_position.z).length()
-							if d_xz <= 1.45:
+							if d_xz <= 2.2:
 								station.trigger_interaction()
 								get_viewport().set_input_as_handled()
 								return
@@ -398,7 +407,7 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 	player.velocity = Vector3.ZERO
 
 	# Waypoint Ancestral (presente na Vila e nas Zonas)
-	_spawn_town_station("waypoint", "✦ Waypoint Ancestral", "[E] Teleportar entre Zonas", zone_def.waypoint_pos, 0.0)
+	_spawn_town_station("waypoint", "✦ Waypoint Ancestral", "[Clique] Teleportar entre Zonas", zone_def.waypoint_pos, 0.0)
 
 	if zone_def.is_safe_town:
 		player.health = player.max_health
@@ -406,14 +415,14 @@ func _load_campaign_zone(zone_id: String, custom_spawn: Variant = null) -> void:
 		enemies_left = 0
 		if zone_info_label != null:
 			zone_info_label.text = "Zona: Vila Segura"
-		status_label.text = "Vila Segura: aproxime-se dos Mercadores/Baú e aperte [E], ou saia pelo Portão Norte!"
+		status_label.text = "Vila Segura: aproxime-se dos Mercadores/Baú e clique neles, ou saia pelo Portão Norte!"
 
 		# Interagíveis da Vila: Baú, Ferreiro, Arcanista, Sábio e Mesa do Escriba (Escrituras Arcanas)
-		_spawn_town_station("stash", "📦 Baú Pessoal (Stash)", "[E] Abrir Baú", Vector3(-5.8, 0.0, -3.5), 25.0)
-		_spawn_town_station("vendor_physical", "⚒ Ferreiro (Itens Físicos)", "[E] Negociar Armas & Armaduras", Vector3(-7.4, 0.0, 3.2), 65.0)
-		_spawn_town_station("vendor_magic", "🔮 Arcanista (Itens Mágicos)", "[E] Negociar Relíquias Mágicas", Vector3(7.4, 0.0, -3.2), -55.0)
-		_spawn_town_station("identifier_respec", "📜 Sábio (Identificar & Resetar)", "[E] Identificar Itens / Resetar Build", Vector3(-2.6, 0.0, -5.2), 15.0)
-		_spawn_town_station("scribe_crafting", "✒️ Mesa do Escriba (Escrituras Arcanas)", "[E] Inscrever & Fabricar Itens", Vector3(2.6, 0.0, -5.2), -15.0)
+		_spawn_town_station("stash", "📦 Baú Pessoal (Stash)", "[Clique] Abrir Baú", Vector3(-5.8, 0.0, -3.5), 25.0)
+		_spawn_town_station("vendor_physical", "⚒ Ferreiro (Itens Físicos)", "[Clique] Negociar Armas & Armaduras", Vector3(-7.4, 0.0, 3.2), 65.0)
+		_spawn_town_station("vendor_magic", "🔮 Arcanista (Itens Mágicos)", "[Clique] Negociar Relíquias Mágicas", Vector3(7.4, 0.0, -3.2), -55.0)
+		_spawn_town_station("identifier_respec", "📜 Sábio (Identificar & Resetar)", "[Clique] Identificar Itens / Resetar Build", Vector3(-2.6, 0.0, -5.2), 15.0)
+		_spawn_town_station("scribe_crafting", "✒️ Mesa do Escriba (Escrituras Arcanas)", "[Clique] Inscrever & Fabricar Itens", Vector3(2.6, 0.0, -5.2), -15.0)
 
 		# Portão Norte saindo da Vila para a Zona 1
 		_spawn_zone_gate(zone_def.zone_id, zone_def.next_zone_id, zone_def.next_zone_label, zone_def.next_gate_pos, false)
@@ -511,10 +520,10 @@ func _update_campaign_world(delta: float) -> void:
 		if _status_timer <= 0.0 and status_label != null:
 			status_label.text = ""
 	elif near_item != null and (town_npc_modal == null or not town_npc_modal.visible):
-		status_label.text = "✦ Pressione [E] para coletar: %s" % near_item.item.get_display_name()
+		status_label.text = "✦ Clique para coletar: %s" % near_item.item.get_display_name()
 	elif near_station != null and (town_npc_modal == null or not town_npc_modal.visible):
-		status_label.text = "%s — Pressione [E] para interagir" % near_station.station_title
-	elif status_label != null and (status_label.text.begins_with("✦ Pressione [E]") or status_label.text.ends_with("Pressione [E] para interagir")):
+		status_label.text = "%s — Clique para interagir" % near_station.station_title
+	elif status_label != null and (status_label.text.begins_with("✦ Clique") or status_label.text.ends_with("Clique para interagir")):
 		status_label.text = ""
 
 	for gate in _active_portals:
@@ -814,6 +823,17 @@ func _get_nearest_ground_item(max_dist: float = 3.8) -> GroundItem3D:
 				min_d = d
 				nearest = child
 	return nearest
+
+
+func _pickup_ground_item(g_node: GroundItem3D) -> bool:
+	if not is_instance_valid(g_node) or player == null:
+		return false
+	var it: ItemInstance = g_node.item_instance
+	if g_node.attempt_pickup(player):
+		if it != null:
+			notify_item_pickup(it)
+		return true
+	return false
 
 
 func _pickup_nearest_ground_item() -> bool:

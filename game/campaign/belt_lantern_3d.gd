@@ -2,20 +2,25 @@ extends Node3D
 class_name BeltLantern3D
 
 ## ============================================================================
-## ILUMINAÇÃO CIRCULAR DO PERSONAGEM — ARPG DARK FANTASY (GODOT 4)
+## ILUMINAÇÃO DINÂMICA DO PERSONAGEM (ARPG DARK FANTASY - GODOT 4)
 ## ============================================================================
-## • Luz radial pura (OmniLight3D) em círculo ao redor do personagem.
-## • Sem modelo 3D de lanterna, sem barras, ganchos ou oscilações de ossos.
-## • Projeção circular limpa de 360° ao redor do herói (raio ~8.0m).
-## • Ativa-se suavemente em ambientes escuros (noite, minas, cavernas, criptas).
-## • Totalmente compatível com o ciclo de dia/noite e transição de zonas.
+## Fonte de luz OmniLight3D invisível, centralizada no personagem.
+## • Sem modelo 3D, sem nós de malha ou conexões de ossos.
+## • Desacoplada de equipamentos: funciona sem necessidade de cinto.
+## • Cria uma área de visão circular suave e natural ao redor do herói.
+## • Cor neutra levemente quente, com atenuação gradual nas bordas.
+## • Ilumina terreno, texturas PBR, inimigos e objetos dinamicamente.
+## • Integração com ciclo Dia/Noite (apaga sob sol, acende à noite e em masmorras).
+## • Alta performance: sombras locais desligadas para viabilizar múltiplos inimigos.
 
 signal lantern_state_changed(is_lit: bool, has_belt: bool)
 
-const DEFAULT_AMBER_COLOR := Color(1.0, 0.82, 0.54, 1.0)
-const DEFAULT_LIGHT_RANGE := 8.0
-const DEFAULT_MAX_ENERGY := 1.60
-const DEFAULT_ATTENUATION := 1.0
+# Parâmetros calibrados conforme especificação técnica (4 a 6m, neutra levemente quente)
+const LIGHT_COLOR_NEUTRAL_WARM := Color(0.98, 0.91, 0.80, 1.0)
+const LIGHT_RANGE := 5.6
+const LIGHT_MAX_ENERGY := 1.25
+const LIGHT_ATTENUATION := 1.25
+const LIGHT_HEIGHT_OFFSET := Vector3(0.0, 0.90, 0.0)
 
 @export var shadow_enabled: bool = false
 @export var requires_belt: bool = false
@@ -30,10 +35,9 @@ var _player_ref: CharacterBody3D = null
 var _equipment_ref: CharacterEquipment = null
 var _day_night_ref: DayNightCycleHUD = null
 
+var _omni_light: OmniLight3D = null
 var _lantern_model_root: Node3D = null
 var _candle_material: StandardMaterial3D = null
-var _omni_light: OmniLight3D = null
-var _flicker_time: float = 0.0
 
 
 func _ready() -> void:
@@ -50,10 +54,10 @@ func setup_on_character(player: CharacterBody3D) -> void:
 	if get_parent() != null:
 		get_parent().remove_child(self)
 
-	# Fixada diretamente no personagem a 1.0m de altura, centralizada
-	# para produzir uma iluminação perfeitamente circular de 360° no chão
+	# Anexado diretamente na raiz do personagem, centralizado a 0.90m de altura
+	# para produzir iluminação perfeitamente circular de 360° sobre o terreno e inimigos
 	_player_ref.add_child(self)
-	position = Vector3(0.0, 1.0, 0.0)
+	position = LIGHT_HEIGHT_OFFSET
 	rotation = Vector3.ZERO
 
 
@@ -84,7 +88,15 @@ func bind_day_night(p_hud: DayNightCycleHUD) -> void:
 
 
 func set_zone_context(zone_id: String) -> void:
-	is_dark_zone = (zone_id == "zone_3_crypt" or zone_id == "zone_4_mines" or zone_id.contains("crypt") or zone_id.contains("cave") or zone_id.contains("dungeon") or zone_id.contains("mine"))
+	# Cavernas, minas, criptas e masmorras são ambientes escuros
+	is_dark_zone = (
+		zone_id == "zone_3_crypt"
+		or zone_id == "zone_4_mines"
+		or zone_id.contains("crypt")
+		or zone_id.contains("cave")
+		or zone_id.contains("dungeon")
+		or zone_id.contains("mine")
+	)
 	_update_lighting(false)
 
 
@@ -132,15 +144,16 @@ func _update_lighting(immediate: bool) -> void:
 
 	visible = true
 
+	# Acende à noite OU em cavernas/masmorras/criptas escuras
 	var should_illuminate: bool = (is_night_time or is_dark_zone)
-	target_light_energy = DEFAULT_MAX_ENERGY if should_illuminate else 0.0
+	target_light_energy = LIGHT_MAX_ENERGY if should_illuminate else 0.0
 
 	if immediate:
 		current_light_energy = target_light_energy
 		if _omni_light != null:
 			_omni_light.light_energy = current_light_energy
 		if _candle_material != null:
-			_candle_material.emission_energy_multiplier = (1.4 if current_light_energy > 0.05 else 0.0)
+			_candle_material.emission_energy_multiplier = (1.0 if current_light_energy > 0.05 else 0.0)
 
 
 func _process(delta: float) -> void:
@@ -151,8 +164,7 @@ func _process(delta: float) -> void:
 			_omni_light.light_energy = 0.0
 		return
 
-	_flicker_time += delta
-
+	# Reavaliação contínua da fase do dia/noite ou subterrâneo
 	var dark_underground := false
 	if _day_night_ref != null and _day_night_ref.has_method("is_underground"):
 		dark_underground = _day_night_ref.is_underground()
@@ -165,38 +177,35 @@ func _process(delta: float) -> void:
 			is_night_time = night_now
 
 	var should_illuminate: bool = (is_night_time or effective_dark)
-	target_light_energy = DEFAULT_MAX_ENERGY if should_illuminate else 0.0
+	target_light_energy = LIGHT_MAX_ENERGY if should_illuminate else 0.0
 
+	# Transição suave de intensidade luminosa
 	if not is_equal_approx(current_light_energy, target_light_energy):
-		current_light_energy = move_toward(current_light_energy, target_light_energy, delta * 3.2)
-
-	var flicker: float = 1.0
-	if current_light_energy > 0.02:
-		flicker = 1.0 + 0.02 * sin(_flicker_time * 5.0)
+		current_light_energy = move_toward(current_light_energy, target_light_energy, delta * 2.8)
 
 	if _omni_light != null:
-		_omni_light.light_energy = current_light_energy * flicker
+		_omni_light.light_energy = current_light_energy
 
 	if _candle_material != null:
-		_candle_material.emission_energy_multiplier = (current_light_energy / DEFAULT_MAX_ENERGY) * 1.5 * flicker
+		_candle_material.emission_energy_multiplier = (current_light_energy / LIGHT_MAX_ENERGY) * 1.0
 
 
 func _build_light() -> void:
+	# Contêiner vazio sem nenhuma malha para compatibilidade com chamadas existentes
 	_lantern_model_root = Node3D.new()
 	_lantern_model_root.name = "LanternModel"
 	add_child(_lantern_model_root)
 
 	_candle_material = StandardMaterial3D.new()
 	_candle_material.resource_name = "PlayerLightEmission"
-	_candle_material.emission_enabled = true
-	_candle_material.emission = DEFAULT_AMBER_COLOR
 
+	# Luz omnidirecional pura centralizada no personagem
 	_omni_light = OmniLight3D.new()
 	_omni_light.name = "PlayerLight"
 	_omni_light.position = Vector3.ZERO
-	_omni_light.light_color = DEFAULT_AMBER_COLOR
+	_omni_light.light_color = LIGHT_COLOR_NEUTRAL_WARM
 	_omni_light.light_energy = 0.0
-	_omni_light.omni_range = DEFAULT_LIGHT_RANGE
-	_omni_light.omni_attenuation = DEFAULT_ATTENUATION
+	_omni_light.omni_range = LIGHT_RANGE
+	_omni_light.omni_attenuation = LIGHT_ATTENUATION
 	_omni_light.shadow_enabled = shadow_enabled
 	_lantern_model_root.add_child(_omni_light)

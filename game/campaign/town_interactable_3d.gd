@@ -11,7 +11,7 @@ signal interaction_requested(station_id: String, station_title: String)
 
 @export var station_id: String = "stash"
 @export var station_title: String = "Baú Pessoal"
-@export var station_subtitle: String = "[E / Clique] Abrir Baú"
+@export var station_subtitle: String = "[Clique] Abrir Baú"
 @export var interaction_radius: float = 3.1
 
 var _label_title: Label3D
@@ -105,7 +105,7 @@ func _build_visuals() -> void:
 	add_child(_label_title)
 
 	_label_prompt = Label3D.new()
-	_label_prompt.text = "[ %s | Clique ]" % station_subtitle
+	_label_prompt.text = "%s" % station_subtitle
 	_label_prompt.font_size = 26
 	_label_prompt.outline_size = 10
 	_label_prompt.modulate = Color(0.98, 0.95, 0.88, 0.98)
