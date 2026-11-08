@@ -25,6 +25,7 @@ const COLOR_TREE: Color = Color(0.14, 0.11, 0.10)
 const COLOR_LEAF_DARK: Color = Color(0.08, 0.10, 0.07)
 const COLOR_ROCK: Color = Color(0.22, 0.23, 0.28)
 const StylizedTerrainServiceScript = preload("res://core/terrain/stylized_terrain_service.gd")
+const RegionEnvironmentScatterScript = preload("res://game/environment/region_environment_scatter.gd")
 
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _name_id: int = 0
@@ -71,6 +72,8 @@ func rebuild_campaign_zone(zone_def: Resource) -> void:
 		_build_town_encampment()
 	else:
 		_build_campaign_zone_props(z_id)
+	if zone_def is CampaignZoneDefinition:
+		RegionEnvironmentScatterScript.build_environment(self, zone_def as CampaignZoneDefinition)
 	_build_grass_tufts()
 
 func _unique(base: String) -> String:
@@ -415,12 +418,6 @@ func _build_town_encampment() -> void:
 	]:
 		_brazier(b_pos)
 
-	# Árvores secas ao fundo fora dos muros da Vila
-	_dead_tree(Vector3(-16.5, 0.0, -18.0), 1.2, 0.12)
-	_dead_tree(Vector3(16.5, 0.0, -18.0), 1.25, -0.15)
-	_dead_tree(Vector3(-17.5, 0.0, 12.0), 1.15, 0.2)
-	_dead_tree(Vector3(17.5, 0.0, 12.0), 1.1, -0.2)
-
 
 func _build_campaign_zone_props(zone_id: String) -> void:
 	# Braseiros de estrada guiando o caminho Sul -> Norte
@@ -430,19 +427,9 @@ func _build_campaign_zone_props(zone_id: String) -> void:
 		_brazier(Vector3(road_x + 3.6, 0.0, z_step))
 
 	_build_ruins()
-	_build_rocks()
-	_build_dead_trees()
 	_build_gravestones()
 
-	if zone_id == "zone_2_woods" or zone_id == "zone_6_hills":
-		# Floresta/Colinas mais densas
-		for extra_tree in [
-			Vector3(-11.0, 0.0, -7.0), Vector3(11.5, 0.0, -6.0),
-			Vector3(-12.0, 0.0, 6.0), Vector3(12.5, 0.0, 8.0),
-			Vector3(-6.5, 0.0, -15.5), Vector3(7.0, 0.0, 14.5),
-		]:
-			_dead_tree(extra_tree, 1.32, rng.randf_range(-0.22, 0.22))
-	elif zone_id == "zone_4_mines":
+	if zone_id == "zone_4_mines":
 		# Cristais arcanos roxos nas Minas de Karpon
 		var crystal_mat := _material("karpon_crystal", Color(0.68, 0.24, 1.0), 0.25, false, 1.4)
 		for c_pos in [
